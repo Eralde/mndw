@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {type App as VueApp, createApp, nextTick} from 'vue';
-import type {PluginTelemetry, TelemetryGathering} from '@mndw/sdk';
+import type {PluginContext, PluginTelemetry, TelemetryGathering} from '@mndw/sdk';
 import {type TestPluginContext, createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import App from './App.vue';
 
@@ -122,9 +122,10 @@ function mountApp(
 
   fixture.context.navigation.href = (): string => '/settings/general';
 
-  const context = Object.assign(Object.create(fixture.context), {
+  const context = {
+    ...fixture.context,
     setTileTitle: overrides.setTileTitle ?? vi.fn(),
-  }) as TestPluginContext;
+  } as PluginContext;
 
   app = createApp(App, {ctx: context});
   app.mount(host);

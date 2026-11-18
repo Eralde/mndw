@@ -112,11 +112,6 @@
   font-family: var(--mndw-font-mono);
 }
 
-.mndw-dns-lookup-widget__unavailable {
-  color: var(--mndw-warning-text, var(--mndw-text-muted));
-  font-size: var(--mndw-text-sm);
-}
-
 @container (max-width: 240px) {
   .mndw-dns-lookup-widget__control-row {
     flex-direction: column;

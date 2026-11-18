@@ -161,7 +161,7 @@ async function flushFirstPoll(fixture: ComponentFixture<AppComponentType>): Prom
 async function createFixture(
   savedInterface: string | null,
   savedRefresh: string | null,
-  setTileTitle?: ((title: string) => void) | null,
+  setTileTitle: (title: string) => void = vi.fn<(title: string) => void>(),
   i18n = createTestI18n(enCatalog),
   manager = fakeManager(),
   storage?: PluginStorage,
@@ -169,7 +169,7 @@ async function createFixture(
   {
     fixture: ComponentFixture<AppComponentType>;
     openSettings: ReturnType<typeof vi.fn>;
-    setTileTitle: ((title: string) => void) | undefined;
+    setTileTitle: (title: string) => void;
   }
 > {
   await resolveComponentResources((url: string) => {
@@ -185,7 +185,7 @@ async function createFixture(
   });
 
   const openSettings = vi.fn<OpenSettingsFn>();
-  const setTileTitleInput = setTileTitle === null ? undefined : (setTileTitle ?? vi.fn<(title: string) => void>());
+  const setTileTitleInput = setTileTitle;
 
   await TestBed.configureTestingModule({
     imports: [AppComponentType],
@@ -199,7 +199,7 @@ async function createFixture(
   const fixture = TestBed.createComponent(AppComponentType);
   const instance = fixture.componentInstance as unknown as {
     openSettings: () => OpenSettingsFn;
-    setTileTitle: () => ((title: string) => void) | undefined;
+    setTileTitle: () => (title: string) => void;
   };
 
   instance.openSettings = () => openSettings;
@@ -230,7 +230,7 @@ describe('AppComponent', () => {
         return path === 'show.interface' ? of({}) : of([]);
       },
     } as unknown as PluginRciManager;
-    const {fixture, setTileTitle} = await createFixture(null, null, undefined, i18n, emptyManager);
+    const {fixture, setTileTitle} = await createFixture(null, null, vi.fn(), i18n, emptyManager);
 
     await vi.waitFor(() => {
       fixture.detectChanges();
@@ -307,20 +307,8 @@ describe('AppComponent', () => {
     expect(setTileTitle).toHaveBeenCalledWith(enCatalog.title);
   });
 
-  it('keeps the internal interface label when setTileTitle is absent', async () => {
-    const {fixture} = await createFixture('eth1', '3000', null);
-
-    await fixture.componentInstance.ngOnInit();
-    fixture.detectChanges();
-
-    const label = fixture.nativeElement.querySelector('.chart-header__label');
-
-    expect(label).not.toBeNull();
-    expect(label.textContent).toBe('WAN');
-  });
-
-  it('hides the internal interface label when setTileTitle is provided', async () => {
-    const {fixture} = await createFixture('eth1', '3000', () => undefined);
+  it('does not draw an internal interface label when the host title is provided', async () => {
+    const {fixture} = await createFixture('eth1', '3000');
 
     await fixture.componentInstance.ngOnInit();
     fixture.detectChanges();

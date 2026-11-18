@@ -12,7 +12,10 @@ const contextFor = (
 ): PluginContext => {
   const fixture = createTestPluginContext({i18n, kind});
 
-  return Object.assign(Object.create(fixture.context), {setTileTitle}) as PluginContext;
+  return {
+    ...fixture.context,
+    ...(kind === 'widget' ? {setTileTitle} : {}),
+  } as PluginContext;
 };
 
 describe('generated vanilla locale reactivity', () => {

@@ -219,10 +219,15 @@ describe('createPluginContext', () => {
     expect(typeof ctx.overlay.closeAll).toBe('function');
   });
 
-  it('omits backend when the plugin declares nothing callable', () => {
+  it('provides a rejecting backend client when the plugin declares no backend', async () => {
     const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
+    const pending = ctx.backend.fetch('stats');
 
-    expect(ctx.backend).toBeUndefined();
+    await expect(pending).rejects.toMatchObject({
+      name: 'BackendError',
+      code: 'BACKEND_NOT_DECLARED',
+      message: expect.stringContaining('manifest backend field'),
+    });
   });
 
   it('wires a backend client when HTTP routes are declared', () => {
@@ -236,9 +241,9 @@ describe('createPluginContext', () => {
     });
 
     expect(ctx.backend).toBeDefined();
-    expect(typeof ctx.backend?.fetch).toBe('function');
-    expect(typeof ctx.backend?.socket).toBe('function');
-    expect(typeof ctx.backend?.status).toBe('function');
+    expect(typeof ctx.backend.fetch).toBe('function');
+    expect(typeof ctx.backend.socket).toBe('function');
+    expect(typeof ctx.backend.status).toBe('function');
   });
 
   it('wires a backend client when only WebSocket routes are declared', () => {
@@ -262,10 +267,11 @@ describe('createPluginContext', () => {
     expect(ctx.setTileTitle).toBe(setTileTitle);
   });
 
-  it('leaves setTileTitle undefined when not provided', () => {
+  it('provides a widget title setter even when the host callback is omitted', () => {
     const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
 
-    expect(ctx.setTileTitle).toBeUndefined();
+    expect(ctx.kind).toBe('widget');
+    expect(typeof ctx.setTileTitle).toBe('function');
   });
 
   it('forwards pageRoute to page plugins and omits it for widgets', () => {
@@ -557,9 +563,11 @@ describe('plugin RCI facade', () => {
     const response = {version: '1'};
 
     driver.queue.mockReturnValueOnce(of(response));
+
     const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
 
     await expect(ctx.device.rci.query({path: 'show.version'})).resolves.toBe(response);
+
     expect(driver.queue).toHaveBeenCalledWith({path: 'show.version'}, undefined);
   });
 });

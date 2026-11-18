@@ -20,7 +20,7 @@ interface Props {
   storage: PluginStorage;
   timers: PluginTimers;
   openSettings: (args: OpenSettingsArgs) => void;
-  setTileTitle?: (title: string) => void;
+  setTileTitle: (title: string) => void;
   i18n: PluginI18n;
 }
 
@@ -81,9 +81,7 @@ let trafficValueDomain = $derived.by(() => {
 $effect(() => {
   const name = hosts.find((h) => h.mac === selectedMac)?.name || selectedMac;
 
-  if (setTileTitle) {
-    setTileTitle(name || t('title'));
-  }
+  setTileTitle(name || t('title'));
 });
 
 const detailLabels = [
@@ -251,14 +249,6 @@ onMount(() => {
   {:else}
     <div class="chart-view">
       <div class="widget-header">
-        {#if !setTileTitle}
-          <span class="device-label">
-            {
-              hosts.find(h => h.mac === selectedMac)?.name
-              || selectedMac
-            }
-          </span>
-        {/if}
         <div class="header-actions">
           <mndw-segmented
             class="btn-group"
@@ -380,17 +370,6 @@ onMount(() => {
   justify-content: space-between;
   align-items: center;
   padding: 0 0.25rem 0.375rem;
-}
-
-.device-label {
-  flex-shrink: 1;
-  overflow: hidden;
-  min-width: 0;
-  color: var(--mndw-text);
-  font-weight: 600;
-  font-size: 0.8125rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .header-actions {

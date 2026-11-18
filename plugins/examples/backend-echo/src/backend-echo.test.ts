@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {BackendDisabled, BackendNotApproved, type PluginContext} from '@mndw/sdk';
-import {createTestI18n} from '@mndw/sdk/testing';
+import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import type {MndwButton, MndwInput} from '@mndw/ui';
 import {mountEchoWidget} from './backend-echo.js';
 import enCatalog from '../i18n/en.json';
@@ -116,21 +116,25 @@ describe('mountEchoWidget', () => {
     });
   });
 
-  it('renders unavailable and never fetches when no backend is present', () => {
+  it('renders the SDK no-backend error', async () => {
+    const fixture = createTestPluginContext();
     const el = container();
 
-    mountEchoWidget(el, undefined, createTestI18n(enCatalog));
+    mountEchoWidget(el, fixture.context.backend, createTestI18n(enCatalog));
 
     el.querySelector<HTMLButtonElement>('.mndw-echo__get')?.click();
 
-    expect(el.querySelector('.mndw-echo__unavailable')).not.toBeNull();
+    await vi.waitFor(() => {
+      expect(el.querySelector('.mndw-alert--danger')?.textContent).toContain('manifest backend field');
+    });
+    fixture.unmount();
   });
 
   it('updates controls and result surface without remounting', () => {
     const i18n = createTestI18n({status: 'Status EN', get: 'Get EN', post: 'Post EN', idle: 'Idle EN'});
     const el = container();
 
-    mountEchoWidget(el, undefined, i18n);
+    mountEchoWidget(el, fakeBackend(vi.fn()), i18n);
 
     const input = el.querySelector<HTMLInputElement>('.mndw-echo__status-input');
     const get = el.querySelector<HTMLButtonElement>('.mndw-echo__get');

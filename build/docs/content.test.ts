@@ -350,8 +350,8 @@ describe('Task 4 Observable contract docs', () => {
         'ctx.i18n.locale$',
         'ctx.appearance.palette$',
         'ctx.pageRoute.childPath$',
-        'ctx.events?.select$',
-        'ctx.events?.resync$',
+        'ctx.events.select$',
+        'ctx.events.resync$',
         'ticker.tick$',
       ]
     ) {

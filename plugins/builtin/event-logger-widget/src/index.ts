@@ -7,7 +7,7 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
   const app = mount(EventLogger, {target: container, props: {events: context.events, i18n: context.i18n}});
   const unsubscribeLocale = bindLocale(context.i18n, () => {
     if (context.kind === 'widget') {
-      context.setTileTitle?.(context.i18n.t('title'));
+      context.setTileTitle(context.i18n.t('title'));
     }
   });
 

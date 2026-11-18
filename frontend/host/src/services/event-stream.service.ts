@@ -44,7 +44,7 @@ export interface EventStreamService {
     pluginName: string,
     capabilities: readonly string[],
     lifetime: PluginLifetime,
-  ): PluginEventFacade | undefined;
+  ): PluginEventFacade;
   disposeFacade(instanceId: string): void;
 }
 
@@ -92,6 +92,16 @@ const effectiveFilters = (requested: readonly string[], grants: readonly string[
   }
 
   return [...result];
+};
+
+const missingCapability = (topic: string): Error => {
+  const namespace = topic.split('.', 1)[0] ?? topic;
+
+  return new Error(`Event topic "${topic}" is not granted; add manifest capability "events:${namespace}".`);
+};
+
+const isCoveredByGrant = (topic: string, grants: readonly string[]): boolean => {
+  return grants.some((grant) => grant === '*' || topic === grant || topic.startsWith(`${grant}.`));
 };
 
 const validCapabilities = (capabilities: readonly string[]): string[] => {
@@ -183,12 +193,8 @@ export class EventStreamManager implements EventStreamService {
     pluginName: string,
     capabilities: readonly string[],
     lifetime: PluginLifetime,
-  ): PluginEventFacade | undefined {
+  ): PluginEventFacade {
     const grants = validCapabilities(capabilities);
-
-    if (grants.length === 0) {
-      return undefined;
-    }
 
     this.disposeFacade(instanceId);
     this.registrations.set(instanceId, {
@@ -200,39 +206,17 @@ export class EventStreamManager implements EventStreamService {
     });
 
     return {
-      select$: (topics) =>
-        new Observable<MndwEvent>((subscriber) => {
-          const registration = this.registrations.get(instanceId);
-
-          if (registration === undefined) {
-            subscriber.complete();
-
-            return;
-          }
-
-          const filters = effectiveFilters(splitFilters(topics), registration.grants);
-
-          if (filters.length === 0) {
-            subscriber.complete();
-
-            return;
-          }
-
-          const id = this.nextHandlerId++;
-
-          registration.subscriptions.set(id, {filters, handler: (event) => subscriber.next(event)});
-          this.updateWireSubscription();
-
-          return () => {
-            if (registration.subscriptions.delete(id)) {
-              this.updateWireSubscription();
-            }
-          };
-        }).pipe(takeUntil(lifetime.ended$)),
+      select$: (topics) => this.selectEvents(instanceId, topics, lifetime),
       resync$: new Observable<void>((subscriber) => {
         const registration = this.registrations.get(instanceId);
 
         if (registration === undefined) {
+          subscriber.complete();
+
+          return;
+        }
+
+        if (registration.grants.length === 0) {
           subscriber.complete();
 
           return;
@@ -247,6 +231,51 @@ export class EventStreamManager implements EventStreamService {
         };
       }).pipe(takeUntil(lifetime.ended$)),
     };
+  }
+
+  private selectEvents(
+    instanceId: string,
+    topics: string | readonly string[],
+    lifetime: PluginLifetime,
+  ): Observable<MndwEvent> {
+    return new Observable<MndwEvent>((subscriber) => {
+      const registration = this.registrations.get(instanceId);
+
+      if (registration === undefined) {
+        subscriber.complete();
+
+        return;
+      }
+
+      const requested = splitFilters(topics);
+
+      const denied = requested.find((topic) => topic !== '*' && !isCoveredByGrant(topic, registration.grants));
+
+      if (denied !== undefined) {
+        subscriber.error(missingCapability(denied));
+
+        return;
+      }
+
+      const filters = effectiveFilters(requested, registration.grants);
+
+      if (filters.length === 0) {
+        subscriber.complete();
+
+        return;
+      }
+
+      const id = this.nextHandlerId++;
+
+      registration.subscriptions.set(id, {filters, handler: (event) => subscriber.next(event)});
+      this.updateWireSubscription();
+
+      return () => {
+        if (registration.subscriptions.delete(id)) {
+          this.updateWireSubscription();
+        }
+      };
+    }).pipe(takeUntil(lifetime.ended$));
   }
 
   public disposeFacade(instanceId: string): void {

@@ -50,16 +50,12 @@ const createEventFacadeId = (): string => {
     : `event-context-${++eventFacadeSequence}`;
 };
 
-/**
- * Constructs the backend client from the list descriptor, or returns undefined when
- * the plugin declares nothing callable (no routes) - a backendless plugin gets no
- * `context.backend`.
- */
-function backendClientFor(entry: PluginListEntry): BackendClient | undefined {
+/** Constructs a backend client from the list descriptor, using a rejecting stub when no routes exist. */
+function backendClientFor(entry: PluginListEntry): BackendClient {
   const {routes} = entry.backend;
 
   if (Object.keys(routes ?? {}).length === 0) {
-    return undefined;
+    return createBackendClient(entry.name, undefined);
   }
 
   const descriptor: BackendDescriptor = {
@@ -138,9 +134,7 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
     abortController.abort();
     lifetime.end();
 
-    if (events !== undefined) {
-      eventStream.disposeFacade(eventFacadeId);
-    }
+    eventStream.disposeFacade(eventFacadeId);
 
     disposeOverlay(reason);
   };
@@ -153,9 +147,7 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
 
       return {kind: 'page' as const, pageRoute};
     })()
-    : setTileTitle === undefined
-    ? {kind: 'widget' as const}
-    : {kind: 'widget' as const, setTileTitle};
+    : {kind: 'widget' as const, setTileTitle: setTileTitle ?? (() => {})};
   const context = {
     signal: abortController.signal,
     navigation,

@@ -103,3 +103,105 @@ Pass the supplied `AbortSignal` to APIs that accept one. The loop prevents overl
 and aborts the active load when stopped. All loops stop when their plugin context ends, so remove teardown calls that
 only stopped a loop during plugin unmount. Keep `stop()` for user actions that pause or replace a loop, and use
 `setIntervalMs()` when its cadence changes.
+
+## Backend client is always present
+
+`ctx.backend` always exists, even when `manifest.json` has no `backend` field. In that case it is a no-network stub:
+`fetch()`, `call()`, and `status()` reject with `BackendError` code `BACKEND_NOT_DECLARED`; its message points to the
+manifest `backend` field. `socket()` throws that same error synchronously. A plugin that needs backend functionality
+still needs to declare its routes in the manifest.
+
+Backend author errors from `fetch()`, `call()`, and `status()` are Promise rejections. This includes unknown route IDs,
+wrong transport, and a missing backend declaration. Put the `await` inside `try` so the rejection is caught:
+
+```ts
+import {BackendError, type PluginContext} from '@mndw/sdk';
+
+async function load(ctx: PluginContext): Promise<void> {
+  try {
+    const result = await ctx.backend.call<{message: string}>('hello', {as: 'json', signal: ctx.signal});
+    console.info(result.message);
+  } catch (error: unknown) {
+    if (error instanceof BackendError) {
+      console.error(error.code, error.message);
+      return;
+    }
+
+    throw error;
+  }
+}
+```
+
+If older code relied on a synchronous throw from calling `call()` before awaiting it, move the call into the awaited
+`try` block. A `try` around only the method invocation no longer catches these errors:
+
+```ts
+// Old: does not catch a rejected Promise.
+try {
+  const request = ctx.backend.call('hello');
+  void request;
+} catch (error) {
+  console.error(error);
+}
+
+// New: catches the Promise rejection.
+try {
+  await ctx.backend.call('hello');
+} catch (error) {
+  console.error(error);
+}
+```
+
+## WebSocket routes
+
+`socket()` remains synchronous for author errors: unknown IDs, wrong transport, and no backend declaration throw at the
+call site. For a known route blocked by plugin state, it returns an already-closed WebSocket-like object. The close event
+is delivered asynchronously and exposes its code and readable reason through `onclose` or
+`addEventListener('close', ...)`. Codes are exported as `BackendSocketCloseCode` from `@mndw/sdk`:
+
+| Constant | Code | Meaning |
+| --- | ---: | --- |
+| `BackendSocketCloseCode.notApproved` | `4001` | Plugin backend needs approval |
+| `BackendSocketCloseCode.disabled` | `4002` | Plugin backend is disabled |
+
+```ts
+import {BackendSocketCloseCode} from '@mndw/sdk';
+
+const socket = ctx.backend.socket('stream');
+socket.addEventListener('close', (event) => {
+  if (event.code === BackendSocketCloseCode.notApproved) {
+    console.info(`Approve plugin backend: ${event.reason}`);
+  }
+});
+```
+
+The blocked socket reports `readyState === WebSocket.CLOSED`. Calling `close()` is safe and has no network side effect.
+
+## Events facade is always present
+
+`ctx.events` always exists. `select$()` errors for a specific topic when the manifest has no event capability or the
+topic is outside the plugin's grants. Add a matching `events:<namespace>` capability to the manifest. For example,
+topics beginning with `usb.` need `events:usb`; the error names that capability. A wildcard request such as
+`select$('*')` silently narrows to the topics the manifest grants; with no grants it completes without events.
+`resync$` completes immediately when no event capability is granted.
+
+```ts
+ctx.events.select$('usb.device_added').subscribe({
+  next: (event) => console.info(event.topic),
+  error: (error: unknown) => console.error(error),
+});
+```
+
+## Widget title setter
+
+Widget contexts now always provide `ctx.setTileTitle(title)`. Page contexts do not have that property. Narrow a generic
+`PluginContext` by `kind` before setting a tile title:
+
+```ts
+if (ctx.kind === 'widget') {
+  ctx.setTileTitle(ctx.i18n.t('title'));
+}
+```
+
+The SDK test fixture follows the same rule. Its widget context has a default title recorder; read recorded values from
+`fixture.tileTitles`. Page fixtures omit the setter.

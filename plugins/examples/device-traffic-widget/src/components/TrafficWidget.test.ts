@@ -108,6 +108,7 @@ describe('TrafficWidget shared controls', () => {
         storage,
         timers: createPluginTimers(),
         openSettings,
+        setTileTitle: vi.fn(),
         i18n: createTestI18n(enCatalog),
       },
     });

@@ -7,7 +7,6 @@
   "filter": "Filter events",
   "entries": "Event log entries",
   "empty": "No matching events",
-  "unavailable": "Event stream unavailable",
   "resumed": "Capture resumed",
   "resync": "Stream resynchronized; history may contain gaps"
 }

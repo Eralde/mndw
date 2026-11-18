@@ -45,8 +45,8 @@ current value on subscribe:
 | `ctx.i18n.locale$` | Current locale and later locales after their plugin catalogs are applied | Yes |
 | `ctx.appearance.palette$` | Current applied palette and later palette changes | Yes |
 | `ctx.pageRoute.childPath$` | Current page child path and later navigation | Yes; pages only |
-| `ctx.events?.select$(topics)` | Events matching the selected topics | No; with event capabilities |
-| `ctx.events?.resync$` | A signal to refresh after an event-stream resync | No; with event capabilities |
+| `ctx.events.select$(topics)` | Events matching granted topics | No; errors without a matching event capability |
+| `ctx.events.resync$` | A signal to refresh after an event-stream resync | No; completes without event capabilities |
 | `ticker.tick$` | Periodic ticks after `ticker.start()` | No |
 
 The host completes every stream it handed you on unmount. `i18n.locale$` emits a locale after the matching plugin
@@ -55,22 +55,20 @@ for work you started, such as timers or request streams. Each `ctx.timers.create
 ticker use. The host destroys every
 handle on unmount, and its `tick$` completes then too.
 
-`ctx.pageRoute` exists only for page plugins. `ctx.events` exists only when the manifest declares
-event capabilities, and `ctx.backend` exists only when the manifest declares callable backend routes.
-Check the context kind before using a page route, and narrow optional services before calling them:
+`ctx.pageRoute` exists only for page plugins. `ctx.events` and `ctx.backend` always exist; event subscriptions
+require matching manifest capabilities, and a missing backend declaration produces a client that rejects with
+`BACKEND_NOT_DECLARED`. Check the context kind before using a page route:
 
 ```ts
 if (ctx.kind === 'page') {
   void ctx.pageRoute.navigate('/details');
 }
 
-ctx.events?.select$('wan').subscribe((event) => {
+ctx.events.select$('wan').subscribe((event) => {
   console.info(event.topic);
 });
 
-if (ctx.backend !== undefined) {
-  // Use ctx.backend.call('status', {as: 'json', signal: ctx.signal}) for decoded responses.
-}
+// Use ctx.backend.call('status', {as: 'json', signal: ctx.signal}) for decoded responses.
 ```
 
 Each connection, including initial connections and reconnects, first replays retained events after the host cursor, then
@@ -90,10 +88,6 @@ leaving a page, plugin reload, or disable. Pass it to cancellable requests, and 
 import {BackendError, type PluginContext, type PluginInstance} from '@mndw/sdk';
 
 export async function createInstance(container: HTMLElement, ctx: PluginContext): Promise<PluginInstance> {
-  if (ctx.backend === undefined) {
-    throw new Error('This plugin needs a backend route');
-  }
-
   try {
     const status = await ctx.backend.call<unknown>('status', {as: 'json', signal: ctx.signal});
     if (ctx.signal.aborted) {
@@ -364,9 +358,11 @@ child pathname without query or hash, preserves ordinary percent encoding such a
 ambiguous paths. Failures use `PageRouteError` codes `INVALID_PATH`, `COMPLETED`, or `NAVIGATION_FAILED`;
 `scrollToTop` defaults to `true`.
 
-The optional `ctx.backend` client exposes `fetch`, `socket`, and `status`. Every backend failure extends
-`BackendError` and exposes a `code`; switch on it or use `instanceof BackendError`. Codes are
-`UNKNOWN_ID` (`BackendUnknownId`), `NOT_APPROVED` (`BackendNotApproved`), `DISABLED` (`BackendDisabled`),
+The always-present `ctx.backend` client exposes `fetch`, `call`, `socket`, and `status`. Without a manifest `backend`
+field, `fetch`, `call`, and `status` reject with `BACKEND_NOT_DECLARED`; `socket()` throws that error synchronously.
+Author errors from `fetch`, `call`, and `status` reject rather than throw during invocation. Every backend failure
+extends `BackendError` and exposes a `code`; switch on it or use `instanceof BackendError`. Codes include
+`BACKEND_NOT_DECLARED`, `UNKNOWN_ID` (`BackendUnknownId`), `NOT_APPROVED` (`BackendNotApproved`), `DISABLED` (`BackendDisabled`),
 `TRANSPORT_MISMATCH` (`BackendTransportMismatch`), `BACKEND_STARTING` (`BackendStarting`),
 `BACKEND_UNAVAILABLE` (`BackendUnavailable`), `BACKEND_INCOMPATIBLE` (`BackendIncompatible`),
 `BACKEND_MAINTENANCE` (`BackendMaintenance`), `BACKEND_BLOCKED` (`BackendBlocked`), `BAD_GATEWAY`

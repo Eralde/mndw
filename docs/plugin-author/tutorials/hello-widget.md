@@ -117,7 +117,6 @@ and creates both catalog files. Replace `i18n/en.json` with this catalog:
     "loading": "Loading greeting…"
   },
   "error": {
-    "backend-missing": "Backend is not available for this plugin.",
     "backend-not-approved": "Approve the backend before running it.",
     "backend-disabled": "Enable the backend before running it.",
     "backend-unavailable": "Backend is temporarily unavailable.",
@@ -141,7 +140,6 @@ Replace `i18n/ru.json` with the matching Russian catalog:
     "loading": "Загружаем приветствие…"
   },
   "error": {
-    "backend-missing": "Серверная часть плагина недоступна.",
     "backend-not-approved": "Одобрите серверную часть перед запуском.",
     "backend-disabled": "Включите серверную часть перед запуском.",
     "backend-unavailable": "Серверная часть временно недоступна.",
@@ -167,7 +165,7 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
   const app = mount(App, {target: container, props: {backend: ctx.backend, i18n: ctx.i18n, signal: ctx.signal}});
   const unsubscribeLocale = bindLocale(ctx.i18n, () => {
     if (ctx.kind === 'widget') {
-      ctx.setTileTitle?.(ctx.i18n.t('title'));
+      ctx.setTileTitle(ctx.i18n.t('title'));
     }
   });
 
@@ -197,7 +195,7 @@ import {type BackendClient, BackendError, type PluginI18n} from '@mndw/sdk';
 import {createTranslator} from '@mndw/sdk/svelte';
 
 interface Props {
-  backend: BackendClient | undefined;
+  backend: BackendClient;
   i18n: PluginI18n;
   signal: AbortSignal;
 }
@@ -211,11 +209,6 @@ let message = $state('');
 
 async function loadGreeting(): Promise<void> {
   if (state === 'loading') { return; }
-  if (!backend) {
-    state = 'error';
-    message = $translator.t('error.backend-missing');
-    return;
-  }
   state = 'loading';
   message = '';
   try {

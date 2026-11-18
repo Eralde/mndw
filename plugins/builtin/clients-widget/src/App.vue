@@ -31,7 +31,7 @@ const translator = useTranslator(props.ctx.i18n);
 const t = (key: string, values?: Record<string, unknown>): string => translator.t(key, values);
 const unsubscribeLocale = bindLocale(props.ctx.i18n, () => {
   if (props.ctx.kind === 'widget') {
-    props.ctx.setTileTitle?.(t('title'));
+    props.ctx.setTileTitle(t('title'));
   }
 });
 

@@ -112,8 +112,8 @@ interface PluginContextBase {
   readonly navigation: HostNavigation;
   /** Host telemetry client scoped to this plugin context. */
   readonly telemetry: PluginTelemetry;
-  /** Typed event facade for subscribing to host and plugin events. */
-  readonly events?: PluginEventFacade;
+  /** Typed event facade; select$ reports missing manifest capabilities on subscription. */
+  readonly events: PluginEventFacade;
   /** Browser storage scopes for this plugin. */
   readonly storage: {
     /**
@@ -148,10 +148,11 @@ interface PluginContextBase {
     readonly palette$: Observable<PaletteTokenMap>;
   };
   /**
-   * Typed backend client. Present only when the plugin declares a `backend`; ids resolve locally
-   * from the daemon's descriptor snapshot. See {@link BackendClient}.
+   * Typed backend client. Without a declared `backend`, methods reject (or `socket()` throws)
+   * with `BACKEND_NOT_DECLARED`. Ids resolve locally from the daemon's descriptor snapshot.
+   * See {@link BackendClient}.
    */
-  readonly backend?: BackendClient;
+  readonly backend: BackendClient;
   /** Framework-agnostic top-layer UI (modal, drawer, popover, custom). */
   readonly overlay: OverlayService;
   /** Timers scoped to this plugin context and stopped when it ends. */
@@ -164,7 +165,7 @@ export interface WidgetPluginContext extends PluginContextBase {
   /** Widgets do not receive page navigation. */
   readonly pageRoute?: never;
   /** Set the host tile title. */
-  readonly setTileTitle?: (title: string) => void;
+  readonly setTileTitle: (title: string) => void;
 }
 
 export interface PagePluginContext extends PluginContextBase {

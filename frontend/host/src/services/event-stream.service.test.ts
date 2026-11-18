@@ -71,7 +71,7 @@ describe('EventStreamManager', () => {
 
     expect(facade).toBeDefined();
 
-    const subscription = facade?.select$('net').subscribe(handler);
+    const subscription = facade.select$('net').subscribe(handler);
 
     expect(eventSchema.safeParse(event('01J5KZ00000000000000000000', 'net.dns_changed')).success).toBe(true);
     sockets[0]?.open();
@@ -108,7 +108,7 @@ describe('EventStreamManager', () => {
     const handler = vi.fn<(event: MndwEvent) => void>();
     const facade = manager.createFacade('instance-1', 'demo', ['events:net'], createPluginLifetime());
 
-    facade?.select$('net.dns_changed').subscribe(handler);
+    facade.select$('net.dns_changed').subscribe(handler);
     sockets[0]?.open();
 
     expect(JSON.parse(sockets[0]?.sent[0] ?? '{}')).toEqual({type: 'subscribe', topics: ['net.dns_changed']});
@@ -146,27 +146,15 @@ describe('EventStreamManager', () => {
       topics: ['net.dns_changed'],
     },
     {
-      name: 'child grant narrows parent request',
-      capabilities: ['events:plugin.started'],
-      request: 'plugin',
-      topics: ['plugin.started'],
-    },
-    {
-      name: 'disjoint grants and requests produce no wire subscription',
-      capabilities: ['events:net'],
-      request: 'plugin',
-      topics: [],
-    },
-    {
       name: 'comma lists and multiple grants and requests narrow together',
       capabilities: ['events:wan,plugin', 'events:net'],
-      request: 'plugin,net.dns_changed,wan.connected,usb',
+      request: 'plugin,net.dns_changed,wan.connected',
       topics: ['net.dns_changed', 'plugin', 'wan.connected'],
     },
     {
       name: 'multiple grants intersect a wildcard request',
       capabilities: ['events:wan,plugin', 'events:net'],
-      request: '*,usb',
+      request: '*',
       topics: ['net', 'plugin', 'wan'],
     },
   ])('narrows $name', ({capabilities, request, topics}) => {
@@ -181,17 +169,84 @@ describe('EventStreamManager', () => {
     });
     const facade = manager.createFacade('instance-1', 'demo', capabilities, createPluginLifetime());
 
-    facade?.select$(request).subscribe();
-
-    if (topics.length === 0) {
-      expect(sockets).toHaveLength(0);
-
-      return;
-    }
+    facade.select$(request).subscribe();
 
     sockets[0]?.open();
 
     expect(JSON.parse(sockets[0]?.sent[0] ?? '{}')).toEqual({type: 'subscribe', topics});
+  });
+
+  it.each([
+    {capabilities: ['events:plugin.started'], topic: 'plugin', required: 'events:plugin'},
+    {capabilities: ['events:net'], topic: 'plugin', required: 'events:plugin'},
+    {capabilities: ['events:net'], topic: 'usb.device_added', required: 'events:usb'},
+  ])('errors when $topic is outside granted capabilities', ({capabilities, topic, required}) => {
+    const manager = new EventStreamManager({WebSocket: FakeWebSocket as unknown as typeof WebSocket});
+    const facade = manager.createFacade('instance-1', 'demo', capabilities, createPluginLifetime());
+    const error = vi.fn();
+
+    facade.select$(topic).subscribe({error});
+
+    expect(error).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining(`manifest capability "${required}"`),
+    }));
+  });
+
+  it('errors for a specific ungranted topic in a wildcard list', () => {
+    const manager = new EventStreamManager({WebSocket: FakeWebSocket as unknown as typeof WebSocket});
+    const facade = manager.createFacade('instance-1', 'demo', ['events:net'], createPluginLifetime());
+    const error = vi.fn();
+
+    facade.select$(['*', 'usb.device_added']).subscribe({error});
+
+    expect(error).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining('manifest capability "events:usb"'),
+    }));
+  });
+
+  it('exposes an inert facade when the plugin has no event capabilities', () => {
+    const sockets: FakeWebSocket[] = [];
+    const manager = new EventStreamManager({
+      WebSocket: class extends FakeWebSocket {
+        constructor() {
+          super();
+          sockets.push(this);
+        }
+      } as unknown as typeof WebSocket,
+    });
+    const facade = manager.createFacade('instance-1', 'demo', [], createPluginLifetime());
+    const selectError = vi.fn();
+    const resyncComplete = vi.fn();
+
+    facade.select$('plugin').subscribe({error: selectError});
+    facade.resync$.subscribe({complete: resyncComplete});
+
+    expect(selectError).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining('manifest capability "events:plugin"'),
+    }));
+    expect(resyncComplete).toHaveBeenCalledOnce();
+    expect(sockets).toHaveLength(0);
+  });
+
+  it.each(['*', ['*']])('completes a wildcard-only request without event capabilities: %j', (request) => {
+    const sockets: FakeWebSocket[] = [];
+    const manager = new EventStreamManager({
+      WebSocket: class extends FakeWebSocket {
+        constructor() {
+          super();
+          sockets.push(this);
+        }
+      } as unknown as typeof WebSocket,
+    });
+    const facade = manager.createFacade('instance-1', 'demo', [], createPluginLifetime());
+    const complete = vi.fn();
+    const error = vi.fn();
+
+    facade.select$(request).subscribe({complete, error});
+
+    expect(complete).toHaveBeenCalledOnce();
+    expect(error).not.toHaveBeenCalled();
+    expect(sockets).toHaveLength(0);
   });
 
   it('does not deliver topics outside the effective filter for a wildcard request', () => {
@@ -207,7 +262,7 @@ describe('EventStreamManager', () => {
     const handler = vi.fn<(event: MndwEvent) => void>();
     const facade = manager.createFacade('instance-1', 'demo', ['events:wan'], createPluginLifetime());
 
-    facade?.select$('*').subscribe(handler);
+    facade.select$('*').subscribe(handler);
     sockets[0]?.open();
     sockets[0]?.receive({type: 'replay', events: [], hasMore: false});
     sockets[0]?.receive({type: 'event', event: event('01J5KZ00000000000000000000', 'plugin.started')});
@@ -229,8 +284,8 @@ describe('EventStreamManager', () => {
     const resync = vi.fn();
     const facade = manager.createFacade('instance-1', 'demo', ['events:*'], createPluginLifetime());
 
-    facade?.select$('*').subscribe(handler);
-    facade?.resync$.subscribe(resync);
+    facade.select$('*').subscribe(handler);
+    facade.resync$.subscribe(resync);
     sockets[0]?.open();
     sockets[0]?.receive({type: 'replay', events: [event('01J5KZ00000000000000000000', 'plugin.started')],
       hasMore: true});
@@ -267,10 +322,10 @@ describe('EventStreamManager', () => {
       createPluginLifetime(),
     );
 
-    netFacade?.select$('net').subscribe(netHandler);
+    netFacade.select$('net').subscribe(netHandler);
     sockets[0]?.open();
 
-    pluginFacade?.select$('plugin').subscribe(pluginHandler);
+    pluginFacade.select$('plugin').subscribe(pluginHandler);
 
     expect(JSON.parse(sockets[0]?.sent[2] ?? '{}')).toEqual({type: 'subscribe', topics: ['net', 'plugin']});
 
@@ -304,11 +359,11 @@ describe('EventStreamManager', () => {
       } as unknown as typeof WebSocket,
     });
     const facade = manager.createFacade('instance-1', 'demo', ['events:net,plugin'], createPluginLifetime());
-    const first = facade?.select$('net,plugin').subscribe();
+    const first = facade.select$('net,plugin').subscribe();
 
     sockets[0]?.open();
 
-    const second = facade?.select$('plugin,net').subscribe();
+    const second = facade.select$('plugin,net').subscribe();
 
     first?.unsubscribe();
 
@@ -339,7 +394,7 @@ describe('EventStreamManager', () => {
     });
     const handler = vi.fn<(event: MndwEvent) => void>();
     const facade = manager.createFacade('instance-1', 'demo', ['events:net'], createPluginLifetime());
-    const subscription = facade?.select$('net').subscribe(handler);
+    const subscription = facade.select$('net').subscribe(handler);
 
     sockets[0]?.open();
 
@@ -354,7 +409,7 @@ describe('EventStreamManager', () => {
     expect(reconnects).toHaveLength(0);
     expect(handler).toHaveBeenCalledOnce();
 
-    facade?.select$('net').subscribe(handler);
+    facade.select$('net').subscribe(handler);
 
     expect(sockets).toHaveLength(2);
 
@@ -399,9 +454,9 @@ describe('EventStreamManager', () => {
       createPluginLifetime(),
     );
 
-    netFacade?.select$('net').subscribe();
+    netFacade.select$('net').subscribe();
     sockets[0]?.open();
-    pluginFacade?.select$('plugin').subscribe(handler);
+    pluginFacade.select$('plugin').subscribe(handler);
     sockets[0]?.receive({type: 'error', code: 'CURSOR_EXPIRED', message: 'expired'});
     sockets[0]?.receive({type: 'event', event: event('01J5KZ00000000000000000000', 'plugin.started')});
 
@@ -431,7 +486,7 @@ describe('EventStreamManager', () => {
     const allEvents: MndwEvent[] = [];
     const netEvents: MndwEvent[] = [];
 
-    allFacade?.select$('*').subscribe((received) => {
+    allFacade.select$('*').subscribe((received) => {
       allEvents.push(received);
 
       const mutable = received as unknown as {topic: string; payload: {resolvers: string[]}};
@@ -454,7 +509,7 @@ describe('EventStreamManager', () => {
         mutationErrors.push(error);
       }
     });
-    netFacade?.select$('net').subscribe((received) => netEvents.push(received));
+    netFacade.select$('net').subscribe((received) => netEvents.push(received));
     sockets[0]?.open();
     sockets[0]?.receive({type: 'replay', events: [], hasMore: false});
 
@@ -491,8 +546,8 @@ describe('EventStreamManager', () => {
     const eventComplete = vi.fn();
     const resyncComplete = vi.fn();
 
-    facade?.select$('*').subscribe({complete: eventComplete});
-    facade?.resync$.subscribe({complete: resyncComplete});
+    facade.select$('*').subscribe({complete: eventComplete});
+    facade.resync$.subscribe({complete: resyncComplete});
     lifetime.end();
 
     expect(eventComplete).toHaveBeenCalledOnce();
@@ -517,12 +572,12 @@ describe('EventStreamManager', () => {
     const resync = vi.fn();
     const facade = manager.createFacade('instance-1', 'demo', ['events:plugin'], createPluginLifetime());
 
-    facade?.select$('plugin').pipe(map(() => {
+    facade.select$('plugin').pipe(map(() => {
       throw new Error('subscriber pipeline failed');
     }))
       .subscribe({error: subscriberError});
-    facade?.select$('plugin').subscribe(healthy);
-    facade?.resync$.subscribe(resync);
+    facade.select$('plugin').subscribe(healthy);
+    facade.resync$.subscribe(resync);
     sockets[0]?.open();
     sockets[0]?.receive({type: 'error', code: 'CURSOR_EXPIRED', message: 'expired'});
     sockets[0]?.receive({type: 'event', event: event('01J5KZ00000000000000000000', 'plugin.started')});

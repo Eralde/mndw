@@ -196,26 +196,23 @@ if (chart !== null) {
 
 ## Use decoded backend calls
 
-SDK 0.2 adds decoded backend calls and consistent backend errors. Use `ctx.backend.call()` when code wants parsed
-response data. Choose `as: 'json'`, `as: 'text'`, or `as: 'blob'` to select the result type; without `as`, the client
-uses the response content type. The JSON generic describes the value your plugin expects, so validate untrusted fields
-before using them. Narrow optional `ctx.backend` before calling it, and pass `ctx.signal` to requests so context
-disposal cancels pending work; see the [frontend lifecycle guide](/guides/frontend-lifecycle) for cancellation details.
+SDK 0.2 adds decoded backend calls and consistent backend errors. For plugins that declare a backend, use
+`ctx.backend.call()` when code wants parsed response data. Choose `as: 'json'`, `as: 'text'`, or `as: 'blob'` to
+select the result type; without `as`, the client uses the response content type. The JSON generic describes the value
+your plugin expects, so validate untrusted fields before using them. Since 0.3 `ctx.backend` is always present; see
+[Upgrading to 0.3](/guides/upgrading-to-0-3). Pass `ctx.signal` to requests so context disposal cancels pending work;
+see the [frontend lifecycle guide](/guides/frontend-lifecycle) for cancellation details.
 
 ```ts
 interface Greeting {
   message: string;
 }
 
-if (ctx.backend === undefined) {
-  throw new Error('This plugin needs its declared backend');
-}
-
 const greeting = await ctx.backend.call<Greeting>('hello', {as: 'json', signal: ctx.signal});
 console.info(greeting.message);
 ```
 
-Both `fetch()` and `call()` throw `BackendError` for platform errors. The daemon marks its errors with
+Both `fetch()` and `call()` reject with `BackendError` for platform errors. The daemon marks its errors with
 `X-Mndw-Error: 1`; the SDK maps known error codes and uses `INTERNAL` for an unknown marked code. `retryable` marks
 errors for which retrying may help; it does not schedule retries. `fetch()` returns a plugin backend's own response,
 including non-OK responses. `call()` reports a plugin-owned non-OK response with code `HTTP_ERROR`, its HTTP status,
@@ -231,10 +228,6 @@ import {BackendError} from '@mndw/sdk';
 
 declare function showError(message: string): void;
 declare function showRetryButton(): void;
-
-if (ctx.backend === undefined) {
-  throw new Error('This plugin needs its declared backend');
-}
 
 try {
   await ctx.backend.call('hello', {as: 'json', signal: ctx.signal});
@@ -263,10 +256,6 @@ import {BackendError} from '@mndw/sdk';
 
 declare function handlePluginResponse(response: Response): void;
 declare function showCommandError(message: string): void;
-
-if (ctx.backend === undefined) {
-  throw new Error('This plugin needs its declared backend');
-}
 
 try {
   const response = await ctx.backend.fetch('run', {signal: ctx.signal});

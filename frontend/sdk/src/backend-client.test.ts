@@ -10,6 +10,7 @@ import {
   BackendIncompatible,
   BackendMaintenance,
   BackendNotApproved,
+  BackendSocketCloseCode,
   BackendStarting,
   BackendStatusQueryError,
   BackendTransportMismatch,
@@ -129,8 +130,60 @@ describe('createBackendClient.fetch', () => {
     expect(new Headers(init?.headers).get('content-type')).toBe('application/json');
   });
 
-  it('throws BackendUnknownId synchronously for an unknown id', () => {
-    expect(() => client().fetch('nope')).toThrow(BackendUnknownId);
+  it('rejects with BackendUnknownId for an unknown id', async () => {
+    let pending: Promise<Response> | undefined;
+
+    expect(() => pending = client().fetch('nope')).not.toThrow();
+    await expect(pending).rejects.toBeInstanceOf(BackendUnknownId);
+  });
+
+  it('rejects with BackendTransportMismatch for a websocket id used by fetch', async () => {
+    let pending: Promise<Response> | undefined;
+
+    expect(() => pending = client().fetch('term')).not.toThrow();
+    await expect(pending).rejects.toBeInstanceOf(BackendTransportMismatch);
+  });
+
+  it('rejects all backend operations when the manifest has no backend declaration', async () => {
+    const noBackend = createBackendClient('demo', undefined, {
+      fetch: vi.fn(),
+      WebSocketCtor: FakeWebSocket as unknown as typeof WebSocket,
+      origin: 'https://host',
+    });
+    let fetchPromise: Promise<Response> | undefined;
+    let callPromise: Promise<unknown> | undefined;
+    let statusPromise: Promise<unknown> | undefined;
+
+    expect(() => fetchPromise = noBackend.fetch('anything')).not.toThrow();
+    expect(() => callPromise = noBackend.call('anything')).not.toThrow();
+    expect(() => statusPromise = noBackend.status()).not.toThrow();
+
+    const expected = {
+      name: 'BackendError',
+      code: 'BACKEND_NOT_DECLARED',
+      message: expect.stringContaining('manifest backend field'),
+    };
+
+    await expect(fetchPromise).rejects.toMatchObject(expected);
+    await expect(callPromise).rejects.toMatchObject(expected);
+    await expect(statusPromise).rejects.toMatchObject(expected);
+
+    let socketError: unknown;
+
+    try {
+      noBackend.socket('anything');
+    } catch (error) {
+      socketError = error;
+    }
+
+    expect(socketError).toMatchObject(expected);
+  });
+
+  it('rejects with BackendTransportMismatch for an HTTP id used by call', async () => {
+    let pending: Promise<unknown> | undefined;
+
+    expect(() => pending = client().call('term')).not.toThrow();
+    await expect(pending).rejects.toBeInstanceOf(BackendTransportMismatch);
   });
 
   it('rejects with BackendDisabled when the plugin is disabled', async () => {
@@ -497,6 +550,7 @@ describe('createBackendClient.call', () => {
   it('uses BackendErrorCode for the complete public code union', () => {
     const codes: BackendErrorCode[] = [
       'UNKNOWN_ID',
+      'BACKEND_NOT_DECLARED',
       'NOT_APPROVED',
       'DISABLED',
       'TRANSPORT_MISMATCH',
@@ -523,7 +577,7 @@ describe('createBackendClient.call', () => {
       'INVALID_RESPONSE',
     ];
 
-    expect(codes).toHaveLength(25);
+    expect(codes).toHaveLength(26);
   });
 });
 
@@ -548,7 +602,34 @@ describe('createBackendClient.socket', () => {
   });
 
   it('throws BackendDisabled when the plugin is disabled', () => {
-    expect(() => client({enabled: false}).socket('term')).toThrow(BackendDisabled);
+    const socket = client({enabled: false}).socket('term');
+
+    expect(socket.readyState).toBe(3);
+    expect(BackendSocketCloseCode.disabled).toBeGreaterThanOrEqual(4000);
+    expect(BackendSocketCloseCode.disabled).toBeLessThanOrEqual(4999);
+
+    return new Promise<void>((resolve) => {
+      socket.addEventListener('close', (event) => {
+        expect(event).toMatchObject({
+          code: BackendSocketCloseCode.disabled,
+          reason: expect.stringContaining('disabled'),
+        });
+        resolve();
+      }, {once: true});
+    });
+  });
+
+  it('reports pending approval through the closed socket onclose handler', async () => {
+    const socket = client({approval: 'pending'}).socket('term');
+    const close = new Promise<CloseEvent>((resolve) => {
+      socket.onclose = resolve;
+    });
+
+    expect(socket.readyState).toBe(3);
+    await expect(close).resolves.toMatchObject({
+      code: BackendSocketCloseCode.notApproved,
+      reason: expect.stringContaining('approved'),
+    });
   });
 });
 

@@ -1,5 +1,5 @@
-import {BehaviorSubject, NEVER, ReplaySubject, Subject, filter, of, takeUntil} from 'rxjs';
-import type {BackendClient} from '../backend-client.js';
+import {BehaviorSubject, NEVER, Observable, ReplaySubject, Subject, filter, of, takeUntil} from 'rxjs';
+import {type BackendClient, createBackendClient} from '../backend-client.js';
 import type {
   DeviceInfo,
   HostNavigation,
@@ -49,6 +49,8 @@ export interface TestPluginContextOptions {
 export interface TestPluginContext<C extends PluginContext = PluginContext> {
   readonly context: C;
   readonly navigationCalls: HostTarget[];
+  /** Titles passed to the default widget `setTileTitle` recorder. */
+  readonly tileTitles: string[];
   setTheme(theme: MndwThemeName): void;
   setLocale(locale: string): void;
   setPalette(palette: PaletteTokenMap): void;
@@ -208,6 +210,7 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
   const tickers = new Set<{tick(timestamp: number): void; destroy(): void}>();
   const injectedTickers = new Set<Ticker>();
   const navigationCalls: HostTarget[] = [];
+  const tileTitles: string[] = [];
   const abortController = new AbortController();
   let unmounted = false;
   const createTicker = (): Ticker => {
@@ -267,6 +270,7 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
     palette$: {enumerable: true, value: palette.asObservable()},
   });
   Object.freeze(appearance);
+
   const timers = createPluginTimers(abortController.signal, () => {
     if (options.timers?.createTicker === undefined) {
       return createTicker();
@@ -282,16 +286,25 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
 
     return ticker;
   });
-  const events: PluginEventFacade | undefined = options.events === true
-    ? {
-      select$: (topics) =>
-        eventSubject.asObservable().pipe(
+  const events: PluginEventFacade = {
+    select$: (topics) =>
+      options.events === true
+        ? eventSubject.asObservable().pipe(
           filter((event) => eventMatchesTopics(topics, event.topic)),
           takeUntil(ended.asObservable()),
-        ),
-      resync$: resyncSubject.asObservable().pipe(takeUntil(ended.asObservable())),
-    }
-    : undefined;
+        )
+        : new Observable<MndwEvent>((subscriber) => {
+          const topic = typeof topics === 'string' ? topics.split(',')[0] : topics[0] ?? '*';
+          const namespace = topic.split('.', 1)[0] ?? topic;
+
+          subscriber.error(
+            new Error(`Event topic "${topic}" is not granted; add manifest capability "events:${namespace}".`),
+          );
+        }),
+    resync$: options.events === true
+      ? resyncSubject.asObservable().pipe(takeUntil(ended.asObservable()))
+      : new Observable<void>((subscriber) => subscriber.complete()),
+  };
   const navigation: HostNavigation = {
     href: () => undefined,
     navigate: (target): boolean => {
@@ -311,7 +324,7 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
     i18n,
     instanceId: options.instanceId ?? 'test:1',
     events,
-    backend: options.backend,
+    backend: options.backend ?? createBackendClient('test', undefined),
     overlay: createOverlay(),
   });
 
@@ -325,12 +338,18 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
       pageRoute: {...route, childPath$: route.childPath$.pipe(takeUntil(ended.asObservable()))},
     }) as unknown as PagePluginContext;
   } else {
-    context = Object.assign(base, {kind: 'widget' as const}) as unknown as WidgetPluginContext;
+    context = Object.assign(base, {
+      kind: 'widget' as const,
+      setTileTitle: (title: string): void => {
+        tileTitles.push(title);
+      },
+    }) as unknown as WidgetPluginContext;
   }
 
   return {
     context: Object.freeze(context),
     navigationCalls,
+    tileTitles,
     setTheme: (next): void => theme.next(next),
     setLocale: (next): void => {
       if (options.i18n === undefined) {

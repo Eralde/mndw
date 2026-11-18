@@ -9,7 +9,6 @@
     "loading": "Loading greeting…"
   },
   "error": {
-    "backend-missing": "Backend is not available for this plugin.",
     "backend-not-approved": "Approve the backend before running it.",
     "backend-disabled": "Enable the backend before running it.",
     "backend-unavailable": "Backend is temporarily unavailable.",

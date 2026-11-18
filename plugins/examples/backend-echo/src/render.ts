@@ -10,7 +10,6 @@ export type EchoView =
   | {state: 'idle'}
   | {state: 'pending'}
   | {state: 'disabled'}
-  | {state: 'unavailable'}
   | {state: 'error'; message: string}
   | {state: 'result'; result: EchoResult};
 
@@ -31,10 +30,6 @@ export function render(root: HTMLElement, view: EchoView, i18n: PluginI18n): voi
     case 'disabled':
       el.className = 'mndw-echo__disabled';
       el.textContent = i18n.t('disabled');
-      break;
-    case 'unavailable':
-      el.className = 'mndw-echo__unavailable';
-      el.textContent = i18n.t('unavailable');
       break;
     case 'error':
       el.className = 'mndw-alert mndw-alert--danger';

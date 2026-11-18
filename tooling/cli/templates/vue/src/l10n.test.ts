@@ -41,7 +41,7 @@ describe('generated Vue locale reactivity', () => {
     const i18n = createTestI18n(en, 'en');
     const setTileTitle = vi.fn();
     const fixture = createTestPluginContext({i18n});
-    const context = Object.assign(Object.create(fixture.context), {setTileTitle}) as PluginContext;
+    const context = {...fixture.context, setTileTitle} as PluginContext;
     const root = document.createElement('div');
     const instance = createInstance(root, context);
 

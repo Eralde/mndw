@@ -13,7 +13,6 @@ export type DnsErrorCode = 'empty-hostname' | 'lookup-failed';
 
 export type DnsView =
   | {state: 'idle'}
-  | {state: 'unavailable'}
   | {state: 'loading'; hostname: string}
   | {state: 'error'; code: DnsErrorCode}
   | {state: 'not-found'; hostname: string}
@@ -42,12 +41,6 @@ export function render(root: HTMLElement, view: DnsView, i18n: PluginI18n): void
   switch (view.state) {
     case 'idle': {
       const el = createEl(`${WIDGET_CLASS}__idle`, i18n.t('idle'));
-
-      root.append(el);
-      break;
-    }
-    case 'unavailable': {
-      const el = createEl(`${WIDGET_CLASS}__unavailable`, i18n.t('unavailable'));
 
       root.append(el);
       break;

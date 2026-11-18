@@ -5,6 +5,5 @@
   "post": "POST /echo",
   "idle": "Press GET or POST to call the backend.",
   "pending": "Backend is pending approval — approve it in settings, then retry.",
-  "disabled": "Backend is disabled — enable it in settings, then retry.",
-  "unavailable": "This plugin has no backend available."
+  "disabled": "Backend is disabled — enable it in settings, then retry."
 }

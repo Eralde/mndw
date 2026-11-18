@@ -35,13 +35,15 @@ describe('generated frontend', () => {
     instance.unmount();
   });
 
-  it('renders the fallback when backend is undefined without throwing', () => {
+  it('renders the fallback when the fixture has no backend declaration', async () => {
     const container = document.createElement('div');
     const instance = createInstance(container, makeStubContext({backend: undefined}));
 
     expect(container.querySelector('[data-testid="l10n-result"]')?.textContent).toBe('l10n.result');
     container.querySelector('mndw-button')?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
-    expect(container.querySelector('[data-testid="l10n-result"]')?.textContent).toBe('l10n.error');
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-testid="l10n-result"]')?.textContent).toBe('l10n.error');
+    });
     instance.unmount();
   });
 });

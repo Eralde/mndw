@@ -64,12 +64,6 @@ export function mountEchoWidget(container: HTMLElement, backend: Backend, i18n: 
   const unsubscribeLocale = bindLocale(i18n, renderLocale);
 
   async function call(id: 'echoGet' | 'echoPost', withBody: boolean): Promise<void> {
-    if (!backend) {
-      renderView({state: 'unavailable'});
-
-      return;
-    }
-
     const statusValue = statusInput.value.trim();
     const query = statusValue === '' ? undefined : {status: statusValue};
     const body = withBody ? {hi: 1} : undefined;

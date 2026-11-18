@@ -9,7 +9,7 @@ import '@xterm/xterm/css/xterm.css';
 import {type TerminalInstance, connectToCli, spawnCli} from './cli.service.js';
 
 interface Props {
-  backend?: BackendClient;
+  backend: BackendClient;
   i18n: PluginI18n;
   signal?: AbortSignal;
 }
@@ -123,10 +123,6 @@ async function startTerminal(): Promise<void> {
   try {
     if (runSignal.aborted) {
       return;
-    }
-
-    if (!backend) {
-      throw new Error(t('error.backend-missing'));
     }
 
     const spawnResult = await spawnCli(backend, consoleChoice, {

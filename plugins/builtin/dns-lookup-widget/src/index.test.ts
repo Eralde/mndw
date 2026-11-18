@@ -9,14 +9,13 @@ import {createInstance} from './index.js';
 
 function fakeContext(
   overrides?: Partial<BackendClient>,
-  options: {backend?: boolean; i18n?: ReturnType<typeof createTestI18n>; instanceId?: string} = {},
+  options: {i18n?: ReturnType<typeof createTestI18n>; instanceId?: string} = {},
 ): PluginContext {
   const call = vi.fn().mockResolvedValue({method: 'GET'});
 
   return createTestPluginContext({
-    backend: options.backend === false ? undefined : {call, socket: vi.fn(), ...overrides} as BackendClient,
+    backend: {call, socket: vi.fn(), ...overrides} as BackendClient,
     i18n: options.i18n ?? createTestI18n(enCatalog),
-    theme: 'light',
     instanceId: options.instanceId ?? 'test-id',
   }).context;
 }
@@ -133,7 +132,7 @@ describe('createInstance', () => {
     );
 
     await vi.waitFor(() => {
-      const backendCall = backend === undefined ? undefined : Reflect.get(backend, 'call');
+      const backendCall = Reflect.get(backend, 'call');
 
       expect(backendCall).toHaveBeenCalledWith('lookup', {as: 'json', query: {hostname: 'example.com'}});
     });
@@ -153,7 +152,7 @@ describe('createInstance', () => {
     form.dispatchEvent(new SubmitEvent('submit', {bubbles: true, cancelable: true}));
 
     await vi.waitFor(() => {
-      const backendCall = backend === undefined ? undefined : Reflect.get(backend, 'call');
+      const backendCall = Reflect.get(backend, 'call');
 
       expect(backendCall).toHaveBeenCalledTimes(1);
     });
@@ -174,13 +173,11 @@ describe('createInstance', () => {
     const container = document.createElement('div');
     const ctx = fakeContext();
 
-    if (ctx.backend !== undefined) {
-      ctx.backend.call = vi.fn().mockResolvedValue({
-        success: false,
-        error: 'LOOKUP_FAILED',
-        message: 'lookup nope.invalid on 127.0.0.1:53: i/o timeout',
-      });
-    }
+    ctx.backend.call = vi.fn().mockResolvedValue({
+      success: false,
+      error: 'LOOKUP_FAILED',
+      message: 'lookup nope.invalid on 127.0.0.1:53: i/o timeout',
+    });
 
     createInstance(container, ctx);
 
@@ -202,13 +199,11 @@ describe('createInstance', () => {
     const container = document.createElement('div');
     const ctx = fakeContext();
 
-    if (ctx.backend !== undefined) {
-      ctx.backend.call = vi.fn().mockResolvedValue({
-        success: false,
-        error: 'UNKNOWN_CODE',
-        message: 'internal resolver details',
-      });
-    }
+    ctx.backend.call = vi.fn().mockResolvedValue({
+      success: false,
+      error: 'UNKNOWN_CODE',
+      message: 'internal resolver details',
+    });
 
     createInstance(container, ctx);
 
@@ -240,9 +235,9 @@ describe('createInstance', () => {
     expect(container.textContent).not.toContain('Please enter a hostname');
   });
 
-  it('shows unavailable when no backend', () => {
+  it('shows a generic failure when the manifest declares no backend', async () => {
     const container = document.createElement('div');
-    const ctx = fakeContext(undefined, {backend: false});
+    const ctx = createTestPluginContext({i18n: createTestI18n(enCatalog)}).context;
 
     createInstance(container, ctx);
 
@@ -252,7 +247,9 @@ describe('createInstance', () => {
 
     submitForm(container);
 
-    expect(container.textContent).toContain('no backend available');
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain('Lookup failed');
+    });
   });
 
   it('shows result on successful lookup', async () => {
@@ -260,14 +257,12 @@ describe('createInstance', () => {
     const ctx = fakeContext();
     const backend = ctx.backend;
 
-    if (backend !== undefined) {
-      backend.call = vi.fn().mockResolvedValue({
-        success: true,
-        hostname: 'localhost',
-        addresses: ['127.0.0.1', '::1'],
-        durationMs: 1.5,
-      });
-    }
+    backend.call = vi.fn().mockResolvedValue({
+      success: true,
+      hostname: 'localhost',
+      addresses: ['127.0.0.1', '::1'],
+      durationMs: 1.5,
+    });
 
     createInstance(container, ctx);
 
@@ -291,14 +286,12 @@ describe('createInstance', () => {
     const ctx = fakeContext();
     const backend = ctx.backend;
 
-    if (backend !== undefined) {
-      backend.call = vi.fn().mockResolvedValue({
-        success: false,
-        error: 'NXDOMAIN',
-        message: 'hostname not found',
-        hostname: 'nope.invalid',
-      });
-    }
+    backend.call = vi.fn().mockResolvedValue({
+      success: false,
+      error: 'NXDOMAIN',
+      message: 'hostname not found',
+      hostname: 'nope.invalid',
+    });
 
     createInstance(container, ctx);
 

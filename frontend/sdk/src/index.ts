@@ -51,6 +51,7 @@ export {
   BackendIncompatible,
   BackendMaintenance,
   BackendNotApproved,
+  BackendSocketCloseCode,
   BackendStarting,
   BackendStatusQueryError,
   BackendTransportMismatch,

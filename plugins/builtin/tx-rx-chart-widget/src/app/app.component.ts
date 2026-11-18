@@ -39,7 +39,7 @@ type PollResult<T> = {ok: true; data: T} | {ok: false; error: unknown};
 })
 export class AppComponent implements OnInit, OnDestroy {
   public readonly openSettings = input.required<OpenSettingsFn>();
-  public readonly setTileTitle = input<(title: string) => void>();
+  public readonly setTileTitle = input.required<(title: string) => void>();
 
   private readonly rciService = inject(RciService);
   private readonly storage = inject(PLUGIN_STORAGE);
@@ -92,11 +92,8 @@ export class AppComponent implements OnInit, OnDestroy {
   public constructor() {
     effect(() => {
       const title = this.activeInterfaceName() || this.t('title');
-      const setTitle = this.setTileTitle();
 
-      if (setTitle) {
-        setTitle(title);
-      }
+      this.setTileTitle()(title);
     });
   }
 

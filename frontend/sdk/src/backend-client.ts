@@ -7,9 +7,12 @@ import {persistentRciCapabilitySchema} from './capabilities.js';
  * applies the same approval and enabled checks before issuing a request.
  *
  * Ids resolve locally from a descriptor snapshot taken from `GET /api/mgmt/list`,
- * no per-call lookup. Two error layers:
- *  - client-side pre-check from the snapshot - a typo (`BackendUnknownId`) throws synchronously;
- *    a known-unapproved / disabled binding rejects fast (`BackendNotApproved` / `BackendDisabled`);
+ * no per-call lookup. `fetch()`, `call()`, and `status()` reject for author errors,
+ * including an undeclared backend, unknown ids, and wrong transports. `socket()` throws
+ * those author errors synchronously. A known-unapproved or disabled socket route returns
+ * an already-closed WebSocket-like object with an application close code and readable reason.
+ * Two error layers:
+ *  - HTTP client-side pre-checks from the snapshot reject with typed author errors;
  *  - the daemon is authoritative for responses it marks as platform errors - its structured error envelope codes
  *    `NOT_APPROVED`, `DISABLED`, `ROUTE_NOT_FOUND`, `BACKEND_STARTING`,
  *    `BACKEND_UNAVAILABLE`, `BACKEND_INCOMPATIBLE`, `BACKEND_MAINTENANCE`,
@@ -129,16 +132,16 @@ export interface BackendSocketOptions {
 }
 
 export interface BackendClient {
-  /** Resolve and issue the request. Returns plugin responses, including non-OK; throws for marked platform errors. */
+  /** Resolve and issue the request. Returns plugin responses, including non-OK; rejects for author and platform errors. */
   fetch(id: string, options?: BackendFetchOptions): Promise<Response>;
-  /** Fetch and decode a route response, rejecting plugin-owned non-OK responses and marked platform errors. */
+  /** Fetch and decode a route response; rejects for author errors and plugin-owned or platform response errors. */
   call<T = unknown>(id: string, options: BackendCallOptions & {as: 'json'}): Promise<T>;
   call(id: string, options: BackendCallOptions & {as: 'text'}): Promise<string>;
   call(id: string, options: BackendCallOptions & {as: 'blob'}): Promise<Blob>;
   call<T = unknown>(id: string, options?: BackendCallOptions): Promise<T | string | Blob>;
-  /** Open a websocket to the declared target. Throws synchronously on a bad/blocked id. */
+  /** Open a websocket. Author errors throw synchronously; blocked routes return a closed socket with a readable reason. */
   socket(id: string, options?: BackendSocketOptions): WebSocket;
-  /** Query live daemon-owned backend availability without executing a backend route. */
+  /** Query live daemon-owned backend availability; rejects if no backend is declared or the query fails. */
   status(options?: BackendStatusOptions): Promise<BackendStatus>;
 }
 
@@ -148,12 +151,21 @@ export const isBackendMaintenanceClose = (event: Pick<CloseEvent, 'code' | 'reas
   return event.code === 1012 && event.reason.toLowerCase() === 'mndw updating';
 };
 
+/** Application close codes used when a declared WebSocket route cannot open. */
+export const BackendSocketCloseCode = Object.freeze(
+  {
+    notApproved: 4001,
+    disabled: 4002,
+  } as const,
+);
+
 // ------------------------------------
 // Typed errors
 // ------------------------------------
 
 export type BackendErrorCode =
   | 'UNKNOWN_ID'
+  | 'BACKEND_NOT_DECLARED'
   | 'NOT_APPROVED'
   | 'DISABLED'
   | 'TRANSPORT_MISMATCH'
@@ -459,7 +471,7 @@ const wsScheme = (origin: string): string => (origin.startsWith('https:') ? 'wss
 
 interface ClientContext {
   pluginName: string;
-  descriptor: BackendDescriptor;
+  descriptor: BackendDescriptor | undefined;
   fetchImpl: typeof globalThis.fetch;
   WebSocketCtor: typeof WebSocket;
   origin: string;
@@ -549,9 +561,43 @@ const doFetch = async (
   return mapResponse(id, res);
 };
 
+const closedBackendSocket = (code: number, reason: string): WebSocket => {
+  const target = new EventTarget();
+  const socket = Object.assign(target, {
+    binaryType: 'blob' as BinaryType,
+    bufferedAmount: 0,
+    extensions: '',
+    onclose: null as ((this: WebSocket, ev: CloseEvent) => unknown) | null,
+    onerror: null as ((this: WebSocket, ev: Event) => unknown) | null,
+    onmessage: null as ((this: WebSocket, ev: MessageEvent) => unknown) | null,
+    onopen: null as ((this: WebSocket, ev: Event) => unknown) | null,
+    protocol: '',
+    readyState: 3,
+    url: '',
+    close: (): void => {},
+    send: (_data: string | ArrayBufferLike | Blob | ArrayBufferView): void => {
+      throw new DOMException('WebSocket is already in CLOSING or CLOSED state', 'InvalidStateError');
+    },
+  }) as WebSocket;
+
+  queueMicrotask(() => {
+    const event = new Event('close') as CloseEvent;
+
+    Object.defineProperties(event, {
+      code: {value: code, enumerable: true},
+      reason: {value: reason, enumerable: true},
+      wasClean: {value: true, enumerable: true},
+    });
+    socket.dispatchEvent(event);
+    socket.onclose?.call(socket, event);
+  });
+
+  return socket;
+};
+
 export function createBackendClient(
   pluginName: string,
-  descriptor: BackendDescriptor,
+  descriptor: BackendDescriptor | undefined,
   deps: BackendClientDeps = {},
 ): BackendClient {
   const ctx: ClientContext = {
@@ -562,7 +608,17 @@ export function createBackendClient(
     origin: deps.origin ?? (typeof location !== 'undefined' ? location.origin : 'http://localhost'),
   };
 
-  const fetchRoute = (id: string, options: BackendFetchOptions = {}): Promise<Response> => {
+  const notDeclared = (): BackendError =>
+    new BackendError(
+      `Plugin "${pluginName}" has no backend declared; declare the manifest backend field.`,
+      'BACKEND_NOT_DECLARED',
+    );
+
+  const fetchRoute = async (id: string, options: BackendFetchOptions = {}): Promise<Response> => {
+    if (descriptor === undefined) {
+      throw notDeclared();
+    }
+
     const binding = descriptor.routes[id];
 
     if (!binding) {
@@ -642,6 +698,10 @@ export function createBackendClient(
     call,
 
     socket(id: string, options: BackendSocketOptions = {}): WebSocket {
+      if (descriptor === undefined) {
+        throw notDeclared();
+      }
+
       const binding = descriptor.routes[id];
 
       if (!binding) {
@@ -655,7 +715,10 @@ export function createBackendClient(
       const blocked = gate(descriptor, id);
 
       if (blocked) {
-        throw blocked;
+        return closedBackendSocket(
+          blocked instanceof BackendDisabled ? BackendSocketCloseCode.disabled : BackendSocketCloseCode.notApproved,
+          blocked.message,
+        );
       }
 
       const url = `${wsScheme(ctx.origin)}//${ctx.origin.replace(/^[a-z]+:\/\//, '')}`
@@ -665,7 +728,11 @@ export function createBackendClient(
       return new ctx.WebSocketCtor(url, protocols);
     },
 
-    status(options: BackendStatusOptions = {}): Promise<BackendStatus> {
+    async status(options: BackendStatusOptions = {}): Promise<BackendStatus> {
+      if (descriptor === undefined) {
+        throw notDeclared();
+      }
+
       const url = `${ctx.origin}/api/plugins/${ctx.pluginName}/_mndw/status`;
 
       return ctx.fetchImpl(url, {method: 'GET', signal: options.signal}).then(async (response) => {

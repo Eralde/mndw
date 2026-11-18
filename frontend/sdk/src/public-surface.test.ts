@@ -83,6 +83,7 @@ const EXPECTED_TYPE_EXPORTS = [
 
 const EXPECTED_RUNTIME_EXPORTS = [
   'BackendError',
+  'BackendSocketCloseCode',
   'BackendBadGateway',
   'BackendBlocked',
   'BackendDisabled',

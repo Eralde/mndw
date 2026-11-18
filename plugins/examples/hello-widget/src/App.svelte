@@ -3,7 +3,7 @@ import {type BackendClient, BackendError, type PluginI18n} from '@mndw/sdk';
 import {createTranslator} from '@mndw/sdk/svelte';
 
 interface Props {
-  backend: BackendClient | undefined;
+  backend: BackendClient;
   i18n: PluginI18n;
   signal: AbortSignal;
 }
@@ -17,11 +17,6 @@ let message = $state('');
 
 async function loadGreeting(): Promise<void> {
   if (state === 'loading') { return; }
-  if (!backend) {
-    state = 'error';
-    message = $translator.t('error.backend-missing');
-    return;
-  }
   state = 'loading';
   message = '';
   try {

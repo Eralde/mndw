@@ -95,20 +95,27 @@ describe('createTestPluginContext', () => {
     expect(values).toEqual([]);
   });
 
-  it('exposes optional event streams and controls them through the fixture', () => {
+  it('always exposes event streams and controls them through the fixture', () => {
     const withoutEvents = createTestPluginContext();
     const fixture = createTestPluginContext({events: true});
     const receivedTopics: string[] = [];
+    const denied = [] as unknown[];
+    let noCapabilityResyncComplete = 0;
     let resyncCount = 0;
     let eventsComplete = 0;
     let resyncComplete = 0;
 
-    expect(withoutEvents.context.events).toBeUndefined();
-    fixture.context.events?.select$('plugin').subscribe({
+    expect(withoutEvents.context.events).toBeDefined();
+    expect(withoutEvents.context.events.select$('plugin').subscribe({error: (error) => denied.push(error)}))
+      .toBeDefined();
+    expect(denied).toHaveLength(1);
+    withoutEvents.context.events.resync$.subscribe({complete: () => noCapabilityResyncComplete += 1});
+    expect(noCapabilityResyncComplete).toBe(1);
+    fixture.context.events.select$('plugin').subscribe({
       next: (event) => receivedTopics.push(event.topic),
       complete: () => eventsComplete += 1,
     });
-    fixture.context.events?.resync$.subscribe({
+    fixture.context.events.resync$.subscribe({
       next: () => resyncCount += 1,
       complete: () => resyncComplete += 1,
     });
@@ -148,7 +155,7 @@ describe('createTestPluginContext', () => {
       payload: {resolvers: ['1.1.1.1']},
     };
 
-    fixture.context.events?.select$('net').subscribe((received) => {
+    fixture.context.events.select$('net').subscribe((received) => {
       const mutable = received as unknown as {topic: string; payload: {resolvers: string[]}};
 
       try {
@@ -175,6 +182,16 @@ describe('createTestPluginContext', () => {
       expect(event.payload.resolvers).toEqual(['1.1.1.1']);
       expect(Object.isFrozen(event.payload.resolvers)).toBe(true);
     }
+  });
+
+  it('provides a widget title recorder by default and omits it from page contexts', () => {
+    const widget = createTestPluginContext();
+    const page = createTestPluginContext({kind: 'page'});
+
+    widget.context.setTileTitle('Demo title');
+
+    expect(widget.tileTitles).toEqual(['Demo title']);
+    expect('setTileTitle' in page.context).toBe(false);
   });
 
   it('provides manual tickers and destroys them when the fixture unmounts', () => {

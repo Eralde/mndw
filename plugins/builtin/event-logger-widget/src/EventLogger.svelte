@@ -67,77 +67,73 @@ function download(): void {
 }
 
 onMount(() => {
-  const eventSubscription = events?.select$('*').subscribe((event) => {
+  const eventSubscription = events.select$('*').subscribe((event) => {
     if (!paused) {
       append({ts: event.ts, event});
     }
   });
-  const resyncSubscription = events?.resync$.subscribe(() => {
+  const resyncSubscription = events.resync$.subscribe(() => {
     if (!paused) {
       append({ts: Date.now(), marker: 'resync'});
     }
   });
 
   return () => {
-    eventSubscription?.unsubscribe();
-    resyncSubscription?.unsubscribe();
+    eventSubscription.unsubscribe();
+    resyncSubscription.unsubscribe();
   };
 });
 </script>
 
 <section class="logger">
-  {#if !events}
-    <p>{$translator.t('unavailable')}</p>
-  {:else}
-    <header>
-      <mndw-input
-        aria-label={$translator.t('filter')}
-        placeholder={$translator.t('filter')}
-        value={query}
-        onmndwinput={(event: CustomEvent<{value: string}>) => {
-          query = event.detail.value;
-        }}
-      >
-      </mndw-input>
-      <div class="actions">
-        <mndw-button onclick={toggle}>
-          {$translator.t(paused ? 'resume' : 'pause')}
-        </mndw-button>
-        <mndw-button
-          onclick={() => {
-            rows = [];
-          }}
-        >{$translator.t('clear')}</mndw-button>
-        <mndw-button onclick={download}>
-          {$translator.t('download')}
-        </mndw-button>
-      </div>
-    </header>
-    <div
-      class="entries"
-      role="region"
-      aria-label={$translator.t('entries')}
+  <header>
+    <mndw-input
+      aria-label={$translator.t('filter')}
+      placeholder={$translator.t('filter')}
+      value={query}
+      onmndwinput={(event: CustomEvent<{value: string}>) => {
+        query = event.detail.value;
+      }}
     >
-      {#each visible as row (row.key)}
-        {#if row.event}
-          <details>
-            <summary>
-              <time>{new Date(row.ts).toLocaleTimeString()}</time>
-              {row.event.topic} · {row.event.source}
-            </summary>
-            <pre>{JSON.stringify(row.event, null, 2)}</pre>
-          </details>
-        {:else}
-          <p class="marker">
-            <time>{new Date(row.ts).toLocaleTimeString()}</time>
-            {$translator.t(row.marker ?? '')}
-          </p>
-        {/if}
-      {:else}
-        <p>{$translator.t('empty')}</p>
-      {/each}
+    </mndw-input>
+    <div class="actions">
+      <mndw-button onclick={toggle}>
+        {$translator.t(paused ? 'resume' : 'pause')}
+      </mndw-button>
+      <mndw-button
+        onclick={() => {
+          rows = [];
+        }}
+      >{$translator.t('clear')}</mndw-button>
+      <mndw-button onclick={download}>
+        {$translator.t('download')}
+      </mndw-button>
     </div>
-  {/if}
+  </header>
+  <div
+    class="entries"
+    role="region"
+    aria-label={$translator.t('entries')}
+  >
+    {#each visible as row (row.key)}
+      {#if row.event}
+        <details>
+          <summary>
+            <time>{new Date(row.ts).toLocaleTimeString()}</time>
+            {row.event.topic} · {row.event.source}
+          </summary>
+          <pre>{JSON.stringify(row.event, null, 2)}</pre>
+        </details>
+      {:else}
+        <p class="marker">
+          <time>{new Date(row.ts).toLocaleTimeString()}</time>
+          {$translator.t(row.marker ?? '')}
+        </p>
+      {/if}
+    {:else}
+      <p>{$translator.t('empty')}</p>
+    {/each}
+  </div>
 </section>
 
 <style>

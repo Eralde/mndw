@@ -33,7 +33,7 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
 
   const render = (): void => {
     if (ctx.kind === 'widget') {
-      ctx.setTileTitle?.(i18n.t('title'));
+      ctx.setTileTitle(i18n.t('title'));
     }
 
     if (timeEl) {

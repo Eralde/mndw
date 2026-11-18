@@ -47,10 +47,6 @@ That is the actual endpoint in the [Hello widget](https://github.com/Eralde/mndw
 Its UI uses the route id with the typed client:
 
 ```ts
-if (ctx.backend === undefined) {
-  throw new Error('This plugin needs its declared backend');
-}
-
 const payload = await ctx.backend.call<{message: string}>('hello', {as: 'json', signal: ctx.signal});
 console.info(payload.message);
 ```
@@ -67,7 +63,7 @@ GET and HEAD requests that include a body are rejected with `400 BAD_REQUEST`.
 
 ## Troubleshooting
 
-- A route ID error usually means the UI ID and manifest `id` differ; call the ID, not the URL path.
+- A `BACKEND_NOT_DECLARED` error means the manifest has no `backend` field; route ID errors usually mean the UI ID and manifest `id` differ, so call the ID, not the URL path.
 - Approval/disabled errors are daemon state, not malformed JSON. Check plugin approval and whether
   the route is enabled.
 - Invalid JSON or a response with headers in its body usually means stdout contains a debug line,

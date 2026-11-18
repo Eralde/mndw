@@ -32,12 +32,11 @@ it('translates visible accessibility labels', async () => {
     target.remove();
   }
 });
-
 it('updates the host widget title when the locale changes', async () => {
   const i18n = createTestI18n(messages);
   const fixture = createTestPluginContext({events: true, i18n});
   const setTileTitle = vi.fn();
-  const context = Object.assign(Object.create(fixture.context), {setTileTitle}) as PluginContext;
+  const context = {...fixture.context, setTileTitle} as PluginContext;
   const target = document.createElement('div');
   const instance = createInstance(target, context);
 
@@ -154,14 +153,4 @@ it('bounds capture, freezes while paused, clears locally, filters and cleans up'
     fixture.unmount();
     target.remove();
   }
-});
-
-it('shows unavailable state without an event facade', async () => {
-  const target = document.createElement('div');
-  const app = mount(EventLogger, {target, props: {events: undefined, i18n: createTestI18n(messages)}});
-
-  flushSync();
-  expect(target.textContent).toContain('Event stream unavailable');
-  expect(target.querySelector('mndw-button')).toBeNull();
-  await unmount(app);
 });

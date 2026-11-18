@@ -21,7 +21,7 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
   });
   const unsubscribeLocale = bindLocale(ctx.i18n, () => {
     if (ctx.kind === 'widget') {
-      ctx.setTileTitle?.(ctx.i18n.t('l10n.title'));
+      ctx.setTileTitle(ctx.i18n.t('l10n.title'));
     }
   });
 

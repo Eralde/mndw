@@ -39,12 +39,6 @@ export class AppComponent {
   protected readonly backendError = signal(false);
 
   protected async load(): Promise<void> {
-    if (this.ctx.backend === undefined) {
-      this.backendError.set(true);
-
-      return;
-    }
-
     try {
       const response = await this.ctx.backend.call<{message: string}>('hello', {as: 'json'});
       this.backendMessage.set(response.message);

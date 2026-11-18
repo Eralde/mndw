@@ -15,14 +15,14 @@ describe('createTestPluginContext', () => {
     expect(context.i18n.t('missing')).toBe('missing');
     expect(context.instanceId).toBe('test:1');
     expect(context.kind).toBe('widget');
-    expect(context.backend).toBeUndefined();
+    expect(context.backend).toBeDefined();
     expect(context.appearance.theme$).toBeDefined();
     expect(context.i18n.locale$).toBeDefined();
     expect(context.appearance.palette$).toBeDefined();
     expect(context.appearance.palette).toBeDefined();
     expect(typeof context.overlay.closeAll).toBe('function');
     expect(context.pageRoute).toBeUndefined();
-    expect(context.setTileTitle).toBeUndefined();
+    expect(typeof context.setTileTitle).toBe('function');
     expect(Object.isFrozen(context)).toBe(true);
   });
 

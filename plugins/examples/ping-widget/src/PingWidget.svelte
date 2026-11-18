@@ -11,11 +11,11 @@ import {
 } from './services/ping';
 
 interface Props {
-  backend?: BackendClient;
+  backend: BackendClient;
   i18n: PluginI18n;
   timers: PluginTimers;
   signal: AbortSignal;
-  setTileTitle?: (title: string) => void;
+  setTileTitle: (title: string) => void;
 }
 
 type RenameStatus =
@@ -40,10 +40,8 @@ function t(key: string, values?: Record<string, unknown>): string {
 }
 
 $effect(() => {
-  setTileTitle?.(t('title'));
+  setTileTitle(t('title'));
 });
-
-const hasBackend = $derived(Boolean(backend));
 
 let hosts = $state<Host[]>([]);
 let stats = $state<HostStats[]>([]);
@@ -142,18 +140,11 @@ function formatUpdatedAt(value: string): string {
 }
 
 async function loadHosts(): Promise<void> {
-  if (!backend) {
-    return;
-  }
   hosts = await fetchHosts(backend);
   syncRenameDrafts(hosts);
 }
 
 async function loadStats(loadSignal: AbortSignal): Promise<HostStats[]> {
-  if (!backend) {
-    return [];
-  }
-
   return fetchStats(backend, loadSignal);
 }
 
@@ -165,10 +156,6 @@ function applyStats(nextStats: HostStats[]): void {
 }
 
 async function refreshNow(showMessage = true): Promise<void> {
-  if (!backend) {
-    return;
-  }
-
   loading = true;
 
   try {
@@ -193,9 +180,6 @@ $effect(() => {
 });
 
 async function addHost(): Promise<void> {
-  if (!backend) {
-    return;
-  }
   const ip = newHostIp.trim();
   if (!ip) {
     setMessage(t('error.host-ip-required'), true);
@@ -223,9 +207,6 @@ async function addHost(): Promise<void> {
 }
 
 async function saveHostName(ip: string, draft?: string): Promise<void> {
-  if (!backend) {
-    return;
-  }
   const state = getRenameState(ip);
   if (state.status === 'saving') {
     return;
@@ -281,9 +262,6 @@ function handleRenameFocusOut(event: FocusEvent): void {
 }
 
 async function removeHost(ip: string): Promise<void> {
-  if (!backend) {
-    return;
-  }
   loading = true;
   try {
     await updateHosts(backend, {action: 'remove', ip});
@@ -301,10 +279,6 @@ async function removeHost(ip: string): Promise<void> {
 }
 
 onMount(() => {
-  if (!backend) {
-    setMessage(t('error.backend-unavailable'), true);
-    return;
-  }
   setMessage(t('status.monitoring'));
   void refreshNow();
   statsLoop.start({immediate: false});
@@ -316,7 +290,7 @@ onMount(() => {
     <div class="header-actions">
       <mndw-button
         variant="secondary"
-        disabled={loading || !hasBackend}
+        disabled={loading}
         onclick={() => void refreshNow()}
       >
         {t('action.refresh')}
@@ -346,7 +320,7 @@ onMount(() => {
     <mndw-button
       variant="primary"
       class="add-host-button"
-      disabled={loading || !hasBackend}
+      disabled={loading}
       onclick={addHost}
     >
       {t('action.add')}

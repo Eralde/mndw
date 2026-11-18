@@ -15,7 +15,6 @@
     "connected": "Connected"
   },
   "error": {
-    "backend-missing": "Backend bindings are missing for the terminal",
     "start-failed": "Failed to start terminal service",
     "ttyd-not-installed": "The terminal needs the ttyd package, which is not installed. Install it on the router:",
     "ttyd-start-failed": "The terminal service could not be started.",

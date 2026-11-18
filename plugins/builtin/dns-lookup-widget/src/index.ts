@@ -103,12 +103,6 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
       return;
     }
 
-    if (backend === undefined) {
-      renderView({state: 'unavailable'});
-
-      return;
-    }
-
     hostnameInput.disabled = true;
     lookupBtn.disabled = true;
     renderView({state: 'loading', hostname});

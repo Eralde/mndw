@@ -223,7 +223,7 @@ function createSmokeContext(i18n: PluginContext['i18n'], setTileTitle?: (title: 
       initBackgroundProcess: vi.fn(() => ({data$: of({data: []}), abort: vi.fn()})),
       queueBackgroundProcess: vi.fn(() => ({data$: of({data: []}), abort: vi.fn()})),
     } as unknown as PluginContext['device']['rci']},
-    setTileTitle,
+    setTileTitle: setTileTitle ?? ((title) => tileTitles.set('tx-rx-chart-widget', title)),
   });
 }
 
@@ -340,10 +340,12 @@ smoke('packed Angular built-in l10n smoke', () => {
 
     expect(subtitle).not.toBeNull();
     expect(subtitle?.textContent?.trim()).toBe(enValue);
+    expect(tileTitles.get('tx-rx-chart-widget')).toBe(en.title);
     testI18n.setLocale('ru', ru);
     await stabilizeAngular();
     expect(container.querySelector(localeTarget.selector)).toBe(subtitle);
     expect(subtitle?.textContent?.trim()).toBe(ruValue);
+    expect(tileTitles.get('tx-rx-chart-widget')).toBe(ru.title);
 
     handle.dispose();
     expect(container.childElementCount).toBe(0);

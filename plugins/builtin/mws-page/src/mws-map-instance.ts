@@ -59,7 +59,7 @@ export function createMwsMapInstance(
     el.setAttribute('aria-label', title);
 
     if (ctx.kind === 'widget') {
-      ctx.setTileTitle?.(title);
+      ctx.setTileTitle(title);
     }
   };
 
@@ -72,7 +72,7 @@ export function createMwsMapInstance(
       {provide: HOST_NAVIGATION, useValue: ctx.navigation},
       {provide: OVERLAY, useValue: ctx.overlay},
       {provide: DEVICE_INFO, useValue: ctx.device.info},
-      {provide: MWSD_BACKEND, useValue: ctx.backend ?? null},
+      {provide: MWSD_BACKEND, useValue: ctx.backend},
       {provide: MWS_PAGE_ROUTE, useValue: ctx.kind === 'page' ? ctx.pageRoute : undefined},
       {provide: PLUGIN_STORAGE, useValue: ctx.storage.instance},
       {provide: PLUGIN_TIMERS, useValue: ctx.timers},

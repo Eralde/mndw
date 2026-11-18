@@ -1,12 +1,13 @@
 import {flushSync, mount, unmount} from 'svelte';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {type BackendClient, BackendDisabled, BackendError, BackendNotApproved, BackendUnavailable} from '@mndw/sdk';
+import {createTestPluginContext} from '@mndw/sdk/testing';
 import App from './App.svelte';
 import {createContainer, createI18n} from './test-helpers.js';
 
 const mounted: Array<ReturnType<typeof mount>> = [];
 
-function mountApp(backend: BackendClient | undefined, signal = new AbortController().signal): HTMLElement {
+function mountApp(backend: BackendClient, signal = new AbortController().signal): HTMLElement {
   const container = createContainer();
 
   mounted.push(mount(App, {target: container, props: {backend, i18n: createI18n(), signal}}));
@@ -78,13 +79,15 @@ describe('Hello widget', () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toBe(expectedMessage);
   });
 
-  it('shows the missing-backend message when no client was provided', async () => {
-    const container = mountApp(undefined);
+  it('shows the generic error for an undeclared backend', async () => {
+    const fixture = createTestPluginContext();
+    const container = mountApp(fixture.context.backend);
 
     clickGreet(container);
 
     await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Backend is not available for this plugin.');
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Could not load the greeting.');
+    fixture.unmount();
   });
 
   it.each([

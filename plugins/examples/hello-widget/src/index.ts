@@ -7,7 +7,7 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
   const app = mount(App, {target: container, props: {backend: ctx.backend, i18n: ctx.i18n, signal: ctx.signal}});
   const unsubscribeLocale = bindLocale(ctx.i18n, () => {
     if (ctx.kind === 'widget') {
-      ctx.setTileTitle?.(ctx.i18n.t('title'));
+      ctx.setTileTitle(ctx.i18n.t('title'));
     }
   });
 

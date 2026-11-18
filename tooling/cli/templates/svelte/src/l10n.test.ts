@@ -41,7 +41,7 @@ describe('generated Svelte locale reactivity', () => {
     const i18n = createTestI18n(en, 'en');
     const setTileTitle = vi.fn();
     const fixture = createTestPluginContext({i18n});
-    const context = Object.assign(Object.create(fixture.context), {setTileTitle}) as PluginContext;
+    const context = {...fixture.context, setTileTitle} as PluginContext;
     const root = document.createElement('div');
     const instance = createInstance(root, context);
     flushSync();
@@ -78,15 +78,15 @@ describe('generated Svelte locale reactivity', () => {
     fixture.unmount();
   });
 
-  it('shows the localized fallback when no backend is configured', () => {
+  it('shows the localized backend error when no backend is declared', async () => {
     const i18n = createTestI18n({l10n: {title: 'Plugin', button: 'Run', result: 'Result', error: 'Unavailable'}});
     const root = document.createElement('div');
     const component = mount(App, {target: root, props: {ctx: contextFor(i18n)}});
     flushSync();
     root.querySelector('mndw-button')?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
-    flushSync();
-
-    expect(root.querySelector('.result')?.textContent).toBe('Unavailable');
+    await vi.waitFor(() => {
+      expect(root.querySelector('.result')?.textContent).toBe('Unavailable');
+    });
     unmount(component);
   });
 });

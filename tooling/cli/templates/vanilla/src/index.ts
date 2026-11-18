@@ -32,7 +32,7 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
     }
 
     if (ctx.kind === 'widget') {
-      ctx.setTileTitle?.(ctx.i18n.t('l10n.title'));
+      ctx.setTileTitle(ctx.i18n.t('l10n.title'));
     }
 
     if (deviceEl !== null) {
@@ -55,13 +55,6 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
   };
 
   const load = async (): Promise<void> => {
-    if (ctx.backend === undefined) {
-      backendError = true;
-      render();
-
-      return;
-    }
-
     try {
       const response = await ctx.backend.call<{message: string}>('hello', {as: 'json'});
       backendMessage = response.message;

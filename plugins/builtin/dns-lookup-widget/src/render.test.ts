@@ -27,15 +27,6 @@ describe('render', () => {
     expect(root.querySelector('.mndw-dns-lookup-widget__idle')).not.toBeNull();
   });
 
-  it('renders unavailable state', () => {
-    const root = document.createElement('div');
-
-    render(root, {state: 'unavailable'}, createTestI18n(enCatalog));
-
-    expect(root.textContent).toContain('no backend available');
-    expect(root.querySelector('.mndw-dns-lookup-widget__unavailable')).not.toBeNull();
-  });
-
   it('renders loading state with hostname', () => {
     const root = document.createElement('div');
 

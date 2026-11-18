@@ -29,7 +29,7 @@ const pluginContexts: Array<{unmount(): void}> = [];
 
 function mountPingWidget(
   target: HTMLElement,
-  backend: BackendClient | undefined,
+  backend: BackendClient,
   i18n: PluginI18n,
 ): ReturnType<typeof mount<typeof PingWidget>> {
   const fixture = createTestPluginContext();
@@ -38,8 +38,22 @@ function mountPingWidget(
 
   return mount(PingWidget, {
     target,
-    props: {backend, i18n, timers: fixture.context.timers, signal: fixture.context.signal},
+    props: {
+      backend,
+      i18n,
+      timers: fixture.context.timers,
+      signal: fixture.context.signal,
+      setTileTitle: fixture.context.kind === 'widget' ? fixture.context.setTileTitle : () => {},
+    },
   });
+}
+
+function backendWithoutRoutes(): BackendClient {
+  const fixture = createTestPluginContext();
+
+  pluginContexts.push(fixture);
+
+  return fixture.context.backend;
 }
 
 function deferred<T>(): Deferred<T> {
@@ -192,13 +206,14 @@ describe('PingWidget', () => {
     const fixture = createTestPluginContext();
 
     pluginContexts.push(fixture);
+
     const context = {
       ...fixture.context,
       kind: 'widget',
-      backend: undefined,
       i18n: changing.i18n,
       setTileTitle,
     } as unknown as PluginContext;
+
     const instance = createInstance(host, context);
 
     flushSync();
@@ -226,12 +241,12 @@ describe('PingWidget', () => {
     host.remove();
   });
 
-  it('renders "unavailable" when backend is undefined', async () => {
-    const app = mountPingWidget(host, undefined, createTestI18n(enCatalog));
+  it('shows the SDK no-backend error', async () => {
+    const app = mountPingWidget(host, backendWithoutRoutes(), createTestI18n(enCatalog));
 
     flushSync();
 
-    expect(host.textContent).toMatch(/unavailable/i);
+    await vi.waitFor(() => expect(host.textContent).toContain('manifest backend field'));
     await unmount(app);
   });
 
@@ -250,7 +265,7 @@ describe('PingWidget', () => {
   });
 
   it('marks Add control as aligned with the input control row', () => {
-    const app = mountPingWidget(host, undefined, createTestI18n(enCatalog));
+    const app = mountPingWidget(host, backendWithoutRoutes(), createTestI18n(enCatalog));
 
     flushSync();
 
@@ -263,7 +278,7 @@ describe('PingWidget', () => {
 
   it('updates the visible refresh control when locale changes', () => {
     const changing = changingI18n();
-    const app = mountPingWidget(host, undefined, changing.i18n);
+    const app = mountPingWidget(host, backendWithoutRoutes(), changing.i18n);
 
     flushSync();
 

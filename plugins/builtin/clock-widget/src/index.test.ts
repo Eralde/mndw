@@ -42,7 +42,7 @@ describe('createInstance', () => {
     const i18n = createTestI18n({title: 'Clock EN'});
     const fixture = createTestPluginContext({i18n});
     const setTileTitle = vi.fn();
-    const context = Object.assign(Object.create(fixture.context), {setTileTitle});
+    const context = {...fixture.context, setTileTitle};
     const instance = createInstance(host, context);
     const time = host.querySelector('[data-mndw-clock]');
 

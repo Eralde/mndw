@@ -9,12 +9,6 @@ const backendMessage = ref<string | undefined>();
 const backendError = ref(false);
 
 const load = async (): Promise<void> => {
-  if (ctx.backend === undefined) {
-    backendError.value = true;
-
-    return;
-  }
-
   try {
     const response = await ctx.backend.call<{message: string}>('hello', {as: 'json'});
     backendMessage.value = response.message;

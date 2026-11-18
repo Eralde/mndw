@@ -81,10 +81,10 @@ interface VisibleLocaleTarget {
 }
 
 const VISIBLE_LOCALE_TARGETS: Record<(typeof EXPECTED_PLUGINS)[number], VisibleLocaleTarget> = {
-  'clients-widget': {selector: '.clients-widget__header > span', key: 'title'},
+  'clients-widget': {selector: '.clients-widget__toggle', key: 'show-offline'},
   'clock-widget': {selector: '[data-mndw-clock]', key: 'title', attribute: 'aria-label'},
-  'cpu-temp-widget': {selector: '.app__header > span', key: 'title'},
-  'device-info-widget': {selector: '.app__header > span', key: 'title'},
+  'cpu-temp-widget': {selector: 'mndw-segment', key: 'range-1h'},
+  'device-info-widget': {selector: '.load-bar-chart__label', key: 'cpu'},
   'dns-lookup-widget': {selector: '.mndw-dns-lookup-widget__label', key: 'hostname-label'},
   'event-logger-widget': {selector: '[role="region"]', key: 'entries', attribute: 'aria-label'},
   'system-log-page': {selector: '[data-download-log]', key: 'action.download'},

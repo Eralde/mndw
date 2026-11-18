@@ -316,8 +316,9 @@ smoke('packed Angular built-in l10n smoke', () => {
   it('switches tx-rx-chart-widget without remounting', async () => {
     const en = packedCatalog('tx-rx-chart-widget', 'en');
     const ru = packedCatalog('tx-rx-chart-widget', 'ru');
-    const enValue = en.title;
-    const ruValue = ru.title;
+    const localeTarget = {selector: '.empty-state__subtitle', key: 'status.select-interface'} as const;
+    const enValue = en[localeTarget.key];
+    const ruValue = ru[localeTarget.key];
 
     expect(enValue).not.toBe(ruValue);
 
@@ -335,13 +336,14 @@ smoke('packed Angular built-in l10n smoke', () => {
     expect(await handle.whenReady()).toBe(true);
     await stabilizeAngular(4);
 
-    const heading = container.querySelector<HTMLElement>('.empty-state__heading');
+    const subtitle = container.querySelector<HTMLElement>(localeTarget.selector);
 
-    expect(heading?.textContent?.trim()).toBe(enValue);
+    expect(subtitle).not.toBeNull();
+    expect(subtitle?.textContent?.trim()).toBe(enValue);
     testI18n.setLocale('ru', ru);
     await stabilizeAngular();
-    expect(container.querySelector('.empty-state__heading')).toBe(heading);
-    expect(heading?.textContent?.trim()).toBe(ruValue);
+    expect(container.querySelector(localeTarget.selector)).toBe(subtitle);
+    expect(subtitle?.textContent?.trim()).toBe(ruValue);
 
     handle.dispose();
     expect(container.childElementCount).toBe(0);

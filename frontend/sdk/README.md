@@ -17,6 +17,8 @@ npm i -D @mndw/sdk
 ## Plugin entry
 
 The host calls `createInstance` with a container and `PluginContext`; return `unmount` to release framework work.
+Context services are grouped under `device`, `storage`, `appearance`, and `timers`. The live plugin locale is available
+as `ctx.i18n.locale` and `ctx.i18n.locale$`; see the [context API](https://eralde.github.io/mndw/api/sdk#plugincontext).
 
 ```ts
 import {mount, unmount} from 'svelte';

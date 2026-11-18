@@ -15,17 +15,17 @@ describe('management wire contract', () => {
     expect(decodeMgmtList(fixture)).toEqual(fixture.plugins);
   });
 
-  it('decodes the permission mutation response losslessly', () => {
-    const fixture = readFixture('permission-entry.json');
+  it('decodes the capability mutation response losslessly', () => {
+    const fixture = readFixture('capability-entry.json');
 
     expect(decodeMgmtListEntry(fixture)).toEqual(fixture);
   });
 
-  it('keeps event declarations out of permission grants in the golden corpus', () => {
-    const entry = decodeMgmtListEntry(readFixture('permission-entry.json'));
+  it('keeps event declarations out of capability grants in the golden corpus', () => {
+    const entry = decodeMgmtListEntry(readFixture('capability-entry.json'));
 
-    expect(entry.permissions).toContain('events:wan');
-    expect(Object.keys(entry.permissionGrants ?? {})).not.toContain('events:wan');
+    expect(entry.capabilities).toContain('events:wan');
+    expect(Object.keys(entry.capabilityGrants ?? {})).not.toContain('events:wan');
   });
 
   it('pins wire enums to the shared contract', () => {

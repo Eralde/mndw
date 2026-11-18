@@ -22,18 +22,18 @@ const (
 	TypePage   Type = "page"
 )
 
-var eventPermissionRe = regexp.MustCompile(eventPermissionPattern)
+var eventCapabilityRe = regexp.MustCompile(eventCapabilityPattern)
 
-func IsPersistentRCIPermission(permission string) bool {
-	return slices.Contains(persistentRCIPermissions(), permission)
+func IsPersistentRCICapability(capability string) bool {
+	return slices.Contains(persistentRCICapabilities(), capability)
 }
 
-func IsEventPermission(permission string) bool {
-	return eventPermissionRe.MatchString(permission)
+func IsEventCapability(capability string) bool {
+	return eventCapabilityRe.MatchString(capability)
 }
 
-func IsPermission(permission string) bool {
-	return IsPersistentRCIPermission(permission) || IsEventPermission(permission)
+func IsCapability(capability string) bool {
+	return IsPersistentRCICapability(capability) || IsEventCapability(capability)
 }
 
 type Size struct {
@@ -82,7 +82,7 @@ type Manifest struct {
 	Label           *string  `json:"label"`
 	Entry           *string  `json:"entry"`
 	Icon            *string  `json:"icon,omitempty"`
-	Permissions     []string `json:"permissions,omitempty"`
+	Capabilities    []string `json:"capabilities,omitempty"`
 	Size            *Size    `json:"size,omitempty"`
 	FixedHeight     *bool    `json:"fixedHeight,omitempty"`
 	Route           *string  `json:"route,omitempty"`
@@ -110,6 +110,14 @@ const gridColumns = 12
 
 // Validate parses and validates one manifest document.
 func Validate(data []byte) (*Manifest, error) {
+	var fields map[string]json.RawMessage
+
+	if err := json.Unmarshal(data, &fields); err == nil {
+		if _, legacy := fields["permissions"]; legacy {
+			return nil, &ValidationError{PluginName: pluginName(data), Reason: "permissions was renamed to capabilities in 0.3"}
+		}
+	}
+
 	var m Manifest
 
 	if err := json.Unmarshal(data, &m); err != nil {
@@ -158,18 +166,18 @@ func validate(m *Manifest, data []byte) error {
 		return fail("entry must be a safe relative path with a file name")
 	}
 
-	permissions := make(map[string]struct{}, len(m.Permissions))
+	capabilities := make(map[string]struct{}, len(m.Capabilities))
 
-	for _, permission := range m.Permissions {
-		if !IsPermission(permission) {
-			return fail(fmt.Sprintf("unknown permission %q", permission))
+	for _, capability := range m.Capabilities {
+		if !IsCapability(capability) {
+			return fail(fmt.Sprintf("unknown capability %q", capability))
 		}
 
-		if _, exists := permissions[permission]; exists {
-			return fail(fmt.Sprintf("duplicate permission %q", permission))
+		if _, exists := capabilities[capability]; exists {
+			return fail(fmt.Sprintf("duplicate capability %q", capability))
 		}
 
-		permissions[permission] = struct{}{}
+		capabilities[capability] = struct{}{}
 	}
 
 	switch Type(*m.Type) {

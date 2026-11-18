@@ -73,23 +73,29 @@ describe('validateManifest behavior', () => {
     ).toThrow(/backend\.routes.*at least one route/);
   });
 
-  it('accepts persistent RCI read and write permissions and strips editor schema metadata', () => {
+  it('accepts persistent RCI read and write capabilities and strips editor schema metadata', () => {
     const result = validateManifest({
       ...base,
       $schema: '../manifest.schema.json',
-      permissions: ['persistent-rci-session:read', 'persistent-rci-session:write'],
+      capabilities: ['persistent-rci-session:read', 'persistent-rci-session:write'],
     });
 
-    expect(result.permissions).toEqual(['persistent-rci-session:read', 'persistent-rci-session:write']);
+    expect(result.capabilities).toEqual(['persistent-rci-session:read', 'persistent-rci-session:write']);
     expect('$schema' in result).toBe(false);
   });
 
-  it('accepts event permissions and rejects malformed event permissions', () => {
-    const result = validateManifest({...base, permissions: ['events:wan,wifi,net', 'events:*']});
+  it('accepts event capabilities and rejects malformed event capabilities', () => {
+    const result = validateManifest({...base, capabilities: ['events:wan,wifi,net', 'events:*']});
 
-    expect(result.permissions).toEqual(['events:wan,wifi,net', 'events:*']);
-    expect(() => validateManifest({...base, permissions: ['events:WAN']})).toThrow(ManifestValidationError);
-    expect(() => validateManifest({...base, permissions: ['events:']})).toThrow(ManifestValidationError);
+    expect(result.capabilities).toEqual(['events:wan,wifi,net', 'events:*']);
+    expect(() => validateManifest({...base, capabilities: ['events:WAN']})).toThrow(ManifestValidationError);
+    expect(() => validateManifest({...base, capabilities: ['events:']})).toThrow(ManifestValidationError);
+  });
+
+  it('rejects the legacy manifest field with the 0.3 rename message', () => {
+    expect(() => validateManifest({...base, permissions: ['events:*']})).toThrow(
+      'permissions was renamed to capabilities in 0.3',
+    );
   });
 
   it('requires service and exec commands under backend/', () => {
@@ -126,12 +132,14 @@ describe('validateManifest behavior', () => {
   it.each([
     ['persistent-rci-session:read', 'duplicate read'],
     ['persistent-rci-session:write', 'duplicate write'],
-  ])('rejects %s permission duplicates', (permission) => {
-    expect(() => validateManifest({...base, permissions: [permission, permission]})).toThrow(ManifestValidationError);
+  ])('rejects %s capability duplicates', (capability) => {
+    expect(() => validateManifest({...base, capabilities: [capability, capability]})).toThrow(ManifestValidationError);
   });
 
-  it('rejects the retired persistent RCI permission', () => {
-    expect(() => validateManifest({...base, permissions: ['persistent-rci-session']})).toThrow(ManifestValidationError);
+  it('rejects the retired persistent RCI capability', () => {
+    expect(() => validateManifest({...base, capabilities: ['persistent-rci-session']})).toThrow(
+      ManifestValidationError,
+    );
   });
 
   it('normalizes route method and defaults access to session', () => {

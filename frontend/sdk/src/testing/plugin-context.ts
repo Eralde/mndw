@@ -22,11 +22,22 @@ import {createTestI18n} from './i18n.js';
 
 export interface TestPluginContextOptions {
   kind?: 'widget' | 'page';
-  theme?: MndwThemeName;
-  locale?: string;
-  palette?: PaletteTokenMap;
+  appearance?: {
+    theme?: MndwThemeName;
+    palette?: PaletteTokenMap;
+  };
+  storage?: {
+    instance?: PluginStorage;
+    shared?: PluginStorage;
+  };
+  device?: {
+    info?: DeviceInfo;
+    rci?: Partial<PluginRciManager>;
+  };
+  timers?: {
+    createTicker?: () => Ticker;
+  };
   i18n?: PluginI18n;
-  rciManager?: Partial<PluginRciManager>;
   backend?: BackendClient;
   telemetry?: Partial<PluginTelemetry>;
   pageRoute?: PageRoute;
@@ -138,16 +149,16 @@ function createDeviceInfo(): DeviceInfo {
 function createRciManager(overrides: Partial<PluginRciManager> | undefined): PluginRciManager {
   const methods: PluginRciManager = {
     execute: () => {
-      throw new Error('test rciManager.execute not configured');
+      throw new Error('test device.rci.execute not configured');
     },
     queue: () => {
-      throw new Error('test rciManager.queue not configured');
+      throw new Error('test device.rci.queue not configured');
     },
     initBackgroundProcess: () => {
-      throw new Error('test rciManager.initBackgroundProcess not configured');
+      throw new Error('test device.rci.initBackgroundProcess not configured');
     },
     queueBackgroundProcess: () => {
-      throw new Error('test rciManager.queueBackgroundProcess not configured');
+      throw new Error('test device.rci.queueBackgroundProcess not configured');
     },
   };
 
@@ -169,11 +180,23 @@ export function createTestPluginContext(
   options: TestPluginContextOptions & {kind: 'page'},
 ): TestPluginContext<PagePluginContext>;
 export function createTestPluginContext(options: TestPluginContextOptions = {}): TestPluginContext<PluginContext> {
-  const theme = new BehaviorSubject(options.theme ?? 'light');
-  const locale = new BehaviorSubject(options.locale ?? 'en');
-  const palette = new BehaviorSubject(options.palette ?? MNDW_TOKENS);
+  const theme = new BehaviorSubject(options.appearance?.theme ?? 'light');
+  const palette = new BehaviorSubject(options.appearance?.palette ?? MNDW_TOKENS);
   const ended = new ReplaySubject<void>(1);
-  const fixtureI18n = createTestI18n({}, options.locale ?? 'en');
+  const fixtureI18n = createTestI18n({}, options.i18n?.locale ?? 'en');
+  const i18nSource = options.i18n ?? fixtureI18n;
+  const i18n: PluginI18n = Object.freeze({
+    get locale(): string {
+      return i18nSource.locale;
+    },
+    direction: i18nSource.direction,
+    t: (key: string, values?: Record<string, unknown>) => i18nSource.t(key, values),
+    formatNumber: (value: number, formatOptions?: Intl.NumberFormatOptions) =>
+      i18nSource.formatNumber(value, formatOptions),
+    formatDate: (value: Date, formatOptions?: Intl.DateTimeFormatOptions) =>
+      i18nSource.formatDate(value, formatOptions),
+    locale$: i18nSource.locale$.pipe(takeUntil(ended.asObservable())),
+  });
   const eventSubject = new Subject<MndwEvent>();
   const resyncSubject = new Subject<void>();
   const tickers = new Set<{tick(timestamp: number): void; destroy(): void}>();
@@ -220,6 +243,26 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
 
     return ticker;
   };
+  const storage = Object.freeze(Object.assign(Object.create(null) as PluginContext['storage'], {
+    instance: options.storage?.instance ?? createStorage(),
+    shared: options.storage?.shared ?? createStorage(),
+  }));
+  const device = Object.freeze(Object.assign(Object.create(null) as PluginContext['device'], {
+    info: options.device?.info ?? createDeviceInfo(),
+    rci: createRciManager(options.device?.rci),
+  }));
+  const appearance = Object.create(null) as PluginContext['appearance'];
+
+  Object.defineProperties(appearance, {
+    theme: {enumerable: true, get: () => theme.value},
+    theme$: {enumerable: true, value: theme.asObservable()},
+    palette: {enumerable: true, get: () => palette.value},
+    palette$: {enumerable: true, value: palette.asObservable()},
+  });
+  Object.freeze(appearance);
+  const timers = Object.freeze(Object.assign(Object.create(null) as PluginContext['timers'], {
+    createTicker: options.timers?.createTicker ?? createTicker,
+  }));
   const events: PluginEventFacade | undefined = options.events === true
     ? {
       select$: (topics) =>
@@ -242,25 +285,15 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
     signal: abortController.signal,
     navigation,
     telemetry: createTelemetry(ended, options.telemetry),
-    rciManager: createRciManager(options.rciManager),
-    storage: createStorage(),
-    sharedStorage: createStorage(),
-    deviceInfo: createDeviceInfo(),
-    i18n: options.i18n ?? fixtureI18n,
+    storage,
+    device,
+    appearance,
+    timers,
+    i18n,
     instanceId: options.instanceId ?? 'test:1',
-    createTicker,
     events,
     backend: options.backend,
     overlay: createOverlay(),
-  });
-
-  Object.defineProperties(base, {
-    theme: {enumerable: true, get: () => theme.value},
-    theme$: {enumerable: true, value: theme.asObservable()},
-    locale: {enumerable: true, get: () => locale.value},
-    locale$: {enumerable: true, value: locale.asObservable()},
-    palette: {enumerable: true, get: () => palette.value},
-    palette$: {enumerable: true, value: palette.asObservable()},
   });
 
   let context: PluginContext;
@@ -281,8 +314,6 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
     navigationCalls,
     setTheme: (next): void => theme.next(next),
     setLocale: (next): void => {
-      locale.next(next);
-
       if (options.i18n === undefined) {
         fixtureI18n.setLocale(next, {});
       }
@@ -313,7 +344,6 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
       ended.next();
       ended.complete();
       theme.complete();
-      locale.complete();
       palette.complete();
       eventSubject.complete();
       resyncSubject.complete();

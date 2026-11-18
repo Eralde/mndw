@@ -346,10 +346,9 @@ describe('Task 4 Observable contract docs', () => {
 
     for (
       const stream of [
-        'ctx.theme$',
-        'ctx.locale$',
-        'ctx.palette$',
-        'ctx.i18n.change$',
+        'ctx.appearance.theme$',
+        'ctx.i18n.locale$',
+        'ctx.appearance.palette$',
         'ctx.pageRoute.childPath$',
         'ctx.events?.select$',
         'ctx.events?.resync$',
@@ -361,7 +360,7 @@ describe('Task 4 Observable contract docs', () => {
 
     expect(lifecycle).toContain('current value on subscribe');
     expect(lifecycle).toContain('host completes every stream');
-    expect(lifecycle).toContain('ctx.createTicker()');
+    expect(lifecycle).toContain('ctx.timers.createTicker()');
     expect(lifecycle).toContain('ctx.telemetry.fetchProjected');
     expect(lifecycle).toContain('useObservable');
     expect(lifecycle).toContain('useTheme');
@@ -376,7 +375,7 @@ describe('Task 4 Observable contract docs', () => {
 
     expect(rxjs).toContain('Observable');
     expect(rxjs).toContain('Promise');
-    expect(rxjs).toContain('firstValueFrom(ctx.rciManager.queue({path: \'show.version\'}))');
+    expect(rxjs).toContain('firstValueFrom(ctx.device.rci.queue({path: \'show.version\'}))');
     expect(rxjs).toContain('subscription.unsubscribe()');
 
     for (const operator of ['map', 'filter', 'switchMap', 'exhaustMap', 'concatMap', 'catchError', 'takeUntil']) {
@@ -406,7 +405,7 @@ describe('Task 4 Observable contract docs', () => {
   it('uses live palette and theme context after CSS tokens', () => {
     const styling = readFileSync(resolve(repoRoot, 'docs/plugin-author/guides/styling-and-ui.md'), 'utf8');
 
-    expect(styling.indexOf('Use CSS tokens')).toBeLessThan(styling.indexOf('ctx.palette'));
+    expect(styling.indexOf('Use CSS tokens')).toBeLessThan(styling.indexOf('ctx.appearance.palette'));
     expect(styling).toContain('palette$');
     expect(styling).toContain('theme$');
     expect(styling).not.toContain('getTokens');
@@ -428,7 +427,7 @@ describe('Task 5 plugin reference guides', () => {
     expect(anatomy).toContain('`dist/`');
     expect(anatomy).toContain('/api/sdk#plugincontext');
     expect(anatomy).toContain('`overlay` presents modals and drawers');
-    expect(anatomy).toContain('`createTicker()`');
+    expect(anatomy).toContain('`timers.createTicker()`');
     expect(anatomy).toContain('`pageRoute`');
     expect(anatomy).toContain('`setTileTitle`');
 
@@ -534,11 +533,22 @@ describe('Task 5 plugin CLI examples', () => {
     }
   });
 
-  it('uses the public RCI manager name in shell backend guidance', () => {
+  it('uses the grouped public RCI manager path in shell backend guidance', () => {
     const shell = readFileSync(resolve(repoRoot, 'docs/plugin-author/guides/shell-backend.md'), 'utf8');
 
-    expect(shell).toContain('ctx.rciManager');
-    expect(shell).not.toContain('context.rciManager');
+    expect(shell).toContain('ctx.device.rci');
+    expect(shell).not.toContain('ctx.rciManager');
+  });
+});
+
+describe('0.3 upgrade guide', () => {
+  it('documents grouped context members and catalog-applied locale timing', () => {
+    const guide = readFileSync(resolve(repoRoot, 'docs/plugin-author/guides/upgrading-to-0-3.md'), 'utf8');
+    const navigation = readFileSync(resolve(repoRoot, 'docs/plugin-author/.vitepress/config.mts'), 'utf8');
+
+    expect(guide).toContain('| `ctx.rciManager` | `ctx.device.rci` |');
+    expect(guide).toContain('after its plugin catalog has been');
+    expect(navigation).toContain('link: \'/guides/upgrading-to-0-3\'');
   });
 });
 

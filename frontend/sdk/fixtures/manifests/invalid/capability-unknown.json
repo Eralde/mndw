@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "name": "unknown-capability-widget",
+  "version": "2.0.0",
+  "type": "widget",
+  "label": "Unknown Capability Widget",
+  "entry": "index.js",
+  "size": {"w": 4, "h": 3},
+  "capabilities": ["not-a-real-capability"]
+}

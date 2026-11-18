@@ -40,7 +40,7 @@ export function createMwsMapInstance(
 ): PluginInstance {
   let positions: NodePositionStore | null = null;
   let columns: NodeTableColumnsStore | null = null;
-  const themeSubscription = ctx.theme$.subscribe((theme) => {
+  const themeSubscription = ctx.appearance.theme$.subscribe((theme) => {
     el.dataset.mndwTheme = theme;
   });
   const dataServiceProvider = options.dataService === undefined
@@ -50,7 +50,7 @@ export function createMwsMapInstance(
     ? []
     : [{provide: MWS_MOCK_OPTIONS, useValue: options.mockOptions}];
 
-  el.dataset.mndwTheme = ctx.theme;
+  el.dataset.mndwTheme = ctx.appearance.theme;
 
   const setLocaleLabel = (): void => {
     const title = ctx.i18n.t('title');
@@ -62,23 +62,21 @@ export function createMwsMapInstance(
     }
   };
 
-  setLocaleLabel();
-
-  const localeSubscription = ctx.i18n.change$.subscribe(setLocaleLabel);
+  const localeSubscription = ctx.i18n.locale$.subscribe(setLocaleLabel);
 
   return createAngularPluginInstance(el, {
     rootComponent: AppComponent,
     providers: [
-      {provide: RCI_MANAGER, useValue: ctx.rciManager},
+      {provide: RCI_MANAGER, useValue: ctx.device.rci},
       {provide: HOST_NAVIGATION, useValue: ctx.navigation},
       {provide: OVERLAY, useValue: ctx.overlay},
-      {provide: DEVICE_INFO, useValue: ctx.deviceInfo},
+      {provide: DEVICE_INFO, useValue: ctx.device.info},
       {provide: MWSD_BACKEND, useValue: ctx.backend ?? null},
       {provide: MWS_PAGE_ROUTE, useValue: ctx.kind === 'page' ? ctx.pageRoute : undefined},
-      {provide: PLUGIN_STORAGE, useValue: ctx.storage},
-      {provide: SHARED_PLUGIN_STORAGE, useValue: ctx.sharedStorage},
+      {provide: PLUGIN_STORAGE, useValue: ctx.storage.instance},
+      {provide: SHARED_PLUGIN_STORAGE, useValue: ctx.storage.shared},
       ...mockOptionsProvider,
-      {provide: THEME$, useValue: ctx.theme$},
+      {provide: THEME$, useValue: ctx.appearance.theme$},
       provideTranslator(ctx.i18n),
       MwsApiService,
       {provide: MWS_RENAME_API, useExisting: MwsApiService},

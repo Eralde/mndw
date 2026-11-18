@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {type Mock, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {PaletteTokenMap} from '@mndw/sdk';
-import type {PluginPermission} from '@mndw/sdk-internal';
+import type {PluginCapability} from '@mndw/sdk-internal';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
 import {setLocale} from './locale.service.js';
 import {
@@ -199,39 +199,39 @@ describe('mgmt-client', () => {
     await expect(client.approvePlugin('x')).rejects.toThrow();
   });
 
-  it('setPluginPermission POSTs the permission mutation with CSRF and timeout', async () => {
+  it('setPluginCapability POSTs the capability mutation with CSRF and timeout', async () => {
     fetchImpl.mockResolvedValue(jsonResponse(
       200,
       entry('x', {
-        permissions: ['persistent-rci-session:write'],
-        permissionGrants: {'persistent-rci-session:write': true},
+        capabilities: ['persistent-rci-session:write'],
+        capabilityGrants: {'persistent-rci-session:write': true},
       }),
     ));
 
     const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
-    const permission: PluginPermission = 'persistent-rci-session:write';
-    const result = await client.setPluginPermission('x', permission, true);
+    const capability: PluginCapability = 'persistent-rci-session:write';
+    const result = await client.setPluginCapability('x', capability, true);
     const [url, init] = fetchImpl.mock.calls[0];
 
-    expect(url).toBe('/api/mgmt/permission');
+    expect(url).toBe('/api/mgmt/capability');
     expect(init?.method).toBe('POST');
     expect(new Headers(init?.headers).get('X-Mndw-Csrf')).toBe('1');
     expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
     expect(JSON.parse(init?.body as string)).toEqual({
       name: 'x',
-      permission: 'persistent-rci-session:write',
+      capability: 'persistent-rci-session:write',
       enabled: true,
     });
     expect(init?.signal).toBeInstanceOf(AbortSignal);
-    expect(result.permissionGrants?.['persistent-rci-session:write']).toBe(true);
+    expect(result.capabilityGrants?.['persistent-rci-session:write']).toBe(true);
   });
 
-  it('rejects malformed permission mutation responses', async () => {
+  it('rejects malformed capability mutation responses', async () => {
     fetchImpl.mockResolvedValue(jsonResponse(200, {notAnEntry: true}));
 
     const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
 
-    await expect(client.setPluginPermission('x', 'persistent-rci-session:write', true)).rejects.toThrow();
+    await expect(client.setPluginCapability('x', 'persistent-rci-session:write', true)).rejects.toThrow();
   });
 
   it('denyPlugin and deletePlugin resolve void on {ok:true}', async () => {

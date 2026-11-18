@@ -280,8 +280,8 @@ describe('createBackendClient.fetch', () => {
 
   it('maps BACKEND_BLOCKED and parses its activation blockers from detail', async () => {
     const detail = [
-      {permission: 'persistent-rci-session:write', reason: 'not-granted'},
-      {permission: 'persistent-rci-session:write', reason: 'prerequisite-unavailable',
+      {capability: 'persistent-rci-session:write', reason: 'not-granted'},
+      {capability: 'persistent-rci-session:write', reason: 'prerequisite-unavailable',
         prerequisite: 'controller-token'},
     ];
     const fetchImpl = vi.fn().mockResolvedValue(
@@ -593,7 +593,7 @@ describe('createBackendClient.status', () => {
           kind: 'service',
           state: 'blocked',
           retryAfterSeconds: 0,
-          blockers: [{permission: 'persistent-rci-session:read', reason: 'future-reason', prerequisite: 'future-code'}],
+          blockers: [{capability: 'persistent-rci-session:read', reason: 'future-reason', prerequisite: 'future-code'}],
         }),
         {status: 200},
       ),
@@ -603,7 +603,7 @@ describe('createBackendClient.status', () => {
       kind: 'service',
       state: 'blocked',
       retryAfterSeconds: 0,
-      blockers: [{permission: 'persistent-rci-session:read', reason: 'future-reason', prerequisite: 'future-code'}],
+      blockers: [{capability: 'persistent-rci-session:read', reason: 'future-reason', prerequisite: 'future-code'}],
     });
   });
 
@@ -652,7 +652,7 @@ describe('createBackendClient.status', () => {
           kind: 'service',
           state: 'blocked',
           retryAfterSeconds: null,
-          blockers: [{permission: 'persistent-rci-session:read', reason: 'needs session'}],
+          blockers: [{capability: 'persistent-rci-session:read', reason: 'needs session'}],
           requiredProtocol: 2,
         }),
         {status: 200},
@@ -707,10 +707,10 @@ describe('createBackendClient.status', () => {
   it.each([
     {state: 'blocked', blockers: undefined},
     {state: 'blocked', blockers: []},
-    {state: 'blocked', blockers: [{permission: 'bad', reason: 'x'}]},
-    {state: 'blocked', blockers: [{permission: 'persistent-rci-session:read', reason: ''}]},
-    {state: 'blocked', blockers: [{permission: 'persistent-rci-session:read', reason: 'x', prerequisite: ''}]},
-    {state: 'ready', blockers: [{permission: 'persistent-rci-session:read', reason: 'x'}]},
+    {state: 'blocked', blockers: [{capability: 'bad', reason: 'x'}]},
+    {state: 'blocked', blockers: [{capability: 'persistent-rci-session:read', reason: ''}]},
+    {state: 'blocked', blockers: [{capability: 'persistent-rci-session:read', reason: 'x', prerequisite: ''}]},
+    {state: 'ready', blockers: [{capability: 'persistent-rci-session:read', reason: 'x'}]},
     {state: 'incompatible', requiredProtocol: 1},
     {state: 'ready', retryAfterSeconds: -1},
     {state: 'ready', retryAfterSeconds: 1.5},

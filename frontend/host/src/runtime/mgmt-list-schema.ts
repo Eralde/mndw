@@ -2,8 +2,8 @@ import {
   type BackendRouteDescriptor,
   type PluginManifestI18n,
   type WidgetSize,
-  isPersistentRciPermission,
-  pluginPermissionSchema,
+  isPersistentRciCapability,
+  pluginCapabilitySchema,
 } from '@mndw/sdk-internal';
 import type {HostLock} from './plugin-lock.js';
 import {z} from 'zod';
@@ -18,10 +18,10 @@ const approvalReviewSchema = z.object({
   args: z.array(z.string()).optional(),
   publicRoutes: z.array(z.string()).optional(),
 });
-const grantPermissionSchema = z.record(z.string(), z.boolean()).superRefine((grants, ctx) => {
-  for (const permission of Object.keys(grants)) {
-    if (!isPersistentRciPermission(permission)) {
-      ctx.addIssue({code: 'custom', path: [permission], message: 'only persistent RCI permissions may be granted'});
+const grantCapabilitySchema = z.record(z.string(), z.boolean()).superRefine((grants, ctx) => {
+  for (const capability of Object.keys(grants)) {
+    if (!isPersistentRciCapability(capability)) {
+      ctx.addIssue({code: 'custom', path: [capability], message: 'only persistent RCI capabilities may be granted'});
     }
   }
 });
@@ -78,8 +78,8 @@ const baseFields = {
   source: sourceSchema,
   approval: approvalSchema,
   enabled: z.boolean(),
-  permissions: z.array(pluginPermissionSchema).optional(),
-  permissionGrants: grantPermissionSchema.optional(),
+  capabilities: z.array(pluginCapabilitySchema).optional(),
+  capabilityGrants: grantCapabilitySchema.optional(),
   depsStatus: depsStatusSchema,
   backend: backendDescriptorSchema,
   review: approvalReviewSchema.optional(),

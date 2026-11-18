@@ -23,14 +23,14 @@ describe('createTranslator', () => {
   it('registers lazily and removes the host callback after the last unsubscribe', () => {
     const source = createTestI18n({message: 'Hello'});
     const subscribe = vi.fn();
-    const change$ = new Observable<void>((subscriber) => {
+    const locale$ = new Observable<string>((subscriber) => {
       subscribe();
 
-      const subscription = source.change$.subscribe(subscriber);
+      const subscription = source.locale$.subscribe(subscriber);
 
       return () => subscription.unsubscribe();
     });
-    const i18n = {...source, change$};
+    const i18n = {...source, locale$};
     const store = createTranslator(i18n);
 
     expect(subscribe).not.toHaveBeenCalled();

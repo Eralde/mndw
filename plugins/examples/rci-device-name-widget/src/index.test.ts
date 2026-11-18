@@ -12,7 +12,7 @@ describe('RCI device-description widget plugin entry', () => {
   it('passes the context RCI manager to the component and delegates unmount', async () => {
     const queue = vi.fn((_query: RciQuery) => of({description: 'Original'}));
     const rciManager = {queue} as unknown as PluginRciManager;
-    const context = {rciManager, i18n: createI18n()} as unknown as PluginContext;
+    const context = {device: {rci: rciManager}, i18n: createI18n()} as unknown as PluginContext;
     const container = createContainer();
     const instance = createInstance(container, context);
 
@@ -31,7 +31,7 @@ describe('RCI device-description widget plugin entry', () => {
     const setTileTitle = vi.fn();
     const context = {
       kind: 'widget',
-      rciManager: {queue} as unknown as PluginRciManager,
+      device: {rci: {queue} as unknown as PluginRciManager},
       i18n,
       setTileTitle,
     } as unknown as PluginContext;

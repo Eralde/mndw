@@ -98,24 +98,24 @@ func TestValidateFixedHeightRoundTrips(t *testing.T) {
 	}
 }
 
-func TestValidatePersistentRCIPermissionRoundTrips(t *testing.T) {
-	data := []byte(`{"manifestVersion":1,"name":"persistent-session-widget","version":"0.1.0","type":"widget","label":"Persistent","entry":"index.js","size":{"w":4,"h":3},"permissions":["persistent-rci-session:read"]}`)
+func TestValidatePersistentRCICapabilityRoundTrips(t *testing.T) {
+	data := []byte(`{"manifestVersion":1,"name":"persistent-session-widget","version":"0.1.0","type":"widget","label":"Persistent","entry":"index.js","size":{"w":4,"h":3},"capabilities":["persistent-rci-session:read"]}`)
 
 	manifest, err := Validate(data)
 	if err != nil {
-		t.Fatalf("Validate persistent permission manifest: %v", err)
+		t.Fatalf("Validate persistent capability manifest: %v", err)
 	}
 
-	if len(manifest.Permissions) != 1 || manifest.Permissions[0] != "persistent-rci-session:read" {
-		t.Fatalf("Permissions = %#v, want persistent-rci-session:read", manifest.Permissions)
+	if len(manifest.Capabilities) != 1 || manifest.Capabilities[0] != "persistent-rci-session:read" {
+		t.Fatalf("Capabilities = %#v, want persistent-rci-session:read", manifest.Capabilities)
 	}
 }
 
-func TestValidateUnknownPermissionRejects(t *testing.T) {
-	data := []byte(`{"manifestVersion":1,"name":"unknown-permission-widget","version":"0.1.0","type":"widget","label":"Unknown","entry":"index.js","size":{"w":4,"h":3},"permissions":["not-a-real-permission"]}`)
+func TestValidateUnknownCapabilityRejects(t *testing.T) {
+	data := []byte(`{"manifestVersion":1,"name":"unknown-capability-widget","version":"0.1.0","type":"widget","label":"Unknown","entry":"index.js","size":{"w":4,"h":3},"capabilities":["not-a-real-capability"]}`)
 
 	if _, err := Validate(data); err == nil {
-		t.Fatal("Validate unknown permission succeeded, want error")
+		t.Fatal("Validate unknown capability succeeded, want error")
 	}
 }
 

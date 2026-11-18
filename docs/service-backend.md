@@ -120,11 +120,11 @@ States are:
 | `unavailable` | Service is stopped or failed. |
 | `incompatible` | Service protocol is unsupported; protocol fields are present. |
 | `maintenance` | Platform or plugin maintenance is active. |
-| `blocked` | Service activation permission or prerequisite is unavailable. |
+| `blocked` | Service activation capability or prerequisite is unavailable. |
 | `disabled` | Plugin is disabled. |
 | `not-approved` | Plugin approval is not complete. |
 
-`blocked` includes non-empty `blockers` in manifest permission order. Reason
+`blocked` includes non-empty `blockers` in manifest capability order. Reason
 and prerequisite strings are open machine-readable codes; consumers must
 preserve unknown values. `incompatible` includes `requiredProtocol` and
 `supportedProtocols`. Future retry times round remaining duration up to whole
@@ -155,7 +155,7 @@ The environment is assembled in
 | `MNDW_PLUGIN_RUNTIME_DIR` | Disposable per-plugin runtime directory.                                             |
 | `MNDW_BACKEND_SOCKET`     | Daemon-selected Unix-socket path; required for services.                             |
 | `MNDW_BACKEND_PROTOCOL`   | Manifest `protocolVersion`; readiness must echo it.                                  |
-| `MNDW_RCI_SESSION_SOCKET` | Optional daemon-owned persistent-RCI socket when the plugin declares the permission. |
+| `MNDW_RCI_SESSION_SOCKET` | Optional daemon-owned persistent-RCI socket when the plugin declares the capability. |
 
 `PATH` is also supplied. Do not daemonize, create a PID file, choose another socket, or bind a
 public TCP listener. The service command must stay attached to the process group that `mndwd`
@@ -415,7 +415,7 @@ reason `mndw updating` and show explicit reconnect UX.
 |------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Socket, readiness, lifecycle | Bind the supplied Unix socket, return matching readiness identity, stay foreground, and handle `SIGTERM`.                                                |
 | Endpoint input/output        | Validate request data, apply tighter per-endpoint limits when needed, return intentional status/content types, and avoid secrets in bodies/logs.         |
-| Manifest capability          | Review every command, package, route, method, public exposure, and permission before approval.                                                           |
+| Manifest capability          | Review every command, package, route, method, public exposure, and capability before approval.                                                           |
 | Application security         | Do not assume cookies, authorization, CSRF, or arbitrary browser headers reach the child; authenticate or authorize application-specific data as needed. |
 | WebSocket UX                 | Handle `1012` / `mndw updating` with explicit reconnect UI; never silently resume a session.                                                             |
 

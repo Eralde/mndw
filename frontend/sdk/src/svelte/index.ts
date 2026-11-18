@@ -17,7 +17,16 @@ const snapshot = (i18n: PluginI18n): Translator => {
 
 export function createTranslator(i18n: PluginI18n): Readable<Translator> {
   return readable(snapshot(i18n), (set) => {
-    const subscription = i18n.change$.subscribe(() => set(snapshot(i18n)));
+    let isInitialLocale = true;
+    const subscription = i18n.locale$.subscribe(() => {
+      if (isInitialLocale) {
+        isInitialLocale = false;
+
+        return;
+      }
+
+      set(snapshot(i18n));
+    });
 
     return () => subscription.unsubscribe();
   });

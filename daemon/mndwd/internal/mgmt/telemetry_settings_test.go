@@ -53,8 +53,8 @@ func (s *telemetryStoreStub) Mutate(mutate func(*state.State) error) error {
 
 	return mutate(&s.state)
 }
-func (s *telemetryStoreStub) HasGrant(string, string) bool        { return false }
-func (s *telemetryStoreStub) SetGrant(string, string, bool) error { return nil }
+func (s *telemetryStoreStub) HasCapabilityGrant(string, string) bool        { return false }
+func (s *telemetryStoreStub) SetCapabilityGrant(string, string, bool) error { return nil }
 
 type telemetryEventPublisherStub struct {
 	events []contractEvents.TelemetryGatheringChangedPayload

@@ -9,14 +9,14 @@ the plugin started can be released; `unmount()` may also return a promise. Widge
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
 
 export function createInstance(container: HTMLElement, ctx: PluginContext): PluginInstance {
-  ctx.theme$.subscribe((theme) => {
+  ctx.appearance.theme$.subscribe((theme) => {
     container.dataset.theme = theme;
   });
-  ctx.palette$.subscribe((palette) => {
+  ctx.appearance.palette$.subscribe((palette) => {
     container.dataset.paletteTokenCount = String(Object.keys(palette).length);
   });
 
-  const ticker = ctx.createTicker();
+  const ticker = ctx.timers.createTicker();
   ticker.start(1000);
   ticker.tick$.subscribe(({timestamp}) => {
     container.dataset.lastTick = String(timestamp);
@@ -35,28 +35,28 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
 
 ## Context streams
 
-The live getters `ctx.theme`, `ctx.locale`, and `ctx.palette` return the current snapshot. Subscribe to
-the corresponding Observable when the UI needs updates over time. This table shows whether each stream
-emits its current value on subscribe:
+The live getters `ctx.appearance.theme`, `ctx.appearance.palette`, and `ctx.i18n.locale` return current snapshots.
+Subscribe to their Observables when the UI needs updates over time. This table shows whether each stream emits its
+current value on subscribe:
 
 | Stream | Emits | Current value on subscribe? |
 | --- | --- | --- |
-| `ctx.theme$` | Current host theme and later theme changes | Yes |
-| `ctx.locale$` | Current host locale and later locale changes | Yes |
-| `ctx.palette$` | Current applied palette and later palette changes | Yes |
-| `ctx.i18n.change$` | A signal when the catalog or host locale changes | No |
+| `ctx.appearance.theme$` | Current host theme and later theme changes | Yes |
+| `ctx.i18n.locale$` | Current locale and later locales after their plugin catalogs are applied | Yes |
+| `ctx.appearance.palette$` | Current applied palette and later palette changes | Yes |
 | `ctx.pageRoute.childPath$` | Current page child path and later navigation | Yes; pages only |
-| `ctx.events?.select$(topics)` | Events matching the selected topics | No; with event permissions |
-| `ctx.events?.resync$` | A signal to refresh after an event-stream resync | No; with event permissions |
+| `ctx.events?.select$(topics)` | Events matching the selected topics | No; with event capabilities |
+| `ctx.events?.resync$` | A signal to refresh after an event-stream resync | No; with event capabilities |
 | `ticker.tick$` | Periodic ticks after `ticker.start()` | No |
 
-The host completes every stream it handed you on unmount. You do not need to unsubscribe from those
-context streams; unsubscribe temporary subscriptions for work you started, such as timers or request
-streams. Each `ctx.createTicker()` call returns one handle for a ticker use. The host destroys every
+The host completes every stream it handed you on unmount. `i18n.locale$` emits a locale after the matching plugin
+catalog has been applied. You do not need to unsubscribe from context streams; unsubscribe temporary subscriptions
+for work you started, such as timers or request streams. Each `ctx.timers.createTicker()` call returns one handle for a
+ticker use. The host destroys every
 handle on unmount, and its `tick$` completes then too.
 
 `ctx.pageRoute` exists only for page plugins. `ctx.events` exists only when the manifest declares
-event permissions, and `ctx.backend` exists only when the manifest declares callable backend routes.
+event capabilities, and `ctx.backend` exists only when the manifest declares callable backend routes.
 Check the context kind before using a page route, and narrow optional services before calling them:
 
 ```ts
@@ -199,7 +199,7 @@ Svelte treats an Observable as a store. Assign the context stream to a local sto
   import type {PluginContext} from '@mndw/sdk';
 
   export let ctx: PluginContext;
-  const theme$ = ctx.theme$;
+  const theme$ = ctx.appearance.theme$;
 </script>
 
 <p>Theme: {$theme$}</p>
@@ -216,7 +216,7 @@ updates reactive in the same component:
   const {ctx} = defineProps<{ctx: PluginContext}>();
   const theme = useTheme(ctx);
   const locale = useLocale(ctx);
-  const palette = useObservable(ctx.palette$, ctx.palette);
+  const palette = useObservable(ctx.appearance.palette$, ctx.appearance.palette);
   const translator = useTranslator(ctx.i18n);
 </script>
 
@@ -236,8 +236,8 @@ import {createTranslatorSignals} from '@mndw/sdk/angular';
 
 export function pluginState(ctx: PluginContext, destroyRef: DestroyRef): object {
   return {
-    theme: toSignal(ctx.theme$, {initialValue: ctx.theme}),
-    palette: toSignal(ctx.palette$, {initialValue: ctx.palette}),
+    theme: toSignal(ctx.appearance.theme$, {initialValue: ctx.appearance.theme}),
+    palette: toSignal(ctx.appearance.palette$, {initialValue: ctx.appearance.palette}),
     translator: createTranslatorSignals(ctx.i18n, destroyRef),
   };
 }
@@ -271,7 +271,7 @@ instance lifetime. See the [SDK API](/api/sdk) for the complete union.
 
 ## Ticker timing
 
-`ctx.createTicker()` provides drift-corrected periodic updates. The host shares one worker across plugin tickers and
+`ctx.timers.createTicker()` provides drift-corrected periodic updates. The host shares one worker across plugin tickers and
 destroys each ticker with its context. `tick$` emits `{timestamp, drift}`; `start(periodMs)` starts it, `setInterval`
 changes its period, `stop()` pauses it, and `destroy()` completes its stream. Explicit destruction is optional when
 context teardown owns the handle.
@@ -280,7 +280,7 @@ context teardown owns the handle.
 import type {PluginContext} from '@mndw/sdk';
 
 export function startClock(ctx: PluginContext, render: (timestamp: number, drift: number) => void): void {
-  const ticker = ctx.createTicker();
+  const ticker = ctx.timers.createTicker();
   const subscription = ticker.tick$.subscribe(({timestamp, drift}) => { render(timestamp, drift); });
   ticker.start(1000);
   void subscription;
@@ -333,7 +333,7 @@ import {createTestPluginContext} from '@mndw/sdk/testing';
 
 const fixture = createTestPluginContext({events: true});
 const values: string[] = [];
-const subscription = fixture.context.theme$.subscribe((theme) => { values.push(theme); });
+const subscription = fixture.context.appearance.theme$.subscribe((theme) => { values.push(theme); });
 fixture.setTheme('dark');
 fixture.unmount();
 subscription.unsubscribe();

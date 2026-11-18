@@ -78,20 +78,20 @@ function createContext(
   queue: (query: RciQuery) => Observable<unknown>,
   i18n = createTestI18n(enCatalog),
   projected: ProjectedSnapshot = projectedTelemetrySnapshot(),
-  tickerFactory?: PluginContext['createTicker'],
+  tickerFactory?: PluginContext['timers']['createTicker'],
   gathering$?: Observable<TelemetryGathering>,
   setTileTitle?: PluginContext['setTileTitle'],
 ): WidgetTestContext {
   const fixture = createTestPluginContext({
     i18n,
-    theme: 'dark',
+    appearance: {theme: 'dark'},
     telemetry: gathering$ === undefined ? {} : {gathering$},
-    rciManager: {
+    device: {rci: {
       queue: (query: RciQuery | RciQuery[]) =>
         Array.isArray(query)
           ? forkJoin(query.map((item) => queue(item)))
           : queue(query),
-    } as unknown as Partial<PluginRciManager>,
+    } as unknown as Partial<PluginRciManager>},
   });
   const context = Object.create(null) as Record<string, unknown>;
   const descriptors = Object.getOwnPropertyDescriptors(fixture.context);
@@ -102,15 +102,20 @@ function createContext(
 
   Object.defineProperties(context, descriptors);
   Object.defineProperties(context, {
-    deviceInfo: {enumerable: true,
-      value: {...fixture.context.deviceInfo, model: 'Keenetic Giga', firmwareVersion: '1.0.0'}},
+    device: {enumerable: true, value: {
+      ...fixture.context.device,
+      info: {...fixture.context.device.info, model: 'Keenetic Giga', firmwareVersion: '1.0.0'},
+    }},
     navigation: {enumerable: true, value: fixture.context.navigation},
     navigationCalls: {enumerable: false, value: fixture.navigationCalls},
     telemetry: {enumerable: true, value: {
       ...fixture.context.telemetry,
       fetchProjected: vi.fn().mockResolvedValue(projected),
     }},
-    ...(tickerFactory === undefined ? {} : {createTicker: {enumerable: true, value: tickerFactory}}),
+    ...(tickerFactory === undefined ? {} : {timers: {enumerable: true, value: {
+      ...fixture.context.timers,
+      createTicker: tickerFactory,
+    }}}),
     ...(setTileTitle === undefined ? {} : {setTileTitle: {enumerable: true, value: setTileTitle}}),
   });
 

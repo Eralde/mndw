@@ -89,10 +89,9 @@ export interface CreatePluginContextOptions {
 export function createPluginContext(options: CreatePluginContextOptions): PluginContextHandle {
   const {entry, instanceId, deviceInfo, setTileTitle, pageRoute, catalogCell, services} = options;
   const getHostLocale = (): string => services.locale.getLocale();
-  const subscribeHostLocale = (callback: () => void): () => void => services.locale.subscribeLocale(() => callback());
   const subscribeHostLocaleValue = (callback: (locale: string) => void): () => void =>
     services.locale.subscribeLocale(callback);
-  const getPaletteTokens = (): PluginContext['palette'] => services.palette.getTokens();
+  const getPaletteTokens = (): PluginContext['appearance']['palette'] => services.palette.getTokens();
   const eventStream = services.eventStream;
 
   if (entry.type === 'page' && pageRoute === undefined) {
@@ -102,7 +101,6 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
   const lifetime = createPluginLifetime();
   const abortController = new AbortController();
   const theme$ = hostValue$(getTheme, subscribeTheme, lifetime);
-  const locale$ = hostValue$(getHostLocale, subscribeHostLocaleValue, lifetime);
   const palette$ = hostValue$(getPaletteTokens, (callback) => services.palette.subscribePalette(callback), lifetime);
   const gathering$ = hostValue$(
     () => services.telemetryGathering.get(),
@@ -114,9 +112,18 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
       services.telemetry.fetchProjected(...args),
     gathering$,
   };
+  const appearance = Object.create(null) as PluginContext['appearance'];
+
+  Object.defineProperties(appearance, {
+    theme: {enumerable: true, get: () => getTheme()},
+    theme$: {enumerable: true, value: theme$},
+    palette: {enumerable: true, get: () => getPaletteTokens()},
+    palette$: {enumerable: true, value: palette$},
+  });
+  Object.freeze(appearance);
   const {service, dispose: disposeOverlay} = createPluginOverlayService(entry.name, instanceId);
   const eventFacadeId = createEventFacadeId();
-  const events = eventStream.createFacade(eventFacadeId, entry.name, entry.permissions ?? [], lifetime);
+  const events = eventStream.createFacade(eventFacadeId, entry.name, entry.capabilities ?? [], lifetime);
   let disposed = false;
   const navigation = createPluginNavigation({getRouter: () => services.navigation(), isDisposed: () => disposed});
   const dispose: OverlayDispose = (reason) => {
@@ -151,28 +158,35 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
     navigation,
     telemetry,
     events,
-    rciManager: createServiceFacade(rciService.driver, PLUGIN_RCI_MANAGER_METHODS),
-    storage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:instance:${instanceId}:`),
-    sharedStorage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:shared:`),
-    deviceInfo: createDeviceInfoContext(deviceInfo),
-    i18n: createPluginI18n(catalogCell, getHostLocale, subscribeHostLocale, lifetime),
+    storage: Object.freeze(Object.assign(
+      Object.create(null) as {
+        instance: PluginContext['storage']['instance'];
+        shared: PluginContext['storage']['shared'];
+      },
+      {
+        instance: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:instance:${instanceId}:`),
+        shared: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:shared:`),
+      },
+    )),
+    device: Object.freeze(Object.assign(
+      Object.create(null) as {
+        info: PluginContext['device']['info'];
+        rci: PluginContext['device']['rci'];
+      },
+      {
+        info: createDeviceInfoContext(deviceInfo),
+        rci: createServiceFacade(rciService.driver, PLUGIN_RCI_MANAGER_METHODS),
+      },
+    )),
+    i18n: createPluginI18n(catalogCell, getHostLocale, subscribeHostLocaleValue, lifetime),
     instanceId,
-    createTicker: () => hostTickerPool.create(lifetime),
+    timers: Object.freeze(Object.assign(Object.create(null) as PluginContext['timers'], {
+      createTicker: () => hostTickerPool.create(lifetime),
+    })),
     backend: backendClientFor(entry),
     overlay: service,
     ...variant,
-    get theme() {
-      return getTheme();
-    },
-    theme$,
-    get locale(): string {
-      return getHostLocale();
-    },
-    locale$,
-    get palette(): PluginContext['palette'] {
-      return getPaletteTokens();
-    },
-    palette$,
+    appearance,
   } satisfies PluginContext;
 
   Object.setPrototypeOf(context, null);

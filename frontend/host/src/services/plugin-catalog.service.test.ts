@@ -53,15 +53,79 @@ afterEach(() => {
 });
 
 describe('plugin catalog loading', () => {
-  it('completes i18n.change$ when the plugin lifetime ends', () => {
+  it('completes i18n.locale$ when the plugin lifetime ends', () => {
     const lifetime = createPluginLifetime();
     const i18n = createPluginI18n(undefined, () => 'en', () => () => {}, lifetime);
     const complete = vi.fn();
 
-    i18n.change$.subscribe({complete});
+    i18n.locale$.subscribe({complete});
     lifetime.end();
 
     expect(complete).toHaveBeenCalledOnce();
+  });
+
+  it('emits a locale only after its plugin catalog has been applied', async () => {
+    catalogService = createPluginCatalogService({fetchCatalog: (url) =>
+      Promise.resolve(
+        url.includes('/ru.json') ? {title: 'Привет'} : {title: 'Hello'},
+      )});
+    const cell = catalogService.createPluginCatalogCell(source, 'en');
+
+    await catalogService.loadInitialPluginCatalog(cell, 'en');
+
+    let activeLocale = 'en';
+    const lifetime = createPluginLifetime();
+    const i18n = createPluginI18n(cell, () => activeLocale, () => () => {}, lifetime);
+    const seen: string[] = [];
+
+    i18n.locale$.subscribe((locale) => seen.push(`${locale}:${i18n.t('title')}`));
+
+    const generation = catalogService.preparePluginCatalogGeneration('ru');
+
+    await generation.promise;
+
+    expect(seen).toEqual(['en:Hello']);
+
+    catalogService.commitPluginCatalogGeneration(generation, () => {
+      activeLocale = 'ru';
+    });
+
+    expect(seen).toEqual(['en:Hello', 'ru:Привет']);
+    lifetime.end();
+  });
+
+  it('emits a failed locale load once after applying the fallback catalog', async () => {
+    catalogService = createPluginCatalogService({fetchCatalog: (url) => {
+      if (url.includes('/ru.json')) {
+        return Promise.reject(new Error('offline'));
+      }
+
+      return Promise.resolve({title: 'Hello'});
+    }});
+
+    const cell = catalogService.createPluginCatalogCell(source, 'en');
+
+    await catalogService.loadInitialPluginCatalog(cell, 'en');
+
+    let activeLocale = 'en';
+    const lifetime = createPluginLifetime();
+    const i18n = createPluginI18n(cell, () => activeLocale, () => () => {}, lifetime);
+    const seen: string[] = [];
+
+    i18n.locale$.subscribe((locale) => {
+      seen.push(`${locale}:${cell.readCurrentState().fallbackStatus}:${i18n.t('title')}`);
+    });
+
+    const generation = catalogService.preparePluginCatalogGeneration('ru');
+
+    await generation.promise;
+
+    catalogService.commitPluginCatalogGeneration(generation, () => {
+      activeLocale = 'ru';
+    });
+
+    expect(seen).toEqual(['en:primary:Hello', 'ru:default:Hello']);
+    lifetime.end();
   });
 
   it('loads catalogs when browser timers require the global receiver', async () => {
@@ -197,6 +261,80 @@ describe('plugin catalog loading', () => {
 });
 
 describe('plugin catalog generation', () => {
+  it('does not emit a superseded locale when a newer generation commits', async () => {
+    const extendedSource = createPluginCatalogSource('demo', '1.2.3', '/plugins/demo', {
+      defaultLocale: 'en',
+      locales: {en: 'i18n/en.json', ru: 'i18n/ru.json', de: 'i18n/de.json'},
+    });
+
+    if (extendedSource === undefined) {
+      throw new Error('test source was not created');
+    }
+
+    let resolveRu: ((catalog: Record<string, string>) => void) | undefined;
+
+    catalogService = createPluginCatalogService({fetchCatalog: (url) => {
+      if (url.includes('/ru.json')) {
+        return new Promise((resolve) => {
+          resolveRu = resolve;
+        });
+      }
+
+      return Promise.resolve({title: url.includes('/de.json') ? 'Guten Tag' : 'Hello'});
+    }});
+
+    const cell = catalogService.createPluginCatalogCell(extendedSource, 'en');
+
+    await catalogService.loadInitialPluginCatalog(cell, 'en');
+
+    let activeLocale = 'en';
+    const lifetime = createPluginLifetime();
+    const i18n = createPluginI18n(cell, () => activeLocale, () => () => {}, lifetime);
+    const seen: string[] = [];
+
+    i18n.locale$.subscribe((locale) => seen.push(locale));
+
+    const superseded = catalogService.preparePluginCatalogGeneration('ru');
+
+    catalogService.discardPluginCatalogGeneration(superseded);
+    resolveRu?.({title: 'Привет'});
+
+    const current = catalogService.preparePluginCatalogGeneration('de');
+
+    await current.promise;
+    catalogService.commitPluginCatalogGeneration(current, () => {
+      activeLocale = 'de';
+    });
+
+    expect(seen).toEqual(['en', 'de']);
+    lifetime.end();
+  });
+
+  it('does not emit catalog locale changes after the plugin lifetime ends', async () => {
+    catalogService = createPluginCatalogService({fetchCatalog: () => Promise.resolve({title: 'Hello'})});
+
+    const cell = catalogService.createPluginCatalogCell(source, 'en');
+
+    await catalogService.loadInitialPluginCatalog(cell, 'en');
+
+    let activeLocale = 'en';
+    const lifetime = createPluginLifetime();
+    const i18n = createPluginI18n(cell, () => activeLocale, () => () => {}, lifetime);
+    const seen: string[] = [];
+
+    i18n.locale$.subscribe((locale) => seen.push(locale));
+    lifetime.end();
+
+    const generation = catalogService.preparePluginCatalogGeneration('ru');
+
+    await generation.promise;
+    catalogService.commitPluginCatalogGeneration(generation, () => {
+      activeLocale = 'ru';
+    });
+
+    expect(seen).toEqual(['en']);
+  });
+
   it('settles generations when browser microtasks require the global receiver', async () => {
     vi.stubGlobal('setTimeout', receiverSensitiveSetTimeout);
     vi.stubGlobal('queueMicrotask', receiverSensitiveQueueMicrotask);

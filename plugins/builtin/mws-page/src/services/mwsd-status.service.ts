@@ -41,7 +41,7 @@ export type ExtraFeaturesAvailability =
 
 export type ExtraFeaturesPresentation = ExtraFeaturesAvailability | 'taking-longer';
 
-export type ExtraFeaturesSetupReason = 'permission' | 'controller-token' | 'extender-session' | 'generic';
+export type ExtraFeaturesSetupReason = 'capability' | 'controller-token' | 'extender-session' | 'generic';
 
 type MwsdPollOutcome =
   | {kind: 'snapshot'; snapshot: PersistentSessionSnapshot}
@@ -261,7 +261,7 @@ export class MwsdStatusService {
 
     for (const blocker of blockers) {
       if (blocker.reason === 'not-granted' && blocker.prerequisite === undefined) {
-        reasons.add('permission');
+        reasons.add('capability');
       } else if (blocker.reason === 'prerequisite-unavailable' && blocker.prerequisite === 'controller-token') {
         reasons.add('controller-token');
       } else {

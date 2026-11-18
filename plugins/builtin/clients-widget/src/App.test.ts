@@ -30,12 +30,15 @@ function createContext(i18n = createTestI18n(enCatalog)): PluginContext {
   return {
     kind: 'widget',
     setTileTitle,
-    rciManager: {queue} as unknown as PluginRciManager,
+    device: {rci: {queue} as unknown as PluginRciManager},
     storage: {
-      get: storageGet,
-      set: storageSet,
-      delete: vi.fn().mockResolvedValue(undefined),
-      keys: vi.fn().mockResolvedValue([]),
+      instance: {
+        get: storageGet,
+        set: storageSet,
+        delete: vi.fn().mockResolvedValue(undefined),
+        keys: vi.fn().mockResolvedValue([]),
+      },
+      shared: {get: vi.fn(), set: vi.fn(), delete: vi.fn(), keys: vi.fn()},
     },
     overlay: {open: overlayOpen, createLayer: vi.fn(), closeAll: vi.fn()},
     i18n,

@@ -1,11 +1,11 @@
 import type {
   PluginBackendAccessOutput,
   PluginBackendMethodOutput,
+  PluginCapabilityOutput,
   PluginExecBackendOutput,
   PluginExecRouteOutput,
   PluginHttpRouteOutput,
   PluginManifestOutput,
-  PluginPermissionOutput,
   PluginServiceBackendOutput,
   PluginWebSocketRouteOutput,
   WidgetSizeOutput,
@@ -20,7 +20,7 @@ import type {
 
 export type PluginBackendAccess = PluginBackendAccessOutput;
 export type PluginBackendMethod = PluginBackendMethodOutput;
-export type PluginPermission = PluginPermissionOutput;
+export type PluginCapability = PluginCapabilityOutput;
 
 type OptionalDefaultAccess<T> = Omit<T, 'access'> & {access?: PluginBackendAccess};
 

@@ -18,6 +18,22 @@ export class ManifestValidationError extends Error {
 }
 
 export function validateManifest(data: unknown): PluginManifestOutput {
+  if (
+    typeof data === 'object'
+    && data !== null
+    && !Array.isArray(data)
+    && Object.prototype.hasOwnProperty.call(data, 'permissions')
+  ) {
+    const record = data as Record<string, unknown>;
+    const pluginName = typeof record.name === 'string' ? record.name : 'unknown';
+
+    throw new ManifestValidationError(pluginName, [{
+      code: 'custom',
+      path: ['permissions'],
+      message: 'permissions was renamed to capabilities in 0.3',
+    }]);
+  }
+
   const result = pluginManifestSchema.safeParse(data);
 
   if (!result.success) {

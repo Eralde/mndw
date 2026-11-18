@@ -1,7 +1,7 @@
 <script lang="ts">
 import {
-  PERSISTENT_RCI_PERMISSIONS,
-  type PluginPermission,
+  PERSISTENT_RCI_CAPABILITIES,
+  type PluginCapability,
 } from '@mndw/sdk-internal';
 import {getInstallVersionWarnings} from '../../../runtime/plugin-lock.js';
 import {
@@ -26,13 +26,13 @@ interface Props {
   items: PluginListEntry[];
   confirmingName: string | null;
   rowStateFor: (name: string) => PluginRowState | undefined;
-  permissionVisible: boolean;
-  permissionAvailable: boolean;
+  capabilityVisible: boolean;
+  capabilityAvailable: boolean;
   onEnable: (name: string) => void;
   onDisable: (name: string) => void;
-  onPermissionChange: (
+  onCapabilityChange: (
     name: string,
-    permission: PluginPermission,
+    capability: PluginCapability,
     enabled: boolean,
   ) => void;
   onRestart?: (name: string) => void;
@@ -79,15 +79,15 @@ function pluginLoadFailureText(
   }
 }
 
-function permissionGranted(
+function capabilityGranted(
   item: PluginListEntry,
-  permission: PluginPermission,
+  capability: PluginCapability,
 ): boolean {
-  return item.permissionGrants?.[permission] ?? false;
+  return item.capabilityGrants?.[capability] ?? false;
 }
 
-function permissionLabel(permission: PluginPermission): string {
-  return permission.endsWith(':write')
+function capabilityLabel(capability: PluginCapability): string {
+  return capability.endsWith(':write')
     ? hostT('settings.plugin-manager.persistent-rci-write')
     : hostT('settings.plugin-manager.persistent-rci-read');
 }
@@ -136,11 +136,11 @@ let {
   items,
   confirmingName,
   rowStateFor = () => undefined,
-  permissionVisible = false,
-  permissionAvailable = false,
+  capabilityVisible = false,
+  capabilityAvailable = false,
   onEnable,
   onDisable,
-  onPermissionChange,
+  onCapabilityChange,
   onRestart = () => {},
   onDelete,
   onRequestConfirm,
@@ -321,22 +321,22 @@ function retryPlugin(name: string): void {
             <p class="mndw-installed__backend">{summary.join(', ')}</p>
           {/if}
 
-          {#if permissionVisible}
-            {#each PERSISTENT_RCI_PERMISSIONS as permission (permission)}
-              {#if item.permissions?.includes(permission)}
+          {#if capabilityVisible}
+            {#each PERSISTENT_RCI_CAPABILITIES as capability (capability)}
+              {#if item.capabilities?.includes(capability)}
                 <mndw-field
-                  class="mndw-installed__permission-switch"
-                  label={permissionLabel(permission)}
+                  class="mndw-installed__capability-switch"
+                  label={capabilityLabel(capability)}
                 >
                   <mndw-switch
-                    checked={permissionGranted(item, permission)}
+                    checked={capabilityGranted(item, capability)}
                     disabled={busy
-                    || (!permissionGranted(item, permission)
-                      && !permissionAvailable)}
+                    || (!capabilityGranted(item, capability)
+                      && !capabilityAvailable)}
                     onmndwchange={(event: CustomEvent<{checked: boolean}>) =>
-                    onPermissionChange(
+                    onCapabilityChange(
                       item.name,
-                      permission,
+                      capability,
                       event.detail.checked,
                     )}
                   >

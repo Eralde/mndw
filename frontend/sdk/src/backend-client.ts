@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {persistentRciPermissionSchema} from './permissions.js';
+import {persistentRciCapabilitySchema} from './capabilities.js';
 
 /**
  * Typed backend client handed to plugins as `context.backend`.
@@ -27,7 +27,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
 };
 
 const backendBlockerSchema = z.object({
-  permission: persistentRciPermissionSchema,
+  capability: persistentRciCapabilitySchema,
   reason: z.string().min(1),
   prerequisite: z.string().min(1)
     .optional(),

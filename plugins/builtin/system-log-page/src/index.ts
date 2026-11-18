@@ -4,7 +4,7 @@ import SystemLogPage from './SystemLogPage.svelte';
 import {createSystemLogApi} from './system-log-api';
 
 export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInstance {
-  const api = createSystemLogApi(ctx.rciManager);
+  const api = createSystemLogApi(ctx.device.rci);
   const app = mount(SystemLogPage, {target: el, props: {api, overlay: ctx.overlay, i18n: ctx.i18n}});
 
   return {

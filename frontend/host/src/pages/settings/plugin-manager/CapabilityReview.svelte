@@ -13,7 +13,7 @@ let routes = $derived(Object.entries(entry.backend.routes ?? {}));
 let packages = $derived(entry.review?.packages ?? []);
 let args = $derived(entry.review?.args ?? []);
 let publicRoutes = $derived(entry.review?.publicRoutes ?? []);
-let permissions = $derived(entry.permissions ?? []);
+let capabilities = $derived(entry.capabilities ?? []);
 </script>
 
 <div class="mndw-cap">
@@ -85,12 +85,12 @@ let permissions = $derived(entry.permissions ?? []);
     </section>
   {/if}
 
-  {#if permissions.length > 0}
+  {#if capabilities.length > 0}
     <section class="mndw-cap__section">
-      <h4>{hostT('settings.plugin-manager.permissions')}</h4>
+      <h4>{hostT('settings.plugin-manager.capabilities')}</h4>
       <ul>
-        {#each permissions as permission (permission)}
-          <li>{permission}</li>
+        {#each capabilities as capability (capability)}
+          <li>{capability}</li>
         {/each}
       </ul>
     </section>

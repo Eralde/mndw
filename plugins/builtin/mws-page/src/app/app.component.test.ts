@@ -277,11 +277,11 @@ describe('AppComponent', () => {
 
     statusService.extraFeaturesAvailability.set('active');
     statusService.extraFeaturesPresentation.set('taking-longer');
-    statusService.extraFeaturesSetupReasons.set(['permission']);
+    statusService.extraFeaturesSetupReasons.set(['capability']);
 
     expect(data.extraFeaturesAvailability()).toBe('active');
     expect(data.extraFeaturesPresentation()).toBe('taking-longer');
-    expect(data.extraFeaturesSetupReasons()).toEqual(['permission']);
+    expect(data.extraFeaturesSetupReasons()).toEqual(['capability']);
   });
 
   it('starts the data service and shows the loading state', () => {

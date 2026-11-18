@@ -11,7 +11,7 @@ import (
 )
 
 type backendStatusBlocker struct {
-	Permission   string `json:"permission"`
+	Capability   string `json:"capability"`
 	Reason       string `json:"reason"`
 	Prerequisite string `json:"prerequisite,omitempty"`
 }
@@ -67,13 +67,13 @@ func (g *Gateway) projectBackendStatus(plugin *registry.Plugin, now time.Time) b
 	// transient traffic gate. Report it ahead of maintenance so the frontend can
 	// render the missing prerequisite rather than a generic "under maintenance".
 	if g.activationGates != nil && plugin.Manifest.IsService() {
-		if blockers := g.activationGates.Evaluate(plugin.Name, plugin.Manifest.Permissions); len(blockers) > 0 {
+		if blockers := g.activationGates.Evaluate(plugin.Name, plugin.Manifest.Capabilities); len(blockers) > 0 {
 			response.State = "blocked"
 			response.Blockers = make([]backendStatusBlocker, 0, len(blockers))
 
 			for _, blocker := range blockers {
 				response.Blockers = append(response.Blockers, backendStatusBlocker{
-					Permission:   blocker.Permission,
+					Capability:   blocker.Capability,
 					Reason:       string(blocker.Reason),
 					Prerequisite: blocker.Prerequisite,
 				})

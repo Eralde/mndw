@@ -52,7 +52,7 @@ function render(): void {
   document.body.appendChild(target);
   component = mount(GeneralSettings, {
     target,
-    props: {onPermissionStateChange: vi.fn()},
+    props: {onCapabilityStateChange: vi.fn()},
     context: createHostServicesContext(createServices()),
   });
   flushSync();

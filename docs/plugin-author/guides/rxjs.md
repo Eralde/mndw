@@ -13,7 +13,7 @@ for one-off asynchronous results; subscribe when a plugin should react to later 
 Pass an observer with `next` for values and `error` for failures:
 
 ```ts
-const subscription = ctx.rciManager.queue({path: 'show.version'}).subscribe({
+const subscription = ctx.device.rci.queue({path: 'show.version'}).subscribe({
   next: (result) => {
     console.info(result);
   },
@@ -34,7 +34,7 @@ import {interval} from 'rxjs';
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
 
 export function createInstance(container: HTMLElement, ctx: PluginContext): PluginInstance {
-  container.dataset.theme = ctx.theme;
+  container.dataset.theme = ctx.appearance.theme;
   const subscription = interval(1000).subscribe(() => {
     container.dataset.lastRefresh = String(Date.now());
   });
@@ -57,7 +57,7 @@ import {firstValueFrom} from 'rxjs';
 
 export async function readVersion(): Promise<void> {
   try {
-    const version = await firstValueFrom(ctx.rciManager.queue({path: 'show.version'}));
+    const version = await firstValueFrom(ctx.device.rci.queue({path: 'show.version'}));
     console.info(version);
   } catch (error: unknown) {
     console.error('Could not read device version', error);
@@ -82,7 +82,7 @@ import {EMPTY, Observable, catchError, concatMap, exhaustMap, map, switchMap} fr
 type RciResponse = Record<string, unknown> | undefined;
 
 function checkedWrite(description: string): Observable<RciResponse> {
-  return ctx.rciManager.queue({path: 'system.description', data: description}).pipe(
+  return ctx.device.rci.queue({path: 'system.description', data: description}).pipe(
     map((response) => {
       const statuses = response?.['status'];
       const rejected = Array.isArray(statuses) && statuses.some((entry: unknown) => {
@@ -100,7 +100,7 @@ function checkedWrite(description: string): Observable<RciResponse> {
 
 function saveAndConfirm(description: string): Observable<RciResponse> {
   return checkedWrite(description).pipe(
-    switchMap(() => ctx.rciManager.queue({path: 'system.description'})),
+    switchMap(() => ctx.device.rci.queue({path: 'system.description'})),
     catchError((error: unknown) => {
       console.error('Save failed', error);
       return EMPTY;

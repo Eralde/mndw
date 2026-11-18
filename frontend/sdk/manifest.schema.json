@@ -36,7 +36,7 @@
           "description": "Optional icon name.",
           "type": "string"
         },
-        "permissions": {
+        "capabilities": {
           "type": "array",
           "items": {
             "anyOf": [
@@ -366,7 +366,7 @@
           "description": "Optional icon name.",
           "type": "string"
         },
-        "permissions": {
+        "capabilities": {
           "type": "array",
           "items": {
             "anyOf": [

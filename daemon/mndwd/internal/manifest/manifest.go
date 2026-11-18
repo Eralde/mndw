@@ -13,14 +13,14 @@ type Type = contractmanifest.Type
 const (
 	TypeWidget                          = contractmanifest.TypeWidget
 	TypePage                            = contractmanifest.TypePage
-	PersistentRCISessionReadPermission  = contractmanifest.PersistentRCISessionReadPermission
-	PersistentRCISessionWritePermission = contractmanifest.PersistentRCISessionWritePermission
+	PersistentRCISessionReadCapability  = contractmanifest.PersistentRCISessionReadCapability
+	PersistentRCISessionWriteCapability = contractmanifest.PersistentRCISessionWriteCapability
 	BackendKindExec                     = contractmanifest.BackendKindExec
 	BackendKindService                  = contractmanifest.BackendKindService
 )
 
-func IsPersistentRCIPermission(permission string) bool {
-	return contractmanifest.IsPersistentRCIPermission(permission)
+func IsPersistentRCICapability(capability string) bool {
+	return contractmanifest.IsPersistentRCICapability(capability)
 }
 
 type Size = contractmanifest.Size

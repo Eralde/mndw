@@ -226,14 +226,15 @@ describe('createInstance', () => {
 
   it('rerenders active error copy after locale changes', () => {
     const container = document.createElement('div');
-    const ctx = fakeContext();
+    const i18n = createTestI18n(enCatalog);
+    const ctx = fakeContext(undefined, {i18n});
 
     createInstance(container, ctx);
     submitForm(container);
 
     expect(container.textContent).toContain('Please enter a hostname');
 
-    ctx.i18n.setLocale('ru', ruCatalog);
+    i18n.setLocale('ru', ruCatalog);
 
     expect(container.textContent).toContain('Введите имя хоста');
     expect(container.textContent).not.toContain('Please enter a hostname');

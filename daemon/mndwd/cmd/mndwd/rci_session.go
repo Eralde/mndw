@@ -20,7 +20,7 @@ import (
 type rciSessionAssembly struct {
 	close                func()
 	err                  error
-	permissionController mgmt.PersistentRCIPermissionController
+	capabilityController mgmt.PersistentRCICapabilityController
 	service              *rcisession.Service
 	lifetime             context.Context
 }
@@ -108,7 +108,7 @@ func assembleRCISession(core daemonCore, accessMux *http.ServeMux, activationPok
 		sessionCoordinator.Close()
 		cancel()
 	}
-	registration.permissionController = sessionCoordinator
+	registration.capabilityController = sessionCoordinator
 	registration.service = sessionService
 	registration.lifetime = lifetime
 

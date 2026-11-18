@@ -6,14 +6,14 @@ regular Node.js project.
 ## What a plugin contains
 
 The [`manifest.json`](/guides/manifest) identifies the plugin, selects `widget` or `page`, points to its entry, lists
-requested permissions, and declares any backend commands. Permissions do not sandbox plugin code; see the
-[manifest trust guidance](/guides/manifest#permissions-and-trust). The frontend entry exports
+requested capabilities, and declares any backend commands. Capabilities do not sandbox plugin code; see the
+[manifest trust guidance](/guides/manifest#capabilities-and-trust). The frontend entry exports
 `createInstance(container, ctx)`. The host calls it with a DOM container and `PluginContext`; it returns a
 `PluginInstance` with `unmount()` and optional
 `onResize()` for widgets. See the [frontend lifecycle guide](/guides/frontend-lifecycle).
 
 A backend is optional. Shell and Go backends expose declared routes through the typed `ctx.backend` client; device
-management calls use `ctx.rciManager` through the host. Read the [shell backend guide](/guides/shell-backend) and
+management calls use `ctx.device.rci` through the host. Read the [shell backend guide](/guides/shell-backend) and
 [RCI API guide](/guides/rci-api) for those boundaries.
 Backend commands must use relative paths under `backend/`, and the daemon does not serve files in that directory as
 browser assets.
@@ -22,13 +22,13 @@ browser assets.
 
 `PluginContext` is passed to `createInstance` and exposes host services:
 
-- `rciManager` queues device operations; `backend` is present when the manifest declares a backend. See the
+- `device.rci` queues device operations and `device.info` provides a device snapshot; `backend` is present when the manifest declares a backend. See the
   [RCI API guide](/guides/rci-api) and [shell backend guide](/guides/shell-backend).
-- `storage` and `sharedStorage` store plugin data; `deviceInfo` provides a device snapshot.
-- `theme`, `locale`, and `palette` provide current values and observable updates through `theme$`, `locale$`, and
-  `palette$`; `i18n` provides localized messages. See the [frontend lifecycle guide](/guides/frontend-lifecycle).
-- `telemetry` fetches projected data; `events` is optional and appears when the manifest declares event permissions.
-- `overlay` presents modals and drawers, and `createTicker()` creates a host-managed ticker.
+- `storage.instance` and `storage.shared` store plugin data. `appearance.theme` and `appearance.palette` provide
+  current values and observable updates through `appearance.theme$` and `appearance.palette$`; `i18n.locale$` emits
+  the active locale after its catalog is applied. See the [frontend lifecycle guide](/guides/frontend-lifecycle).
+- `telemetry` fetches projected data; `events` is optional and appears when the manifest declares event capabilities.
+- `overlay` presents modals and drawers, and `timers.createTicker()` creates a host-managed ticker.
 - `pageRoute` provides navigation within page plugins. The host draws each widget's tile title; use `setTileTitle`
   (`ctx.setTileTitle?.(ctx.i18n.t('title'))`) to set its translated value on mount and when the locale changes. Do not
   draw a second widget title inside the plugin. Pages should keep their own visible `<h2>` heading.

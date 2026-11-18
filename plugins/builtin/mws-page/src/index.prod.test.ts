@@ -24,7 +24,7 @@ function fakeContext(backend: BackendClient | null = null): {ctx: PluginContext;
     backend: backend ?? undefined,
     i18n: createTestI18n(enCatalog),
     instanceId: 'test',
-    rciManager: {queue},
+    device: {rci: {queue}},
   });
   const context = Object.create(null) as Record<string, unknown>;
   const descriptors = Object.getOwnPropertyDescriptors(fixture.context);
@@ -34,7 +34,10 @@ function fakeContext(backend: BackendClient | null = null): {ctx: PluginContext;
   }
 
   Object.defineProperties(context, descriptors);
-  Object.defineProperty(context, 'storage', {enumerable: true, value: new FakePluginStorage()});
+  Object.defineProperty(context, 'storage', {
+    enumerable: true,
+    value: {instance: new FakePluginStorage(), shared: fixture.context.storage.shared},
+  });
   Object.defineProperty(context, 'overlay', {
     enumerable: true,
     value: {open: vi.fn(), createLayer: vi.fn(), closeAll: vi.fn()},

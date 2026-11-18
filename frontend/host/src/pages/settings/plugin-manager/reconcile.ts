@@ -1,4 +1,4 @@
-import type {PluginPermission} from '@mndw/sdk-internal';
+import type {PluginCapability} from '@mndw/sdk-internal';
 
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 
@@ -9,7 +9,7 @@ export type LifecycleOp =
   | {kind: 'disable'}
   | {kind: 'approve'}
   | {kind: 'restart'}
-  | {kind: 'permission'; permission: PluginPermission; enabled: boolean};
+  | {kind: 'capability'; capability: PluginCapability; enabled: boolean};
 
 export type RowState =
   | 'working'
@@ -42,8 +42,8 @@ export function expectedStateReached(op: LifecycleOp, name: string, list: Plugin
       return entry?.approval === 'approved';
     case 'restart':
       return false;
-    case 'permission':
-      return entry?.permissionGrants?.[op.permission] === op.enabled;
+    case 'capability':
+      return entry?.capabilityGrants?.[op.capability] === op.enabled;
   }
 }
 

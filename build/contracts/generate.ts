@@ -4,8 +4,8 @@ import {dirname, join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 import {
-  EVENT_PERMISSION_PATTERN,
-  PERSISTENT_RCI_PERMISSIONS,
+  EVENT_CAPABILITY_PATTERN,
+  PERSISTENT_RCI_CAPABILITIES,
   createEventSchemaDocument,
   createManifestSchemaDocument,
   createMwsMemberSchemaDocument,
@@ -86,7 +86,8 @@ const tokenContractPath = 'contracts/tokens.json';
 const generatedGoThemeTokensPath = 'daemon/mndwd/internal/palette/theme_tokens_generated.go';
 const eventSchemaPath = 'contracts/events/events.schema.json';
 const generatedGoEventsPath = 'daemon/contracts-go/events/events.go';
-const generatedGoPermissionsPath = 'daemon/contracts-go/manifest/permissions_generated.go';
+const generatedGoCapabilitiesPath = 'daemon/contracts-go/manifest/capabilities_generated.go';
+const legacyGeneratedGoCapabilitiesPath = 'daemon/contracts-go/manifest/permissions_generated.go';
 
 function listFiles(root: string): string[] {
   const files: string[] = [];
@@ -331,49 +332,50 @@ function generateEventContracts(options: GenerateContractsOptions): void {
   execFileSync('gofmt', ['-w', goPath], {stdio: 'pipe'});
 }
 
-const goPermissionConstName = (permission: string): string => {
-  return `${goFieldName(permission.replace(/[-:]/g, '_'))}Permission`;
+const goCapabilityConstName = (capability: string): string => {
+  return `${goFieldName(capability.replace(/[-:]/g, '_'))}Capability`;
 };
 
-function renderGoPermissions(): string {
-  const pattern = EVENT_PERMISSION_PATTERN.source;
+function renderGoCapabilities(): string {
+  const pattern = EVENT_CAPABILITY_PATTERN.source;
 
-  if (EVENT_PERMISSION_PATTERN.flags !== '' || pattern.includes('`')) {
-    throw new Error('EVENT_PERMISSION_PATTERN must be flag-free and contain no backtick to render as a Go raw string.');
+  if (EVENT_CAPABILITY_PATTERN.flags !== '' || pattern.includes('`')) {
+    throw new Error('EVENT_CAPABILITY_PATTERN must be flag-free and contain no backtick to render as a Go raw string.');
   }
 
-  const constants = PERSISTENT_RCI_PERMISSIONS
-    .map((permission) => `\t${goPermissionConstName(permission)} = "${permission}"`)
+  const constants = PERSISTENT_RCI_CAPABILITIES
+    .map((capability) => `\t${goCapabilityConstName(capability)} = "${capability}"`)
     .join('\n');
-  const listItems = PERSISTENT_RCI_PERMISSIONS
-    .map((permission) => `\t\t${goPermissionConstName(permission)},`)
+  const listItems = PERSISTENT_RCI_CAPABILITIES
+    .map((capability) => `\t\t${goCapabilityConstName(capability)},`)
     .join('\n');
 
-  return `// GENERATED from frontend/sdk/src/permissions.ts — do not edit by hand.
+  return `// GENERATED from frontend/sdk/src/capabilities.ts — do not edit by hand.
 package manifest
 
 const (
 ${constants}
 )
 
-// persistentRCIPermissions returns every grantable persistent RCI permission in
+// persistentRCICapabilities returns every grantable persistent RCI capability in
 // authority order. It returns a fresh slice so callers cannot mutate the set.
-func persistentRCIPermissions() []string {
+func persistentRCICapabilities() []string {
 \treturn []string{
 ${listItems}
 \t}
 }
 
-const eventPermissionPattern = \`${pattern}\`
+const eventCapabilityPattern = \`${pattern}\`
 `;
 }
 
-function generateGoPermissions(options: GenerateContractsOptions): void {
+function generateGoCapabilities(options: GenerateContractsOptions): void {
   const outputRoot = resolve(options.outputRoot ?? options.repoRoot);
-  const goPath = join(outputRoot, generatedGoPermissionsPath);
+  const goPath = join(outputRoot, generatedGoCapabilitiesPath);
 
+  rmSync(join(outputRoot, legacyGeneratedGoCapabilitiesPath), {force: true});
   mkdirSync(dirname(goPath), {recursive: true});
-  writeFileSync(goPath, renderGoPermissions());
+  writeFileSync(goPath, renderGoCapabilities());
   execFileSync('gofmt', ['-w', goPath], {stdio: 'pipe'});
 }
 
@@ -479,7 +481,7 @@ export function generateContracts(options: GenerateContractsOptions): void {
 
   generateManifestSchema({repoRoot, outputRoot});
   generateEventContracts({repoRoot, outputRoot});
-  generateGoPermissions({repoRoot, outputRoot});
+  generateGoCapabilities({repoRoot, outputRoot});
   generateMwsMemberSchema({repoRoot, outputRoot});
   generateRciSessionStatusCategories({repoRoot, outputRoot});
   generateTokenBindings({repoRoot, outputRoot});

@@ -70,10 +70,10 @@ export function openExtraFeaturesPopover(
       : next === 'blocked'
       ? reasons.length === 0
         ? 'extra-features.popover.blocked.body'
-        : reasons.includes('permission') && reasons.includes('controller-token')
+        : reasons.includes('capability') && reasons.includes('controller-token')
         ? 'extra-features.popover.blocked.combined.body'
-        : reasons.includes('permission')
-        ? 'extra-features.popover.blocked.permission.body'
+        : reasons.includes('capability')
+        ? 'extra-features.popover.blocked.capability.body'
         : reasons.includes('controller-token')
         ? 'extra-features.popover.blocked.controller-token.body'
         : 'extra-features.popover.blocked.generic.body'

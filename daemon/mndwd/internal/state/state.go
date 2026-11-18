@@ -72,9 +72,38 @@ type AuditEntry struct {
 type State struct {
 	Version          int                        `json:"version"`
 	Plugins          map[string]*Plugin         `json:"plugins"`
-	PermissionGrants map[string]map[string]bool `json:"permissionGrants,omitempty"`
+	CapabilityGrants map[string]map[string]bool `json:"capabilityGrants,omitempty"`
 	Settings         Settings                   `json:"settings,omitempty"`
 	Audit            []AuditEntry               `json:"audit"`
+}
+
+func (s *State) UnmarshalJSON(data []byte) error {
+	type stateAlias State
+
+	var decoded stateAlias
+
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	var fields map[string]json.RawMessage
+
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+
+	// When both names exist, capabilityGrants is authoritative for 0.3 state.
+	if _, hasCapabilityGrants := fields["capabilityGrants"]; !hasCapabilityGrants {
+		if legacyGrants, hasLegacyGrants := fields["permissionGrants"]; hasLegacyGrants {
+			if err := json.Unmarshal(legacyGrants, &decoded.CapabilityGrants); err != nil {
+				return err
+			}
+		}
+	}
+
+	*s = State(decoded)
+
+	return nil
 }
 
 type Settings struct {
@@ -231,14 +260,14 @@ func (s *Store) Get(name string) (*Plugin, bool) {
 	return clonePlugin(p), true
 }
 
-// HasGrant reports the authoritative value of a plugin permission grant. Missing
-// plugins, permissions, and nil maps all mean false.
-func (s *Store) HasGrant(plugin, permission string) bool {
+// HasCapabilityGrant reports the authoritative value of a plugin capability grant. Missing
+// plugins, capabilities, and nil maps all mean false.
+func (s *Store) HasCapabilityGrant(plugin, capability string) bool {
 	s.mu.Lock()
 
 	defer s.mu.Unlock()
 
-	return s.state.PermissionGrants[plugin][permission]
+	return s.state.CapabilityGrants[plugin][capability]
 }
 
 // PersistentRCIEnabled reports the durable switch and whether it was explicitly set.
@@ -271,25 +300,25 @@ func (s *Store) SetPersistentRCIEnabled(enabled bool) error {
 	})
 }
 
-// SetGrant persists one explicit permission grant and its audit event atomically.
-func (s *Store) SetGrant(plugin, permission string, enabled bool) error {
+// SetCapabilityGrant persists one explicit capability grant and its audit event atomically.
+func (s *Store) SetCapabilityGrant(plugin, capability string, enabled bool) error {
 	return s.Mutate(func(st *State) error {
-		if st.PermissionGrants == nil {
-			st.PermissionGrants = make(map[string]map[string]bool)
+		if st.CapabilityGrants == nil {
+			st.CapabilityGrants = make(map[string]map[string]bool)
 		}
 
-		if st.PermissionGrants[plugin] == nil {
-			st.PermissionGrants[plugin] = make(map[string]bool)
+		if st.CapabilityGrants[plugin] == nil {
+			st.CapabilityGrants[plugin] = make(map[string]bool)
 		}
 
-		st.PermissionGrants[plugin][permission] = enabled
-		action := "permission-disable"
+		st.CapabilityGrants[plugin][capability] = enabled
+		action := "capability-disable"
 
 		if enabled {
-			action = "permission-enable"
+			action = "capability-enable"
 		}
 
-		st.AppendAudit(action, plugin, "permission="+permission)
+		st.AppendAudit(action, plugin, "capability="+capability)
 
 		return nil
 	})

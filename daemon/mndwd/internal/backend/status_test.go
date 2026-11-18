@@ -108,8 +108,8 @@ func TestProjectBackendStatusApprovalPrecedesEnabled(t *testing.T) {
 	runtime := newStatusTestRuntime(now)
 	gates := NewActivationGateRegistry()
 
-	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGate(func(_, permission string) []ActivationBlocker {
-		return []ActivationBlocker{{Permission: permission, Reason: BlockerNotGranted}}
+	gates.Register(manifest.PersistentRCISessionReadCapability, ActivationGate(func(_, capability string) []ActivationBlocker {
+		return []ActivationBlocker{{Capability: capability, Reason: BlockerNotGranted}}
 	}))
 
 	gateway := &Gateway{runtime: runtime, traffic: runtime.Traffic(), activationGates: gates}
@@ -118,8 +118,8 @@ func TestProjectBackendStatusApprovalPrecedesEnabled(t *testing.T) {
 	approvedDisabled := statusTestPlugin(t, "approved-disabled", manifest.BackendKindService, 1, state.ApprovalApproved, false, nil)
 	pendingEnabled := statusTestPlugin(t, "pending-enabled", manifest.BackendKindService, 1, state.ApprovalPending, true, nil)
 	pendingDisabled := statusTestPlugin(t, "pending-disabled", manifest.BackendKindService, 1, state.ApprovalPending, false, nil)
-	pendingGated := statusTestPlugin(t, "pending-gated", manifest.BackendKindService, 1, state.ApprovalPending, true, []string{manifest.PersistentRCISessionReadPermission})
-	approvedGated := statusTestPlugin(t, "approved-gated", manifest.BackendKindService, 1, state.ApprovalApproved, true, []string{manifest.PersistentRCISessionReadPermission})
+	pendingGated := statusTestPlugin(t, "pending-gated", manifest.BackendKindService, 1, state.ApprovalPending, true, []string{manifest.PersistentRCISessionReadCapability})
+	approvedGated := statusTestPlugin(t, "approved-gated", manifest.BackendKindService, 1, state.ApprovalApproved, true, []string{manifest.PersistentRCISessionReadCapability})
 	// Durable state only records pending/approved, but any non-approved value
 	// must project as not-approved rather than fall through to the enabled gate.
 	unrecognizedApproval := statusTestPlugin(t, "unrecognized", manifest.BackendKindService, 1, state.Approval("revoked"), false, nil)
@@ -170,14 +170,14 @@ func TestProjectBackendStatusExecSkipsActivationEvaluation(t *testing.T) {
 	var calls int
 	gates := NewActivationGateRegistry()
 
-	gates.Register(manifest.PersistentRCISessionWritePermission, ActivationGate(func(_, permission string) []ActivationBlocker {
+	gates.Register(manifest.PersistentRCISessionWriteCapability, ActivationGate(func(_, capability string) []ActivationBlocker {
 		calls++
 
-		return []ActivationBlocker{{Permission: permission, Reason: "not-granted"}}
+		return []ActivationBlocker{{Capability: capability, Reason: "not-granted"}}
 	}))
 
 	gateway := &Gateway{activationGates: gates}
-	plugin := statusTestPlugin(t, "exec", manifest.BackendKindExec, 0, state.ApprovalApproved, true, []string{manifest.PersistentRCISessionWritePermission})
+	plugin := statusTestPlugin(t, "exec", manifest.BackendKindExec, 0, state.ApprovalApproved, true, []string{manifest.PersistentRCISessionWriteCapability})
 
 	got := gateway.projectBackendStatus(plugin, now)
 
@@ -193,22 +193,22 @@ func TestProjectBackendStatusExecSkipsActivationEvaluation(t *testing.T) {
 func TestProjectBackendStatusPreservesTypedBlockerWireValues(t *testing.T) {
 	gates := NewActivationGateRegistry()
 
-	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGate(func(_, permission string) []ActivationBlocker {
+	gates.Register(manifest.PersistentRCISessionReadCapability, ActivationGate(func(_, capability string) []ActivationBlocker {
 		return []ActivationBlocker{
-			{Permission: permission, Reason: BlockerNotGranted},
-			{Permission: permission, Reason: BlockerPrerequisiteUnavailable, Prerequisite: "controller-token"},
+			{Capability: capability, Reason: BlockerNotGranted},
+			{Capability: capability, Reason: BlockerPrerequisiteUnavailable, Prerequisite: "controller-token"},
 		}
 	}))
 
 	gateway := &Gateway{activationGates: gates}
-	plugin := statusTestPlugin(t, "demo", manifest.BackendKindService, 1, state.ApprovalApproved, true, []string{manifest.PersistentRCISessionReadPermission})
+	plugin := statusTestPlugin(t, "demo", manifest.BackendKindService, 1, state.ApprovalApproved, true, []string{manifest.PersistentRCISessionReadCapability})
 
 	got, err := json.Marshal(gateway.projectBackendStatus(plugin, time.Time{}))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	want := `{"kind":"service","state":"blocked","retryAfterSeconds":null,"blockers":[{"permission":"persistent-rci-session:read","reason":"not-granted"},{"permission":"persistent-rci-session:read","reason":"prerequisite-unavailable","prerequisite":"controller-token"}]}`
+	want := `{"kind":"service","state":"blocked","retryAfterSeconds":null,"blockers":[{"capability":"persistent-rci-session:read","reason":"not-granted"},{"capability":"persistent-rci-session:read","reason":"prerequisite-unavailable","prerequisite":"controller-token"}]}`
 
 	if string(got) != want {
 		t.Fatalf("status JSON = %s, want %s", got, want)
@@ -373,13 +373,13 @@ func statusTestBackendlessPlugin(t *testing.T, name string) *registry.Plugin {
 	return &registry.Plugin{Name: name, Dir: t.TempDir(), Manifest: parsed, Approval: state.ApprovalApproved, Enabled: true}
 }
 
-func statusTestPlugin(t *testing.T, name string, kind manifest.BackendKind, protocol int, approval state.Approval, enabled bool, permissions []string) *registry.Plugin {
+func statusTestPlugin(t *testing.T, name string, kind manifest.BackendKind, protocol int, approval state.Approval, enabled bool, capabilities []string) *registry.Plugin {
 	t.Helper()
 
-	permissionJSON := "[]"
+	capabilityJSON := "[]"
 
-	if len(permissions) > 0 {
-		permissionJSON = fmt.Sprintf(`["%s"]`, permissions[0])
+	if len(capabilities) > 0 {
+		capabilityJSON = fmt.Sprintf(`["%s"]`, capabilities[0])
 	}
 
 	backend := fmt.Sprintf(`"kind":"%s","routes":[{"id":"status","transport":"http","method":"GET","path":"status","command":"backend/status.sh"}]`, kind)
@@ -388,7 +388,7 @@ func statusTestPlugin(t *testing.T, name string, kind manifest.BackendKind, prot
 		backend = fmt.Sprintf(`"kind":"%s","protocolVersion":%d,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]`, kind, protocol)
 	}
 
-	data := []byte(fmt.Sprintf(`{"manifestVersion":1,"name":"%s","version":"1.0.0","type":"page","label":"%s","entry":"index.js","route":"/%s","permissions":%s,"backend":{%s}}`, name, name, name, permissionJSON, backend))
+	data := []byte(fmt.Sprintf(`{"manifestVersion":1,"name":"%s","version":"1.0.0","type":"page","label":"%s","entry":"index.js","route":"/%s","capabilities":%s,"backend":{%s}}`, name, name, name, capabilityJSON, backend))
 	parsed, err := manifest.Validate(data)
 	if err != nil {
 		t.Fatalf("validate status plugin: %v", err)

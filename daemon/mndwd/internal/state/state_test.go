@@ -47,8 +47,49 @@ func TestOpenCreatesEmptyStateFile(t *testing.T) {
 		t.Errorf("expected no plugins, got %d", len(snap.Plugins))
 	}
 
-	if store.HasGrant("demo", "persistent-rci-session") {
+	if store.HasCapabilityGrant("demo", "persistent-rci-session") {
 		t.Error("absent grant should default to false")
+	}
+}
+
+func TestOpenMigratesLegacyPermissionGrantsAndRewritesState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	legacy := `{"version":1,"plugins":{},"permissionGrants":{"demo":{"persistent-rci-session:read":true}},"audit":[]}`
+
+	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
+		t.Fatalf("seed legacy state: %v", err)
+	}
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open legacy state: %v", err)
+	}
+
+	if !store.HasCapabilityGrant("demo", "persistent-rci-session:read") {
+		t.Fatal("legacy grant was not loaded")
+	}
+
+	if err := store.SetCapabilityGrant("demo", "persistent-rci-session:write", true); err != nil {
+		t.Fatalf("write migrated state: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read rewritten state: %v", err)
+	}
+
+	var persisted map[string]json.RawMessage
+
+	if err := json.Unmarshal(data, &persisted); err != nil {
+		t.Fatalf("decode rewritten state: %v", err)
+	}
+
+	if _, ok := persisted["permissionGrants"]; ok {
+		t.Fatal("rewritten state retained permissionGrants")
+	}
+
+	if _, ok := persisted["capabilityGrants"]; !ok {
+		t.Fatal("rewritten state omitted capabilityGrants")
 	}
 }
 
@@ -188,24 +229,24 @@ func TestPersistentRCIEnabledReadsStateWithoutField(t *testing.T) {
 	}
 }
 
-func TestSetGrantPersistsAndAudits(t *testing.T) {
+func TestSetCapabilityGrantPersistsAndAudits(t *testing.T) {
 	store, path := newStore(t)
 
-	if err := store.SetGrant("demo", "persistent-rci-session", true); err != nil {
+	if err := store.SetCapabilityGrant("demo", "persistent-rci-session", true); err != nil {
 		t.Fatalf("enable grant: %v", err)
 	}
 
-	if !store.HasGrant("demo", "persistent-rci-session") {
+	if !store.HasCapabilityGrant("demo", "persistent-rci-session") {
 		t.Fatal("enabled grant not visible")
 	}
 
 	snap := store.Snapshot()
 
-	if len(snap.Audit) != 1 || snap.Audit[0].Action != "permission-enable" || snap.Audit[0].Plugin != "demo" {
+	if len(snap.Audit) != 1 || snap.Audit[0].Action != "capability-enable" || snap.Audit[0].Plugin != "demo" {
 		t.Fatalf("enable audit = %+v", snap.Audit)
 	}
 
-	if snap.Audit[0].Detail != "permission=persistent-rci-session" {
+	if snap.Audit[0].Detail != "capability=persistent-rci-session" {
 		t.Fatalf("enable audit detail = %q", snap.Audit[0].Detail)
 	}
 
@@ -214,15 +255,15 @@ func TestSetGrantPersistsAndAudits(t *testing.T) {
 		t.Fatalf("reopen: %v", err)
 	}
 
-	if !reopened.HasGrant("demo", "persistent-rci-session") {
+	if !reopened.HasCapabilityGrant("demo", "persistent-rci-session") {
 		t.Fatal("enabled grant did not reload")
 	}
 
-	if err := reopened.SetGrant("demo", "persistent-rci-session", false); err != nil {
+	if err := reopened.SetCapabilityGrant("demo", "persistent-rci-session", false); err != nil {
 		t.Fatalf("disable grant: %v", err)
 	}
 
-	if reopened.HasGrant("demo", "persistent-rci-session") {
+	if reopened.HasCapabilityGrant("demo", "persistent-rci-session") {
 		t.Fatal("disabled grant remains enabled")
 	}
 
@@ -230,7 +271,7 @@ func TestSetGrantPersistsAndAudits(t *testing.T) {
 		t.Fatalf("audit count = %d, want 2", got)
 	}
 
-	if got := reopened.Snapshot().Audit[1]; got.Action != "permission-disable" || got.Detail != "permission=persistent-rci-session" {
+	if got := reopened.Snapshot().Audit[1]; got.Action != "capability-disable" || got.Detail != "capability=persistent-rci-session" {
 		t.Fatalf("disable audit = %+v", got)
 	}
 }
@@ -238,15 +279,33 @@ func TestSetGrantPersistsAndAudits(t *testing.T) {
 func TestGrantSnapshotIsDeepCopied(t *testing.T) {
 	store, _ := newStore(t)
 
-	if err := store.SetGrant("demo", "persistent-rci-session", true); err != nil {
+	if err := store.SetCapabilityGrant("demo", "persistent-rci-session", true); err != nil {
 		t.Fatalf("set grant: %v", err)
 	}
 
 	snap := store.Snapshot()
-	snap.PermissionGrants["demo"]["persistent-rci-session"] = false
+	snap.CapabilityGrants["demo"]["persistent-rci-session"] = false
 
-	if !store.HasGrant("demo", "persistent-rci-session") {
+	if !store.HasCapabilityGrant("demo", "persistent-rci-session") {
 		t.Fatal("snapshot mutation changed live grant")
+	}
+}
+
+func TestCapabilityGrantsWinWhenBothStateKeysExist(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	both := `{"version":1,"plugins":{},"permissionGrants":{"demo":{"persistent-rci-session:read":true}},"capabilityGrants":{"demo":{"persistent-rci-session:read":false}},"audit":[]}`
+
+	if err := os.WriteFile(path, []byte(both), 0o600); err != nil {
+		t.Fatalf("seed state with both grant keys: %v", err)
+	}
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open state with both grant keys: %v", err)
+	}
+
+	if store.HasCapabilityGrant("demo", "persistent-rci-session:read") {
+		t.Fatal("legacy grant overrode capabilityGrants")
 	}
 }
 

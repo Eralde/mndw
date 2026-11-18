@@ -77,7 +77,7 @@ GET and HEAD requests that include a body are rejected with `400 BAD_REQUEST`.
   `npx mndw pack hello-widget`.
 
 For a hands-on walkthrough, follow the [Hello widget tutorial](/tutorials/hello-widget). RCI calls
-use `ctx.rciManager` and go through the host rather than a plugin backend. See the
+use `ctx.device.rci` and go through the host rather than a plugin backend. See the
 [RCI API guide](/guides/rci-api).
 
 From the plugins project, pass the plugin folder to validate and package the backend:

@@ -7,8 +7,8 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
   const app = mount(TrafficWidget, {
     target: container,
     props: {
-      rci: ctx.rciManager,
-      storage: ctx.storage,
+      rci: ctx.device.rci,
+      storage: ctx.storage.instance,
       openSettings: (args: OpenSettingsArgs) => openSettingsDialog(ctx, args),
       setTileTitle: ctx.setTileTitle,
       i18n: ctx.i18n,

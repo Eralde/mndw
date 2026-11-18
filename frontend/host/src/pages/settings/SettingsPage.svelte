@@ -16,13 +16,13 @@ import {
   settingsTabFromPath,
 } from './settings-route.js';
 
-interface PermissionState {
+interface CapabilityState {
   visible: boolean;
   available: boolean;
 }
 
-let permissionVisible = $state(false);
-let permissionAvailable = $state(false);
+let capabilityVisible = $state(false);
+let capabilityAvailable = $state(false);
 
 const activeTab = $derived.by(() => {
   const pathname = appRouter?.route.pathname ?? globalThis.location.pathname;
@@ -52,9 +52,9 @@ function handleTabChange(event: CustomEvent<MndwTabsChangeDetail>): void {
   void router.navigate(settingsPath(tab.id));
 }
 
-function handlePermissionStateChange(state: PermissionState): void {
-  permissionVisible = state.visible;
-  permissionAvailable = state.available;
+function handleCapabilityStateChange(state: CapabilityState): void {
+  capabilityVisible = state.visible;
+  capabilityAvailable = state.available;
 }
 </script>
 
@@ -77,15 +77,15 @@ function handlePermissionStateChange(state: PermissionState): void {
       </mndw-tab>
     {/each}
     <mndw-tab-panel for="general">
-      <GeneralSettings onPermissionStateChange={handlePermissionStateChange} />
+      <GeneralSettings onCapabilityStateChange={handleCapabilityStateChange} />
     </mndw-tab-panel>
     <mndw-tab-panel for="diagnostics">
       <DiagnosticsSettings />
     </mndw-tab-panel>
     <mndw-tab-panel for="plugins">
       <PluginSettings
-        {permissionVisible}
-        {permissionAvailable}
+        {capabilityVisible}
+        {capabilityAvailable}
       />
     </mndw-tab-panel>
     <mndw-tab-panel for="self-update">

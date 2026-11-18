@@ -143,11 +143,11 @@ function prepareDashboard(): void {
     module: {
       createInstance: (_container, context) =>
         pendingMount?.promise.then((createdInstance) => {
-          void context.storage.set('settings', 'initialized');
+          void context.storage.instance.set('settings', 'initialized');
 
           return {
             unmount: () => {
-              void context.storage.set('unmount', 'unmounted');
+              void context.storage.instance.set('unmount', 'unmounted');
 
               return createdInstance.unmount?.();
             },

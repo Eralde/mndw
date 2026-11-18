@@ -114,34 +114,39 @@ interface PluginContextBase {
   readonly telemetry: PluginTelemetry;
   /** Typed event facade for subscribing to host and plugin events. */
   readonly events?: PluginEventFacade;
-  /** RCI manager for interacting with the router's command interface. */
-  readonly rciManager: PluginRciManager;
-  /**
-   * Browser storage scoped to this plugin context; each widget instance has its own scope. The host clears widget data
-   * when its dashboard tile is removed or its plugin no longer appears as a widget. Leaving the dashboard or a
-   * plugin page preserves it.
-   */
-  readonly storage: PluginStorage;
-  /** Browser storage shared by all plugin instances; it survives disablement and removal. */
-  readonly sharedStorage: PluginStorage;
-  /** Snapshot of device details, including feature and component helpers. */
-  readonly deviceInfo: DeviceInfo;
+  /** Browser storage scopes for this plugin. */
+  readonly storage: {
+    /**
+     * Browser storage scoped to this plugin context; each widget instance has its own scope. The host clears widget data
+     * when its dashboard tile is removed or its plugin no longer appears as a widget. Leaving the dashboard or a
+     * plugin page preserves it.
+     */
+    readonly instance: PluginStorage;
+    /** Browser storage shared by all plugin instances; it survives disablement and removal. */
+    readonly shared: PluginStorage;
+  };
+  /** Device information and router command interface for this plugin. */
+  readonly device: {
+    /** Snapshot of device details, including feature and component helpers. */
+    readonly info: DeviceInfo;
+    /** RCI manager for interacting with the router's command interface. */
+    readonly rci: PluginRciManager;
+  };
   /** Translation API bound to the plugin's current locale. */
   readonly i18n: PluginI18n;
   /** Stable identifier for this mounted plugin instance. */
   readonly instanceId: string;
-  /** Current host theme. This getter follows changes while the plugin is mounted. */
-  readonly theme: MndwThemeName;
-  /** Emits the current theme on subscribe and completes when the plugin unmounts. */
-  readonly theme$: Observable<MndwThemeName>;
-  /** Current host locale. This getter follows changes while the plugin is mounted. */
-  readonly locale: string;
-  /** Emits the current locale on subscribe and completes when the plugin unmounts. */
-  readonly locale$: Observable<string>;
-  /** Current applied palette, including a device override when present. */
-  readonly palette: PaletteTokenMap;
-  /** Emits the current palette on subscribe and completes when the plugin unmounts. */
-  readonly palette$: Observable<PaletteTokenMap>;
+  /** Current theme and applied palette, including a device override when present. */
+  readonly appearance: {
+    /** Current host theme. This getter follows changes while the plugin is mounted. */
+    readonly theme: MndwThemeName;
+    /** Emits the current theme on subscribe and completes when the plugin unmounts. */
+    readonly theme$: Observable<MndwThemeName>;
+    /** Current applied palette, including a device override when present. */
+    readonly palette: PaletteTokenMap;
+    /** Emits the current palette on subscribe and completes when the plugin unmounts. */
+    readonly palette$: Observable<PaletteTokenMap>;
+  };
   /**
    * Typed backend client. Present only when the plugin declares a `backend`; ids resolve locally
    * from the daemon's descriptor snapshot. See {@link BackendClient}.
@@ -149,8 +154,11 @@ interface PluginContextBase {
   readonly backend?: BackendClient;
   /** Framework-agnostic top-layer UI (modal, drawer, popover, custom). */
   readonly overlay: OverlayService;
-  /** Creates a host-managed ticker destroyed when this plugin context ends. */
-  createTicker(): Ticker;
+  /** Host-managed timers destroyed when this plugin context ends. */
+  readonly timers: {
+    /** Creates a host-managed ticker destroyed when this plugin context ends. */
+    createTicker(): Ticker;
+  };
 }
 
 export interface WidgetPluginContext extends PluginContextBase {

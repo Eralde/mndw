@@ -69,18 +69,18 @@ func TestNewPanicsWithoutRuntime(t *testing.T) {
 	New(Config{})
 }
 
-type permissionTestController struct {
+type capabilityTestController struct {
 	available bool
 	changeErr error
 	onChanged func()
 	changes   int
 }
 
-type permissionSocketStartFailure struct{}
+type capabilitySocketStartFailure struct{}
 
-func (permissionSocketStartFailure) Error() string { return "persistent RCI socket start failed" }
+func (capabilitySocketStartFailure) Error() string { return "persistent RCI socket start failed" }
 
-func (permissionSocketStartFailure) PersistentRCISocketStartFailed() bool { return true }
+func (capabilitySocketStartFailure) PersistentRCISocketStartFailed() bool { return true }
 
 type lifecycleTestRuntime struct {
 	store         *state.Store
@@ -177,11 +177,11 @@ func (r *lifecycleTestRuntime) Limits() backend.RuntimeLimitsSnapshot {
 	return backend.RuntimeLimitsSnapshot{}
 }
 
-func (c *permissionTestController) ControllerPermissionAvailable() bool {
+func (c *capabilityTestController) ControllerCapabilityAvailable() bool {
 	return c.available
 }
 
-func (c *permissionTestController) PermissionChanged(string) error {
+func (c *capabilityTestController) CapabilityChanged(string) error {
 	c.changes++
 
 	if c.onChanged != nil {
@@ -227,7 +227,7 @@ func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-func newPermissionServer(t *testing.T, controller PersistentRCIPermissionController) (*httptest.Server, *state.Store) {
+func newCapabilityServer(t *testing.T, controller PersistentRCICapabilityController) (*httptest.Server, *state.Store) {
 	t.Helper()
 
 	root := t.TempDir()
@@ -237,7 +237,7 @@ func newPermissionServer(t *testing.T, controller PersistentRCIPermissionControl
 		BuiltinPluginsDir:                 filepath.Join(root, "builtin"),
 		MaxUploadBytes:                    10 << 20,
 		Runtime:                           passthroughRuntime{},
-		PersistentRCIPermissionController: controller,
+		PersistentRCICapabilityController: controller,
 	}
 	store, err := state.Open(filepath.Join(root, "data", "state.json"))
 	if err != nil {
@@ -260,13 +260,13 @@ func newPermissionServer(t *testing.T, controller PersistentRCIPermissionControl
 	return srv, store
 }
 
-func newLifecycleServer(t *testing.T, runtime PluginRuntime, controller PersistentRCIPermissionController) (*httptest.Server, *state.Store) {
+func newLifecycleServer(t *testing.T, runtime PluginRuntime, controller PersistentRCICapabilityController) (*httptest.Server, *state.Store) {
 	srv, store, _, _ := newLifecycleHarness(t, runtime, controller)
 
 	return srv, store
 }
 
-func newLifecycleHarness(t *testing.T, runtime PluginRuntime, controller PersistentRCIPermissionController) (*httptest.Server, *state.Store, *Handler, Config) {
+func newLifecycleHarness(t *testing.T, runtime PluginRuntime, controller PersistentRCICapabilityController) (*httptest.Server, *state.Store, *Handler, Config) {
 	t.Helper()
 
 	root := t.TempDir()
@@ -276,7 +276,7 @@ func newLifecycleHarness(t *testing.T, runtime PluginRuntime, controller Persist
 		BuiltinPluginsDir:                 filepath.Join(root, "builtin"),
 		MaxUploadBytes:                    10 << 20,
 		Runtime:                           runtime,
-		PersistentRCIPermissionController: controller,
+		PersistentRCICapabilityController: controller,
 	}
 	store, err := state.Open(filepath.Join(root, "data", "state.json"))
 	if err != nil {
@@ -301,51 +301,51 @@ func newLifecycleHarness(t *testing.T, runtime PluginRuntime, controller Persist
 	return srv, store, handler, cfg
 }
 
-func permissionManifest(name string) string {
-	return `{"manifestVersion":1,"name":"` + name + `","version":"1.0.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3},"permissions":["persistent-rci-session:write"]}`
+func capabilityManifest(name string) string {
+	return `{"manifestVersion":1,"name":"` + name + `","version":"1.0.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3},"capabilities":["persistent-rci-session:write"]}`
 }
 
-func noPermissionManifest(name string) string {
+func noCapabilityManifest(name string) string {
 	return `{"manifestVersion":1,"name":"` + name + `","version":"1.0.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3}` + `}`
 }
 
-func installPermissionPlugin(t *testing.T, srv *httptest.Server, name string) {
+func installCapabilityPlugin(t *testing.T, srv *httptest.Server, name string) {
 	t.Helper()
 
 	resp := upload(t, srv, makeZip(t, map[string]string{
-		"manifest.json": permissionManifest(name),
+		"manifest.json": capabilityManifest(name),
 		"index.js":      "x",
 	}))
 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("permission plugin upload status = %d", resp.StatusCode)
+		t.Fatalf("capability plugin upload status = %d", resp.StatusCode)
 	}
 }
 
-func installNoPermissionPlugin(t *testing.T, srv *httptest.Server, name string) {
+func installNoCapabilityPlugin(t *testing.T, srv *httptest.Server, name string) {
 	t.Helper()
 
 	resp := upload(t, srv, makeZip(t, map[string]string{
-		"manifest.json": noPermissionManifest(name),
+		"manifest.json": noCapabilityManifest(name),
 		"index.js":      "x",
 	}))
 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("no-permission plugin upload status = %d", resp.StatusCode)
+		t.Fatalf("no-capability plugin upload status = %d", resp.StatusCode)
 	}
 }
 
-func postPermission(t *testing.T, srv *httptest.Server, name, permission string, enabled bool) *http.Response {
+func postCapability(t *testing.T, srv *httptest.Server, name, capability string, enabled bool) *http.Response {
 	t.Helper()
 
-	body, _ := json.Marshal(map[string]any{"name": name, "permission": permission, "enabled": enabled})
-	resp, err := http.Post(srv.URL+"/api/mgmt/permission", "application/json", bytes.NewReader(body))
+	body, _ := json.Marshal(map[string]any{"name": name, "capability": capability, "enabled": enabled})
+	resp, err := http.Post(srv.URL+"/api/mgmt/capability", "application/json", bytes.NewReader(body))
 	if err != nil {
-		t.Fatalf("permission POST: %v", err)
+		t.Fatalf("capability POST: %v", err)
 	}
 
 	return resp
@@ -639,9 +639,9 @@ func TestDenyRemovesStaging(t *testing.T) {
 	}
 }
 
-func TestDenyDoesNotReconcilePermission(t *testing.T) {
-	controller := &permissionTestController{available: true}
-	srv, store := newPermissionServer(t, controller)
+func TestDenyDoesNotReconcileCapability(t *testing.T) {
+	controller := &capabilityTestController{available: true}
+	srv, store := newCapabilityServer(t, controller)
 
 	resp := upload(t, srv, makeZip(t, map[string]string{
 		"manifest.json":  serviceBackendManifest,
@@ -660,7 +660,7 @@ func TestDenyDoesNotReconcilePermission(t *testing.T) {
 	}
 
 	if controller.changes != 0 {
-		t.Fatalf("deny permission changes = %d, want 0", controller.changes)
+		t.Fatalf("deny capability changes = %d, want 0", controller.changes)
 	}
 
 	audit := store.Snapshot().Audit
@@ -1167,21 +1167,21 @@ func TestEnableDisableTogglesState(t *testing.T) {
 	}
 }
 
-func TestLifecycleCharacterizesRuntimeAndPermissionOrdering(t *testing.T) {
+func TestLifecycleCharacterizesRuntimeAndCapabilityOrdering(t *testing.T) {
 	runtime := &lifecycleTestRuntime{}
-	controller := &permissionTestController{available: true}
+	controller := &capabilityTestController{available: true}
 	srv, store := newLifecycleServer(t, runtime, controller)
 	runtime.store = store
 	controller.onChanged = func() {
 		record, ok := store.Get("svc")
 
 		if !ok {
-			runtime.events = append(runtime.events, "permission:missing")
+			runtime.events = append(runtime.events, "capability:missing")
 
 			return
 		}
 
-		runtime.events = append(runtime.events, fmt.Sprintf("permission:stored=%t", record.Enabled))
+		runtime.events = append(runtime.events, fmt.Sprintf("capability:stored=%t", record.Enabled))
 	}
 
 	resp := upload(t, srv, makeZip(t, map[string]string{
@@ -1205,7 +1205,7 @@ func TestLifecycleCharacterizesRuntimeAndPermissionOrdering(t *testing.T) {
 		t.Fatalf("disable status = %d, want 200", disable.StatusCode)
 	}
 
-	if want := []string{"execute:2/1", "stop:stored=true", "permission:stored=false"}; !reflect.DeepEqual(runtime.events, want) {
+	if want := []string{"execute:2/1", "stop:stored=true", "capability:stored=false"}; !reflect.DeepEqual(runtime.events, want) {
 		t.Fatalf("disable event order = %#v, want %#v", runtime.events, want)
 	}
 
@@ -1218,7 +1218,7 @@ func TestLifecycleCharacterizesRuntimeAndPermissionOrdering(t *testing.T) {
 		t.Fatalf("enable status = %d, want 200", enable.StatusCode)
 	}
 
-	if want := []string{"execute:1/0", "start:stored=approved/false:requested=approved/true", "permission:stored=true"}; !reflect.DeepEqual(runtime.events, want) {
+	if want := []string{"execute:1/0", "start:stored=approved/false:requested=approved/true", "capability:stored=true"}; !reflect.DeepEqual(runtime.events, want) {
 		t.Fatalf("enable event order = %#v, want %#v", runtime.events, want)
 	}
 
@@ -1314,13 +1314,13 @@ func TestOpkgInstallSuccessPreservesResponse(t *testing.T) {
 	}
 }
 
-func TestPermissionEnablePersistsBeforeReconcileFailure(t *testing.T) {
-	controller := &permissionTestController{available: true, changeErr: permissionSocketStartFailure{}}
-	srv, store := newPermissionServer(t, controller)
+func TestCapabilityEnablePersistsBeforeReconcileFailure(t *testing.T) {
+	controller := &capabilityTestController{available: true, changeErr: capabilitySocketStartFailure{}}
+	srv, store := newCapabilityServer(t, controller)
 
-	installPermissionPlugin(t, srv, "permissioned")
+	installCapabilityPlugin(t, srv, "capable")
 
-	resp := postPermission(t, srv, "permissioned", "persistent-rci-session:write", true)
+	resp := postCapability(t, srv, "capable", "persistent-rci-session:write", true)
 
 	defer resp.Body.Close()
 
@@ -1330,26 +1330,26 @@ func TestPermissionEnablePersistsBeforeReconcileFailure(t *testing.T) {
 
 	assertCode(t, resp, "RCI_SOCKET_START_FAILED")
 
-	if !store.HasGrant("permissioned", "persistent-rci-session:write") {
+	if !store.HasCapabilityGrant("capable", "persistent-rci-session:write") {
 		t.Fatal("grant was not persisted before reconcile failure")
 	}
 
 	if controller.changes != 1 {
-		t.Fatalf("permission changes = %d, want 1", controller.changes)
+		t.Fatalf("capability changes = %d, want 1", controller.changes)
 	}
 
-	if got := store.Snapshot().Audit[len(store.Snapshot().Audit)-1].Action; got != "permission-enable" {
+	if got := store.Snapshot().Audit[len(store.Snapshot().Audit)-1].Action; got != "capability-enable" {
 		t.Fatalf("last audit action = %q", got)
 	}
 }
 
-func TestPermissionEnableUnavailableDoesNotPersist(t *testing.T) {
-	controller := &permissionTestController{available: false}
-	srv, store := newPermissionServer(t, controller)
+func TestCapabilityEnableUnavailableDoesNotPersist(t *testing.T) {
+	controller := &capabilityTestController{available: false}
+	srv, store := newCapabilityServer(t, controller)
 
-	installPermissionPlugin(t, srv, "permissioned")
+	installCapabilityPlugin(t, srv, "capable")
 
-	resp := postPermission(t, srv, "permissioned", "persistent-rci-session:write", true)
+	resp := postCapability(t, srv, "capable", "persistent-rci-session:write", true)
 
 	defer resp.Body.Close()
 
@@ -1359,25 +1359,25 @@ func TestPermissionEnableUnavailableDoesNotPersist(t *testing.T) {
 
 	assertCode(t, resp, "CONTROLLER_SESSION_UNAVAILABLE")
 
-	if store.HasGrant("permissioned", "persistent-rci-session:write") {
+	if store.HasCapabilityGrant("capable", "persistent-rci-session:write") {
 		t.Fatal("unavailable enable persisted a true grant")
 	}
 
 	if controller.changes != 0 {
-		t.Fatalf("permission changes = %d, want 0", controller.changes)
+		t.Fatalf("capability changes = %d, want 0", controller.changes)
 	}
 }
 
-func TestPermissionDisableWithNilControllerPersistsFalse(t *testing.T) {
-	srv, store := newPermissionServer(t, nil)
+func TestCapabilityDisableWithNilControllerPersistsFalse(t *testing.T) {
+	srv, store := newCapabilityServer(t, nil)
 
-	installPermissionPlugin(t, srv, "permissioned")
+	installCapabilityPlugin(t, srv, "capable")
 
-	if err := store.SetGrant("permissioned", "persistent-rci-session:write", true); err != nil {
+	if err := store.SetCapabilityGrant("capable", "persistent-rci-session:write", true); err != nil {
 		t.Fatalf("seed grant: %v", err)
 	}
 
-	resp := postPermission(t, srv, "permissioned", "persistent-rci-session:write", false)
+	resp := postCapability(t, srv, "capable", "persistent-rci-session:write", false)
 
 	defer resp.Body.Close()
 
@@ -1385,43 +1385,43 @@ func TestPermissionDisableWithNilControllerPersistsFalse(t *testing.T) {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
 
-	if store.HasGrant("permissioned", "persistent-rci-session:write") {
+	if store.HasCapabilityGrant("capable", "persistent-rci-session:write") {
 		t.Fatal("nil-controller disable did not persist false")
 	}
 }
 
-func TestPermissionListProjectsOnlyDeclaredAllowlistedGrants(t *testing.T) {
-	controller := &permissionTestController{available: true}
-	srv, store := newPermissionServer(t, controller)
+func TestCapabilityListProjectsOnlyDeclaredAllowlistedGrants(t *testing.T) {
+	controller := &capabilityTestController{available: true}
+	srv, store := newCapabilityServer(t, controller)
 
-	installPermissionPlugin(t, srv, "permissioned")
-	installNoPermissionPlugin(t, srv, "plain")
+	installCapabilityPlugin(t, srv, "capable")
+	installNoCapabilityPlugin(t, srv, "plain")
 
-	if err := store.SetGrant("permissioned", "persistent-rci-session:write", true); err != nil {
+	if err := store.SetCapabilityGrant("capable", "persistent-rci-session:write", true); err != nil {
 		t.Fatalf("seed declared grant: %v", err)
 	}
 
-	if err := store.SetGrant("permissioned", "future-permission", true); err != nil {
+	if err := store.SetCapabilityGrant("capable", "future-capability", true); err != nil {
 		t.Fatalf("seed future grant: %v", err)
 	}
 
-	if err := store.SetGrant("plain", "persistent-rci-session:write", true); err != nil {
+	if err := store.SetCapabilityGrant("plain", "persistent-rci-session:write", true); err != nil {
 		t.Fatalf("seed undeclared grant: %v", err)
 	}
 
 	entries := listPlugins(t, srv, "/api/mgmt/list")
-	permissioned, ok := findEntry(entries, "permissioned")
+	capable, ok := findEntry(entries, "capable")
 
 	if !ok {
-		t.Fatal("permissioned plugin missing")
+		t.Fatal("capable plugin missing")
 	}
 
-	if len(permissioned.Permissions) != 1 || permissioned.Permissions[0] != "persistent-rci-session:write" {
-		t.Fatalf("permissions = %#v", permissioned.Permissions)
+	if len(capable.Capabilities) != 1 || capable.Capabilities[0] != "persistent-rci-session:write" {
+		t.Fatalf("capabilities = %#v", capable.Capabilities)
 	}
 
-	if len(permissioned.PermissionGrants) != 1 || !permissioned.PermissionGrants["persistent-rci-session:write"] {
-		t.Fatalf("permission grants = %#v", permissioned.PermissionGrants)
+	if len(capable.CapabilityGrants) != 1 || !capable.CapabilityGrants["persistent-rci-session:write"] {
+		t.Fatalf("capability grants = %#v", capable.CapabilityGrants)
 	}
 
 	plain, ok := findEntry(entries, "plain")
@@ -1430,22 +1430,22 @@ func TestPermissionListProjectsOnlyDeclaredAllowlistedGrants(t *testing.T) {
 		t.Fatal("plain plugin missing")
 	}
 
-	if len(plain.Permissions) != 0 || len(plain.PermissionGrants) != 0 {
+	if len(plain.Capabilities) != 0 || len(plain.CapabilityGrants) != 0 {
 		t.Fatalf("undeclared projection = %+v", plain)
 	}
 }
 
-func TestDeletePurgesPermissionGrants(t *testing.T) {
-	controller := &permissionTestController{available: true}
-	srv, store := newPermissionServer(t, controller)
+func TestDeletePurgesCapabilityGrants(t *testing.T) {
+	controller := &capabilityTestController{available: true}
+	srv, store := newCapabilityServer(t, controller)
 
-	installPermissionPlugin(t, srv, "permissioned")
+	installCapabilityPlugin(t, srv, "capable")
 
-	if err := store.SetGrant("permissioned", "persistent-rci-session:write", true); err != nil {
+	if err := store.SetCapabilityGrant("capable", "persistent-rci-session:write", true); err != nil {
 		t.Fatalf("seed grant: %v", err)
 	}
 
-	resp := postName(t, srv, "/api/mgmt/delete", "permissioned")
+	resp := postName(t, srv, "/api/mgmt/delete", "capable")
 
 	defer resp.Body.Close()
 
@@ -1453,32 +1453,32 @@ func TestDeletePurgesPermissionGrants(t *testing.T) {
 		t.Fatalf("delete status = %d, want 200", resp.StatusCode)
 	}
 
-	if _, exists := store.Snapshot().PermissionGrants["permissioned"]; exists {
-		t.Fatal("delete retained permission grants")
+	if _, exists := store.Snapshot().CapabilityGrants["capable"]; exists {
+		t.Fatal("delete retained capability grants")
 	}
 
 	audit := store.Snapshot().Audit
 
-	if len(audit) == 0 || audit[len(audit)-1].Action != "delete" || audit[len(audit)-1].Detail != "plugin removed by operator; permission grants purged" {
+	if len(audit) == 0 || audit[len(audit)-1].Action != "delete" || audit[len(audit)-1].Detail != "plugin removed by operator; capability grants purged" {
 		t.Fatalf("delete audit = %+v", audit)
 	}
 
 	if controller.changes != 1 {
-		t.Fatalf("delete permission changes = %d, want 1", controller.changes)
+		t.Fatalf("delete capability changes = %d, want 1", controller.changes)
 	}
 }
 
-func TestPluginLifecycleReconcilesPersistentPermission(t *testing.T) {
-	controller := &permissionTestController{available: true}
-	srv, store := newPermissionServer(t, controller)
+func TestPluginLifecycleReconcilesPersistentCapability(t *testing.T) {
+	controller := &capabilityTestController{available: true}
+	srv, store := newCapabilityServer(t, controller)
 
-	installPermissionPlugin(t, srv, "permissioned")
+	installCapabilityPlugin(t, srv, "capable")
 
-	if err := store.SetGrant("permissioned", "persistent-rci-session:write", true); err != nil {
+	if err := store.SetCapabilityGrant("capable", "persistent-rci-session:write", true); err != nil {
 		t.Fatalf("seed grant: %v", err)
 	}
 
-	disable := postName(t, srv, "/api/mgmt/disable", "permissioned")
+	disable := postName(t, srv, "/api/mgmt/disable", "capable")
 
 	if disable.StatusCode != http.StatusOK {
 		t.Fatalf("disable status = %d, want 200", disable.StatusCode)
@@ -1487,10 +1487,10 @@ func TestPluginLifecycleReconcilesPersistentPermission(t *testing.T) {
 	disable.Body.Close()
 
 	if controller.changes != 1 {
-		t.Fatalf("disable permission changes = %d, want 1", controller.changes)
+		t.Fatalf("disable capability changes = %d, want 1", controller.changes)
 	}
 
-	enable := postName(t, srv, "/api/mgmt/enable", "permissioned")
+	enable := postName(t, srv, "/api/mgmt/enable", "capable")
 
 	if enable.StatusCode != http.StatusOK {
 		t.Fatalf("enable status = %d, want 200", enable.StatusCode)
@@ -1499,7 +1499,7 @@ func TestPluginLifecycleReconcilesPersistentPermission(t *testing.T) {
 	enable.Body.Close()
 
 	if controller.changes != 2 {
-		t.Fatalf("enable permission changes = %d, want 2", controller.changes)
+		t.Fatalf("enable capability changes = %d, want 2", controller.changes)
 	}
 }
 

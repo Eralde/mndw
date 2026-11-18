@@ -80,7 +80,7 @@ describe('MwsdStatusService', () => {
       ['blocked', new BackendNotApproved('nodes')],
       [
         'blocked',
-        new BackendBlocked('nodes', [{permission: 'persistent-rci-session:write', reason: 'not-granted'}], 2),
+        new BackendBlocked('nodes', [{capability: 'persistent-rci-session:write', reason: 'not-granted'}], 2),
       ],
       ['incompatible', new BackendIncompatible('nodes')],
     ] as const,
@@ -102,10 +102,10 @@ describe('MwsdStatusService', () => {
       state: 'blocked',
       retryAfterSeconds: null,
       blockers: [
-        {permission: 'persistent-rci-session:write', reason: 'not-granted'},
-        {permission: 'persistent-rci-session:write', reason: 'prerequisite-unavailable',
+        {capability: 'persistent-rci-session:write', reason: 'not-granted'},
+        {capability: 'persistent-rci-session:write', reason: 'prerequisite-unavailable',
           prerequisite: 'controller-token'},
-        {permission: 'persistent-rci-session:write', reason: 'future-reason', prerequisite: 'future-code'},
+        {capability: 'persistent-rci-session:write', reason: 'future-reason', prerequisite: 'future-code'},
       ],
     } as BackendStatus);
     const service = makeStatusService(fakeBackend(fetch, status));
@@ -116,7 +116,7 @@ describe('MwsdStatusService', () => {
 
     expect(service.extraFeaturesAvailability()).toBe('blocked');
     expect(service.extraFeaturesPresentation()).toBe('blocked');
-    expect(service.extraFeaturesSetupReasons()).toEqual(['permission', 'controller-token', 'generic']);
+    expect(service.extraFeaturesSetupReasons()).toEqual(['capability', 'controller-token', 'generic']);
   });
 
   it('maps a valid unavailable persistent snapshot to unavailable presentation', async () => {
@@ -139,12 +139,12 @@ describe('MwsdStatusService', () => {
       [{state: 'starting', retryAfterSeconds: 3}, 'starting', []],
       [{state: 'incompatible', requiredProtocol: 2, supportedProtocols: [1]}, 'incompatible', []],
       [{state: 'unavailable'}, 'unavailable', []],
-      [{state: 'blocked', blockers: [{permission: 'persistent-rci-session:write', reason: 'not-granted'}]}, 'blocked', [
-        'permission',
+      [{state: 'blocked', blockers: [{capability: 'persistent-rci-session:write', reason: 'not-granted'}]}, 'blocked', [
+        'capability',
       ]],
       [
         {state: 'blocked',
-          blockers: [{permission: 'persistent-rci-session:write', reason: 'prerequisite-unavailable',
+          blockers: [{capability: 'persistent-rci-session:write', reason: 'prerequisite-unavailable',
             prerequisite: 'controller-token'}]},
         'blocked',
         ['controller-token'],
@@ -189,8 +189,8 @@ describe('MwsdStatusService', () => {
     const error = new BackendBlocked(
       'nodes',
       [
-        {permission: 'persistent-rci-session:write', reason: 'not-granted'},
-        {permission: 'persistent-rci-session:write', reason: 'prerequisite-unavailable',
+        {capability: 'persistent-rci-session:write', reason: 'not-granted'},
+        {capability: 'persistent-rci-session:write', reason: 'prerequisite-unavailable',
           prerequisite: 'controller-token'},
       ],
       2,
@@ -202,7 +202,7 @@ describe('MwsdStatusService', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(service.extraFeaturesAvailability()).toBe('blocked');
-    expect(service.extraFeaturesSetupReasons()).toEqual(['permission', 'controller-token']);
+    expect(service.extraFeaturesSetupReasons()).toEqual(['capability', 'controller-token']);
   });
 
   it.each(

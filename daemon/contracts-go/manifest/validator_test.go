@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -48,27 +49,36 @@ func TestFixtureCorpusParity(t *testing.T) {
 	}
 }
 
-func TestPersistentRCIPermissions(t *testing.T) {
-	base := `{"manifestVersion":1,"name":"permissioned","version":"1.0.0","type":"widget","label":"Permissioned","entry":"index.js","size":{"w":2,"h":2},"permissions":%s}`
+func TestPersistentRCICapabilities(t *testing.T) {
+	base := `{"manifestVersion":1,"name":"capable","version":"1.0.0","type":"widget","label":"Capable","entry":"index.js","size":{"w":2,"h":2},"capabilities":%s}`
 
 	for _, test := range []struct {
-		name        string
-		permissions string
-		valid       bool
+		name         string
+		capabilities string
+		valid        bool
 	}{
-		{name: "read", permissions: `["persistent-rci-session:read"]`, valid: true},
-		{name: "write", permissions: `["persistent-rci-session:write"]`, valid: true},
-		{name: "both", permissions: `["persistent-rci-session:read","persistent-rci-session:write"]`, valid: true},
-		{name: "duplicate read", permissions: `["persistent-rci-session:read","persistent-rci-session:read"]`},
-		{name: "duplicate write", permissions: `["persistent-rci-session:write","persistent-rci-session:write"]`},
-		{name: "retired", permissions: `["persistent-rci-session"]`},
+		{name: "read", capabilities: `["persistent-rci-session:read"]`, valid: true},
+		{name: "write", capabilities: `["persistent-rci-session:write"]`, valid: true},
+		{name: "both", capabilities: `["persistent-rci-session:read","persistent-rci-session:write"]`, valid: true},
+		{name: "duplicate read", capabilities: `["persistent-rci-session:read","persistent-rci-session:read"]`},
+		{name: "duplicate write", capabilities: `["persistent-rci-session:write","persistent-rci-session:write"]`},
+		{name: "retired", capabilities: `["persistent-rci-session"]`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := Validate([]byte(fmt.Sprintf(base, test.permissions)))
+			_, err := Validate([]byte(fmt.Sprintf(base, test.capabilities)))
 			if (err == nil) != test.valid {
 				t.Fatalf("Validate() error = %v, valid = %v", err, test.valid)
 			}
 		})
+	}
+}
+
+func TestLegacyPermissionsFieldRequiresCapabilities(t *testing.T) {
+	data := []byte(`{"manifestVersion":1,"name":"legacy-permissions","version":"1.0.0","type":"widget","label":"Legacy","entry":"index.js","size":{"w":2,"h":2},"permissions":["events:*"]}`)
+
+	_, err := Validate(data)
+	if err == nil || !strings.Contains(err.Error(), "permissions was renamed to capabilities in 0.3") {
+		t.Fatalf("Validate() error = %v, want rename guidance", err)
 	}
 }
 

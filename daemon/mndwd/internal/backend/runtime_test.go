@@ -93,8 +93,8 @@ func TestRuntimeConfigAppliesExecDefaults(t *testing.T) {
 func TestRuntimeGatedServiceReservesNoSlotAndLifecycleStartDoesNotSpawn(t *testing.T) {
 	gates := NewActivationGateRegistry()
 
-	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGate(func(_, permission string) []ActivationBlocker {
-		return []ActivationBlocker{{Permission: permission, Reason: "not-granted"}}
+	gates.Register(manifest.PersistentRCISessionReadCapability, ActivationGate(func(_, capability string) []ActivationBlocker {
+		return []ActivationBlocker{{Capability: capability, Reason: "not-granted"}}
 	}))
 
 	runtime := NewRuntime(RuntimeConfig{
@@ -102,7 +102,7 @@ func TestRuntimeGatedServiceReservesNoSlotAndLifecycleStartDoesNotSpawn(t *testi
 		Limits:          Limits{MaxSupervisedServices: 1},
 		ActivationGates: gates,
 	})
-	plugin := testServicePlugin(t, "gated", []string{manifest.PersistentRCISessionReadPermission}, "backend/does-not-exist", true)
+	plugin := testServicePlugin(t, "gated", []string{manifest.PersistentRCISessionReadCapability}, "backend/does-not-exist", true)
 
 	runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
 

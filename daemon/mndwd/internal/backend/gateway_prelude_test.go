@@ -40,7 +40,7 @@ func authFail() *fakeAuth {
 }
 
 // newPreludeGateway builds a Gateway backed by a real registry containing the
-// "demo" and permission-gated "gated" plugins (both approved + enabled), plus
+// "demo" and capability-gated "gated" plugins (both approved + enabled), plus
 // disabled and pending state variants that reuse the same validated manifest
 // bytes. It uses a runtime for route-gate state; prelude tests never dispatch to
 // a backend.
@@ -63,7 +63,7 @@ func newPreludeGatewayWithConfig(t *testing.T, auth Authenticator, cfg GatewayCo
 	}
 
 	if err := store.Mutate(func(st *state.State) error {
-		gatedManifest := strings.Replace(demoManifest, `"name":"demo"`, `"name":"gated","permissions":["persistent-rci-session:read"]`, 1)
+		gatedManifest := strings.Replace(demoManifest, `"name":"demo"`, `"name":"gated","capabilities":["persistent-rci-session:read"]`, 1)
 		st.Plugins["demo"] = &state.Plugin{
 			Name:     "demo",
 			Source:   state.SourceUpload,
@@ -293,8 +293,8 @@ func TestResolveAuthorizedRoutePublicRouteDuringMaintenance(t *testing.T) {
 func TestResolveAuthorizedRouteBlockedPluginAuthenticatesFirst(t *testing.T) {
 	gates := NewActivationGateRegistry()
 
-	gates.Register("persistent-rci-session:read", ActivationGate(func(_, permission string) []ActivationBlocker {
-		return []ActivationBlocker{{Permission: permission, Reason: "not-granted"}}
+	gates.Register("persistent-rci-session:read", ActivationGate(func(_, capability string) []ActivationBlocker {
+		return []ActivationBlocker{{Capability: capability, Reason: "not-granted"}}
 	}))
 
 	for _, tc := range []struct {

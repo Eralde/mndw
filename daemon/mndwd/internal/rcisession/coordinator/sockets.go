@@ -36,7 +36,7 @@ func (c *Coordinator) reconcileSockets(pokeActivation bool) {
 	}
 }
 
-func (c *Coordinator) ControllerPermissionAvailable() bool {
+func (c *Coordinator) ControllerCapabilityAvailable() bool {
 	if c == nil || c.service == nil {
 		return false
 	}
@@ -44,7 +44,7 @@ func (c *Coordinator) ControllerPermissionAvailable() bool {
 	return c.service.ControllerSupport() == model.SupportSupported
 }
 
-func (c *Coordinator) PermissionChanged(plugin string) error {
+func (c *Coordinator) CapabilityChanged(plugin string) error {
 	if c == nil || c.service == nil || c.reconciler == nil {
 		return nil
 	}
@@ -89,7 +89,7 @@ func (c *Coordinator) reconcileSocketsLocked() (rcisessionsocket.ReconcileReport
 	bindings := make([]rcisessionsocket.Binding, 0)
 
 	for _, plugin := range c.registry.AllBackendPlugins() {
-		if !hasPersistentRCIPermission(plugin.Manifest) {
+		if !hasPersistentRCICapability(plugin.Manifest) {
 			continue
 		}
 
@@ -98,8 +98,8 @@ func (c *Coordinator) reconcileSocketsLocked() (rcisessionsocket.ReconcileReport
 		}
 
 		grants := rcisessionsocket.Grants{
-			CanRead:  c.store.HasGrant(plugin.Name, manifest.PersistentRCISessionReadPermission),
-			CanWrite: c.store.HasGrant(plugin.Name, manifest.PersistentRCISessionWritePermission),
+			CanRead:  c.store.HasCapabilityGrant(plugin.Name, manifest.PersistentRCISessionReadCapability),
+			CanWrite: c.store.HasCapabilityGrant(plugin.Name, manifest.PersistentRCISessionWriteCapability),
 		}
 		grants.CanRead = grants.CanRead || grants.CanWrite
 
@@ -133,13 +133,13 @@ func isService(m *manifest.Manifest) bool {
 	return m.IsService() && m.Backend.ProtocolVersion != nil && *m.Backend.ProtocolVersion == 1
 }
 
-func hasPersistentRCIPermission(m *manifest.Manifest) bool {
+func hasPersistentRCICapability(m *manifest.Manifest) bool {
 	if m == nil {
 		return false
 	}
 
-	for _, permission := range m.Permissions {
-		if manifest.IsPersistentRCIPermission(permission) {
+	for _, capability := range m.Capabilities {
+		if manifest.IsPersistentRCICapability(capability) {
 			return true
 		}
 	}

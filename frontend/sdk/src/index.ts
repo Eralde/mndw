@@ -1,6 +1,14 @@
 /** @module @mndw/sdk */
 export type {MndwPlugin, PluginInstance, PluginResizeSize} from './plugin.js';
 export type {EventSource, EventTopic, MndwEvent, PluginEventFacade} from './event-schema.js';
+export {EVENT_CAPABILITY_PATTERN, eventCapabilitySchema} from './event-schema.js';
+export {
+  isPersistentRciCapability,
+  PERSISTENT_RCI_CAPABILITIES,
+  persistentRciCapabilitySchema,
+  pluginCapabilitySchema,
+} from './capabilities.js';
+export type {PersistentRciCapability} from './capabilities.js';
 export {PageRouteError} from './context.js';
 export {PLUGIN_RCI_MANAGER_METHODS} from './rci.js';
 export type {PluginRciManager, PluginRciManagerMethod} from './rci.js';
@@ -62,7 +70,7 @@ export type {
 /**
  * The COMPILED DEFAULT palette. Correct for build-time use and for code with no
  * plugin context, but it does not reflect a device palette override — inside a
- * plugin, use `context.palette` instead.
+ * plugin, use `context.appearance.palette` instead.
  */
 export {MNDW_SCALE, MNDW_TOKENS} from './tokens.js';
 export type {MndwThemeName} from './tokens.js';

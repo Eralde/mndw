@@ -28,7 +28,7 @@ import (
 
 var _ mgmt.PersistentRCISocketStartFailure = persistentRCISocketStartError{}
 
-func TestControllerPermissionAvailableUsesControllerSupport(t *testing.T) {
+func TestControllerCapabilityAvailableUsesControllerSupport(t *testing.T) {
 	tests := []struct {
 		name       string
 		controller *model.TokenRecord
@@ -46,14 +46,14 @@ func TestControllerPermissionAvailableUsesControllerSupport(t *testing.T) {
 			service := newCoordinatorService(t, rcisession.ServiceConfig{Store: &assemblySessionStore{document: model.Document{Controller: test.controller}}})
 			assembly := &Coordinator{service: service}
 
-			if got := assembly.ControllerPermissionAvailable(); got != test.want {
-				t.Fatalf("ControllerPermissionAvailable() = %v, want %v", got, test.want)
+			if got := assembly.ControllerCapabilityAvailable(); got != test.want {
+				t.Fatalf("ControllerCapabilityAvailable() = %v, want %v", got, test.want)
 			}
 		})
 	}
 }
 
-func TestControllerPermissionAvailableTokenless(t *testing.T) {
+func TestControllerCapabilityAvailableTokenless(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		service := newCoordinatorService(t, rcisession.ServiceConfig{
 			Store:          &assemblySessionStore{},
@@ -62,8 +62,8 @@ func TestControllerPermissionAvailableTokenless(t *testing.T) {
 		})
 		assembly := &Coordinator{service: service}
 
-		if got := assembly.ControllerPermissionAvailable(); got != enabled {
-			t.Fatalf("ControllerPermissionAvailable() with enabled=%t = %t", enabled, got)
+		if got := assembly.ControllerCapabilityAvailable(); got != enabled {
+			t.Fatalf("ControllerCapabilityAvailable() with enabled=%t = %t", enabled, got)
 		}
 	}
 }
@@ -85,7 +85,7 @@ func TestReconcileSocketsOpensForTokenlessEnabled(t *testing.T) {
 		t.Fatalf("tokenless socket was not opened: %v", err)
 	}
 
-	if blockers := assembly.ActivationBlockers("demo", manifest.PersistentRCISessionReadPermission); len(blockers) != 0 {
+	if blockers := assembly.ActivationBlockers("demo", manifest.PersistentRCISessionReadCapability); len(blockers) != 0 {
 		t.Fatalf("tokenless activation blockers = %#v", blockers)
 	}
 }
@@ -214,10 +214,10 @@ func (s *coordinatorEnabledStore) SetPersistentRCIEnabled(enabled bool) error {
 	return nil
 }
 
-func TestPermissionChangedReportsOnlyFocusedStartFailure(t *testing.T) {
+func TestCapabilityChangedReportsOnlyFocusedStartFailure(t *testing.T) {
 	root := t.TempDir()
 
-	if _, err := manifest.Validate(servicePermissionManifest("good")); err != nil {
+	if _, err := manifest.Validate(serviceCapabilityManifest("good")); err != nil {
 		t.Fatalf("service manifest: %v", err)
 	}
 
@@ -241,13 +241,13 @@ func TestPermissionChangedReportsOnlyFocusedStartFailure(t *testing.T) {
 				Source:   state.SourceUpload,
 				Approval: state.ApprovalApproved,
 				Enabled:  true,
-				Manifest: servicePermissionManifest(name),
+				Manifest: serviceCapabilityManifest(name),
 			}
 		}
 
-		st.PermissionGrants = map[string]map[string]bool{
-			"bad":  {manifest.PersistentRCISessionWritePermission: true},
-			"good": {manifest.PersistentRCISessionWritePermission: true},
+		st.CapabilityGrants = map[string]map[string]bool{
+			"bad":  {manifest.PersistentRCISessionWriteCapability: true},
+			"good": {manifest.PersistentRCISessionWriteCapability: true},
 		}
 
 		return nil
@@ -266,8 +266,8 @@ func TestPermissionChangedReportsOnlyFocusedStartFailure(t *testing.T) {
 		t.Fatalf("backend plugins = %d, want 2", len(plugins))
 	}
 
-	if !store.HasGrant("good", manifest.PersistentRCISessionWritePermission) || !store.HasGrant("bad", manifest.PersistentRCISessionWritePermission) {
-		t.Fatalf("seeded grants = %#v", store.Snapshot().PermissionGrants)
+	if !store.HasCapabilityGrant("good", manifest.PersistentRCISessionWriteCapability) || !store.HasCapabilityGrant("bad", manifest.PersistentRCISessionWriteCapability) {
+		t.Fatalf("seeded grants = %#v", store.Snapshot().CapabilityGrants)
 	}
 
 	assembly := &Coordinator{
@@ -281,15 +281,15 @@ func TestPermissionChangedReportsOnlyFocusedStartFailure(t *testing.T) {
 
 	defer assembly.Close()
 
-	err = assembly.PermissionChanged("bad")
+	err = assembly.CapabilityChanged("bad")
 	var socketStartFailure mgmt.PersistentRCISocketStartFailure
 
 	if !errors.As(err, &socketStartFailure) || !socketStartFailure.PersistentRCISocketStartFailed() {
-		t.Fatalf("bad permission change error = %v, want recognized socket-start failure", err)
+		t.Fatalf("bad capability change error = %v, want recognized socket-start failure", err)
 	}
 
 	if errors.Unwrap(err) == nil {
-		t.Fatalf("bad permission change error = %v, want wrapped socket-start cause", err)
+		t.Fatalf("bad capability change error = %v, want wrapped socket-start cause", err)
 	}
 
 	goodPath, err := backend.NewRuntimePaths(runtimeRoot, "good")
@@ -301,8 +301,8 @@ func TestPermissionChangedReportsOnlyFocusedStartFailure(t *testing.T) {
 		t.Fatalf("good socket missing after unrelated failure: %v", err)
 	}
 
-	if err := assembly.PermissionChanged("good"); err != nil {
-		t.Fatalf("good permission change leaked bad failure: %v", err)
+	if err := assembly.CapabilityChanged("good"); err != nil {
+		t.Fatalf("good capability change leaked bad failure: %v", err)
 	}
 
 	sessionStore.document.Controller = nil
@@ -349,10 +349,10 @@ func shortTempDir(t *testing.T) string {
 func TestActivationEvaluateReportsBothBlockersBeforeFirstPublish(t *testing.T) {
 	assembly := &Coordinator{}
 
-	got := assembly.ActivationBlockers("demo", manifest.PersistentRCISessionWritePermission)
+	got := assembly.ActivationBlockers("demo", manifest.PersistentRCISessionWriteCapability)
 	want := []backend.ActivationBlocker{
-		{Permission: manifest.PersistentRCISessionWritePermission, Reason: backend.BlockerNotGranted},
-		{Permission: manifest.PersistentRCISessionWritePermission, Reason: backend.BlockerPrerequisiteUnavailable, Prerequisite: "controller-token"},
+		{Capability: manifest.PersistentRCISessionWriteCapability, Reason: backend.BlockerNotGranted},
+		{Capability: manifest.PersistentRCISessionWriteCapability, Reason: backend.BlockerPrerequisiteUnavailable, Prerequisite: "controller-token"},
 	}
 
 	if !reflect.DeepEqual(got, want) {
@@ -380,8 +380,8 @@ func TestActivationSnapshotUsesGrantUnionAndTokenPresence(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			assembly := newActivationSnapshotAssembly(t, map[string]bool{
-				manifest.PersistentRCISessionReadPermission:  test.readGrant,
-				manifest.PersistentRCISessionWritePermission: test.writeGrant,
+				manifest.PersistentRCISessionReadCapability:  test.readGrant,
+				manifest.PersistentRCISessionWriteCapability: test.writeGrant,
 			})
 
 			assembly.mu.Lock()
@@ -391,7 +391,7 @@ func TestActivationSnapshotUsesGrantUnionAndTokenPresence(t *testing.T) {
 
 			assembly.mu.Unlock()
 
-			got := len(assembly.ActivationBlockers("demo", manifest.PersistentRCISessionReadPermission)) == 0
+			got := len(assembly.ActivationBlockers("demo", manifest.PersistentRCISessionReadCapability)) == 0
 
 			if !changed || got != test.want {
 				t.Fatalf("changed=%v satisfied=%v, want changed=true satisfied=%v", changed, got, test.want)
@@ -406,28 +406,28 @@ func TestActivationEvaluateAppliesReadWriteGrantSemantics(t *testing.T) {
 		readGrant  bool
 		writeGrant bool
 		controller *model.TokenRecord
-		permission string
+		capability string
 		want       []backend.ActivationBlocker
 	}{
-		{name: "read missing grant and token", permission: manifest.PersistentRCISessionReadPermission, want: []backend.ActivationBlocker{
-			{Permission: manifest.PersistentRCISessionReadPermission, Reason: backend.BlockerNotGranted},
-			{Permission: manifest.PersistentRCISessionReadPermission, Reason: backend.BlockerPrerequisiteUnavailable, Prerequisite: "controller-token"},
+		{name: "read missing grant and token", capability: manifest.PersistentRCISessionReadCapability, want: []backend.ActivationBlocker{
+			{Capability: manifest.PersistentRCISessionReadCapability, Reason: backend.BlockerNotGranted},
+			{Capability: manifest.PersistentRCISessionReadCapability, Reason: backend.BlockerPrerequisiteUnavailable, Prerequisite: "controller-token"},
 		}},
-		{name: "read grant missing token", readGrant: true, permission: manifest.PersistentRCISessionReadPermission, want: []backend.ActivationBlocker{
-			{Permission: manifest.PersistentRCISessionReadPermission, Reason: backend.BlockerPrerequisiteUnavailable, Prerequisite: "controller-token"},
+		{name: "read grant missing token", readGrant: true, capability: manifest.PersistentRCISessionReadCapability, want: []backend.ActivationBlocker{
+			{Capability: manifest.PersistentRCISessionReadCapability, Reason: backend.BlockerPrerequisiteUnavailable, Prerequisite: "controller-token"},
 		}},
-		{name: "read accepts write grant", writeGrant: true, controller: &model.TokenRecord{Token: "token"}, permission: manifest.PersistentRCISessionReadPermission},
-		{name: "write rejects read grant", readGrant: true, controller: &model.TokenRecord{Token: "token"}, permission: manifest.PersistentRCISessionWritePermission, want: []backend.ActivationBlocker{
-			{Permission: manifest.PersistentRCISessionWritePermission, Reason: backend.BlockerNotGranted},
+		{name: "read accepts write grant", writeGrant: true, controller: &model.TokenRecord{Token: "token"}, capability: manifest.PersistentRCISessionReadCapability},
+		{name: "write rejects read grant", readGrant: true, controller: &model.TokenRecord{Token: "token"}, capability: manifest.PersistentRCISessionWriteCapability, want: []backend.ActivationBlocker{
+			{Capability: manifest.PersistentRCISessionWriteCapability, Reason: backend.BlockerNotGranted},
 		}},
-		{name: "write accepts write grant", writeGrant: true, controller: &model.TokenRecord{Token: "token"}, permission: manifest.PersistentRCISessionWritePermission},
+		{name: "write accepts write grant", writeGrant: true, controller: &model.TokenRecord{Token: "token"}, capability: manifest.PersistentRCISessionWriteCapability},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			assembly := newActivationSnapshotAssembly(t, map[string]bool{
-				manifest.PersistentRCISessionReadPermission:  test.readGrant,
-				manifest.PersistentRCISessionWritePermission: test.writeGrant,
+				manifest.PersistentRCISessionReadCapability:  test.readGrant,
+				manifest.PersistentRCISessionWriteCapability: test.writeGrant,
 			})
 
 			assembly.mu.Lock()
@@ -437,7 +437,7 @@ func TestActivationEvaluateAppliesReadWriteGrantSemantics(t *testing.T) {
 			assembly.publishActivationSnapshotLocked(service.SessionPresent())
 			assembly.mu.Unlock()
 
-			got := assembly.ActivationBlockers("demo", test.permission)
+			got := assembly.ActivationBlockers("demo", test.capability)
 
 			if len(got) != len(test.want) || (len(got) > 0 && !reflect.DeepEqual(got, test.want)) {
 				t.Fatalf("ActivationBlockers() = %#v, want %#v", got, test.want)
@@ -497,7 +497,7 @@ func TestNewSubscribesToServiceMutations(t *testing.T) {
 		t.Fatalf("controller deletion pokes = %d, want 1 before return", got)
 	}
 
-	blockers := assembly.ActivationBlockers("demo", manifest.PersistentRCISessionWritePermission)
+	blockers := assembly.ActivationBlockers("demo", manifest.PersistentRCISessionWriteCapability)
 
 	if len(blockers) != 1 || blockers[0].Prerequisite != "controller-token" {
 		t.Fatalf("activation blockers after deletion = %#v, want controller-token blocker", blockers)
@@ -508,7 +508,7 @@ func TestStartPublishesInitialSnapshotWithoutPoke(t *testing.T) {
 	var pokes atomic.Int32
 	assembly, _ := newStartedCoordinator(t, func() { pokes.Add(1) })
 
-	if blockers := assembly.ActivationBlockers("demo", manifest.PersistentRCISessionWritePermission); len(blockers) != 0 {
+	if blockers := assembly.ActivationBlockers("demo", manifest.PersistentRCISessionWriteCapability); len(blockers) != 0 {
 		t.Fatalf("initial activation blockers = %#v, want none", blockers)
 	}
 
@@ -565,10 +565,10 @@ func newStartedCoordinator(t *testing.T, poke func()) (*Coordinator, *rcisession
 	if err := store.Mutate(func(st *state.State) error {
 		st.Plugins["demo"] = &state.Plugin{
 			Name: "demo", Source: state.SourceUpload, Approval: state.ApprovalApproved, Enabled: true,
-			Manifest: servicePermissionManifest("demo"),
+			Manifest: serviceCapabilityManifest("demo"),
 		}
-		st.PermissionGrants = map[string]map[string]bool{
-			"demo": {manifest.PersistentRCISessionWritePermission: true},
+		st.CapabilityGrants = map[string]map[string]bool{
+			"demo": {manifest.PersistentRCISessionWriteCapability: true},
 		}
 
 		return nil
@@ -610,9 +610,9 @@ func newActivationSnapshotAssembly(t *testing.T, grants map[string]bool) *Coordi
 			Source:   state.SourceUpload,
 			Approval: state.ApprovalApproved,
 			Enabled:  true,
-			Manifest: servicePermissionManifest("demo"),
+			Manifest: serviceCapabilityManifest("demo"),
 		}
-		st.PermissionGrants = map[string]map[string]bool{"demo": grants}
+		st.CapabilityGrants = map[string]map[string]bool{"demo": grants}
 
 		return nil
 	}); err != nil {
@@ -662,10 +662,10 @@ func newSocketAssemblyWithServiceConfig(t *testing.T, serviceConfig rcisession.S
 			Source:   state.SourceUpload,
 			Approval: state.ApprovalApproved,
 			Enabled:  true,
-			Manifest: servicePermissionManifest("demo"),
+			Manifest: serviceCapabilityManifest("demo"),
 		}
-		st.PermissionGrants = map[string]map[string]bool{
-			"demo": {manifest.PersistentRCISessionWritePermission: true},
+		st.CapabilityGrants = map[string]map[string]bool{
+			"demo": {manifest.PersistentRCISessionWriteCapability: true},
 		}
 
 		return nil
@@ -708,8 +708,8 @@ func (e *activationEnumerator) List(context.Context) ([]enumeration.Member, erro
 
 func (e *activationEnumerator) Invalidate() {}
 
-func servicePermissionManifest(name string) []byte {
-	return []byte(`{"manifestVersion":1,"name":"` + name + `","version":"1.0.0","type":"page","label":"` + name + `","entry":"index.js","route":"/` + name + `","permissions":["persistent-rci-session:write"],"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`)
+func serviceCapabilityManifest(name string) []byte {
+	return []byte(`{"manifestVersion":1,"name":"` + name + `","version":"1.0.0","type":"page","label":"` + name + `","entry":"index.js","route":"/` + name + `","capabilities":["persistent-rci-session:write"],"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`)
 }
 
 type assemblySessionStore struct {

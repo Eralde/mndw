@@ -44,7 +44,7 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
 
   const unsubscribeLocale = bindLocale(i18n, render);
 
-  const ticker = ctx.createTicker();
+  const ticker = ctx.timers.createTicker();
   const subscription = ticker.tick$.subscribe(() => {
     render();
   });

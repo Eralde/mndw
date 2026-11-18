@@ -28,7 +28,7 @@ describe('mountWidgetTile pending context disposal', () => {
       ...fixture.context,
       overlay: {...fixture.context.overlay, open: openOverlay},
     }) as unknown as PluginContext;
-    const ticker = context.createTicker();
+    const ticker = context.timers.createTicker();
     const tickerStopped = vi.fn();
 
     ticker.tick$.subscribe({complete: tickerStopped});

@@ -47,7 +47,7 @@ const goldenAlphaPageManifest = `{"manifestVersion":1,"name":"alpha-page","versi
 
 const goldenBetaServiceManifest = `{"manifestVersion":1,"name":"beta-service","version":"2.0.0","type":"widget","label":"Beta","entry":"index.js","size":{"w":6,"h":4,"minW":3,"minH":2},"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","args":["--foreground"],"routes":[{"id":"health","transport":"http","method":"GET","path":"health","access":"public"},{"id":"status","transport":"http","method":"GET","path":"status"},{"id":"terminal","transport":"websocket","path":"terminal","protocols":["tty"]}]}}`
 
-const goldenDeltaRCIManifest = `{"manifestVersion":1,"name":"delta-rci","version":"1.0.0","type":"widget","label":"Delta","entry":"index.js","icon":"shield","size":{"w":4,"h":3},"permissions":["persistent-rci-session:read","persistent-rci-session:write","events:wan"]}`
+const goldenDeltaRCIManifest = `{"manifestVersion":1,"name":"delta-rci","version":"1.0.0","type":"widget","label":"Delta","entry":"index.js","icon":"shield","size":{"w":4,"h":3},"capabilities":["persistent-rci-session:read","persistent-rci-session:write","events:wan"]}`
 
 const goldenGammaExecManifest = `{"manifestVersion":1,"name":"gamma-exec","version":"3.0.0","type":"widget","label":"Gamma","entry":"index.js","size":{"w":4,"h":3},"backend":{"kind":"exec","packages":["curl"],"routes":[{"id":"run","transport":"http","method":"GET","path":"run","command":"backend/run.sh"}]}}`
 
@@ -166,7 +166,7 @@ func TestWireGoldenFixtures(t *testing.T) {
 			SupportedProtocols:  []int{2},
 		},
 	}}
-	srv, store, _, cfg := newLifecycleHarness(t, runtime, &permissionTestController{available: true})
+	srv, store, _, cfg := newLifecycleHarness(t, runtime, &capabilityTestController{available: true})
 
 	seedGoldenPlugin(t, store, "alpha-page", state.ApprovalApproved, true, goldenAlphaPageManifest)
 	seedGoldenPlugin(t, store, "beta-service", state.ApprovalApproved, true, goldenBetaServiceManifest)
@@ -189,7 +189,7 @@ func TestWireGoldenFixtures(t *testing.T) {
 
 	writeBuiltinFixture(t, cfg, "zeta-builtin", true)
 
-	if err := store.SetGrant("delta-rci", "persistent-rci-session:read", true); err != nil {
+	if err := store.SetCapabilityGrant("delta-rci", "persistent-rci-session:read", true); err != nil {
 		t.Fatalf("grant: %v", err)
 	}
 
@@ -205,9 +205,9 @@ func TestWireGoldenFixtures(t *testing.T) {
 		assertWireGolden(t, tc.fixture, readBody(t, resp, http.StatusOK))
 	}
 
-	resp := postPermission(t, srv, "delta-rci", "persistent-rci-session:write", true)
+	resp := postCapability(t, srv, "delta-rci", "persistent-rci-session:write", true)
 
-	assertWireGolden(t, "permission-entry.json", readBody(t, resp, http.StatusOK))
+	assertWireGolden(t, "capability-entry.json", readBody(t, resp, http.StatusOK))
 }
 
 var jsonMarshalerType = reflect.TypeFor[json.Marshaler]()
@@ -368,13 +368,13 @@ func TestWireGoldensCoverEveryListEntryField(t *testing.T) {
 		}
 	}
 
-	var permissionEntry any
+	var capabilityEntry any
 
-	if err := json.Unmarshal(readWireFixture(t, "permission-entry.json"), &permissionEntry); err != nil {
-		t.Fatalf("decode permission-entry.json: %v", err)
+	if err := json.Unmarshal(readWireFixture(t, "capability-entry.json"), &capabilityEntry); err != nil {
+		t.Fatalf("decode capability-entry.json: %v", err)
 	}
 
-	coverWirePaths(entryType, permissionEntry, "", covered)
+	coverWirePaths(entryType, capabilityEntry, "", covered)
 
 	missing := make([]string, 0)
 

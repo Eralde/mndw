@@ -68,7 +68,7 @@ const lastUpdatedTime = computed(() => {
 const visibleClients = computed(() => filterVisibleClients(allClients.value, showOffline.value));
 function persist(key: string, value: string): void {
   dirty.add(key);
-  void props.ctx.storage.set(key, value).catch((caught: unknown) => {
+  void props.ctx.storage.instance.set(key, value).catch((caught: unknown) => {
     console.warn('[clients-widget] could not persist', key, caught);
   });
 }
@@ -159,7 +159,7 @@ function applyStoredInterval(raw: string): void {
 }
 
 function restore(key: string, apply: (raw: string) => void): void {
-  void props.ctx.storage.get(key).then((raw) => {
+  void props.ctx.storage.instance.get(key).then((raw) => {
     if (raw !== null && !dirty.has(key)) {
       apply(raw);
     }
@@ -181,7 +181,7 @@ onMounted(() => {
         loadState.value = {status: 'loading'};
       }
 
-      return fetchClients(props.ctx.rciManager);
+      return fetchClients(props.ctx.device.rci);
     },
     intervalMs: refreshIntervalSeconds.value * 1000,
     onSuccess: (clients) => {

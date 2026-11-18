@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {PERSISTENT_RCI_PERMISSIONS} from '@mndw/sdk-internal';
+import {PERSISTENT_RCI_CAPABILITIES} from '@mndw/sdk-internal';
 import {decodeMgmtList, decodeMgmtListEntry} from './mgmt-list-schema.js';
 
 const widgetEntry = {
@@ -55,10 +55,10 @@ describe('decodeMgmtList', () => {
     expect(() => decodeMgmtList({plugins: 'nope'})).toThrow();
   });
 
-  it('accepts partial permission grants, host catalog data, and runtime startedAt', () => {
+  it('accepts partial capability grants, host catalog data, and runtime startedAt', () => {
     const entries = decodeMgmtList({plugins: [{
       ...widgetEntry,
-      permissionGrants: {'persistent-rci-session:read': true},
+      capabilityGrants: {'persistent-rci-session:read': true},
       catalogBaseUrl: '/catalogs/demo',
       runtime: {
         state: 'ready',
@@ -68,45 +68,45 @@ describe('decodeMgmtList', () => {
       },
     }]});
 
-    expect(entries[0]?.permissionGrants).toEqual({'persistent-rci-session:read': true});
+    expect(entries[0]?.capabilityGrants).toEqual({'persistent-rci-session:read': true});
     expect(entries[0]?.catalogBaseUrl).toBe('/catalogs/demo');
     expect(entries[0]?.runtime?.startedAt).toBe('2026-08-15T10:00:00Z');
   });
 
-  it('accepts every SDK persistent RCI permission grant', () => {
-    for (const permission of PERSISTENT_RCI_PERMISSIONS) {
+  it('accepts every SDK persistent RCI capability grant', () => {
+    for (const capability of PERSISTENT_RCI_CAPABILITIES) {
       const entries = decodeMgmtList({plugins: [{
         ...widgetEntry,
-        permissionGrants: {[permission]: true},
+        capabilityGrants: {[capability]: true},
       }]});
 
-      expect(entries[0]?.permissionGrants).toEqual({[permission]: true});
+      expect(entries[0]?.capabilityGrants).toEqual({[capability]: true});
     }
   });
 
-  it('rejects persistent permission grants outside the SDK permission set', () => {
+  it('rejects persistent capability grants outside the SDK capability set', () => {
     expect(() =>
       decodeMgmtList({plugins: [{
         ...widgetEntry,
-        permissions: ['persistent-rci-session:admin'],
-        permissionGrants: {'persistent-rci-session:admin': true},
+        capabilities: ['persistent-rci-session:admin'],
+        capabilityGrants: {'persistent-rci-session:admin': true},
       }]})
     ).toThrow();
   });
 
-  it('keeps event declarations separate from persistent permission grants', () => {
+  it('keeps event declarations separate from persistent capability grants', () => {
     const entries = decodeMgmtList({plugins: [{
       ...widgetEntry,
-      permissions: ['events:wan,wifi,net'],
-      permissionGrants: {},
+      capabilities: ['events:wan,wifi,net'],
+      capabilityGrants: {},
     }]});
 
-    expect(entries[0]?.permissions).toEqual(['events:wan,wifi,net']);
-    expect(entries[0]?.permissionGrants).toEqual({});
+    expect(entries[0]?.capabilities).toEqual(['events:wan,wifi,net']);
+    expect(entries[0]?.capabilityGrants).toEqual({});
     expect(() =>
       decodeMgmtList({plugins: [{
         ...widgetEntry,
-        permissionGrants: {'events:wan': true},
+        capabilityGrants: {'events:wan': true},
       }]})
     ).toThrow();
   });

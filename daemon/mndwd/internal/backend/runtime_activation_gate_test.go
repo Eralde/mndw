@@ -12,35 +12,35 @@ import (
 
 func TestServiceSpecActivationGates(t *testing.T) {
 	tests := []struct {
-		name        string
-		permissions []string
-		registered  map[string]bool
-		wantEnabled bool
+		name         string
+		capabilities []string
+		registered   map[string]bool
+		wantEnabled  bool
 	}{
-		{name: "no gating permission", wantEnabled: true},
-		{name: "missing registry entry is ignored", permissions: []string{manifest.PersistentRCISessionReadPermission}, registered: map[string]bool{"other:read": false}, wantEnabled: true},
-		{name: "one satisfied gate", permissions: []string{manifest.PersistentRCISessionReadPermission}, registered: map[string]bool{manifest.PersistentRCISessionReadPermission: true}, wantEnabled: true},
-		{name: "one unsatisfied gate", permissions: []string{manifest.PersistentRCISessionReadPermission}, registered: map[string]bool{manifest.PersistentRCISessionReadPermission: false}, wantEnabled: false},
-		{name: "all gates satisfied", permissions: []string{manifest.PersistentRCISessionReadPermission, manifest.PersistentRCISessionWritePermission}, registered: map[string]bool{manifest.PersistentRCISessionReadPermission: true, manifest.PersistentRCISessionWritePermission: true}, wantEnabled: true},
-		{name: "one of multiple gates unsatisfied", permissions: []string{manifest.PersistentRCISessionReadPermission, manifest.PersistentRCISessionWritePermission}, registered: map[string]bool{manifest.PersistentRCISessionReadPermission: true, manifest.PersistentRCISessionWritePermission: false}, wantEnabled: false},
-		{name: "same predicate under read and write", permissions: []string{manifest.PersistentRCISessionReadPermission, manifest.PersistentRCISessionWritePermission}, registered: map[string]bool{manifest.PersistentRCISessionReadPermission: true, manifest.PersistentRCISessionWritePermission: true}, wantEnabled: true},
+		{name: "no gating capability", wantEnabled: true},
+		{name: "missing registry entry is ignored", capabilities: []string{manifest.PersistentRCISessionReadCapability}, registered: map[string]bool{"other:read": false}, wantEnabled: true},
+		{name: "one satisfied gate", capabilities: []string{manifest.PersistentRCISessionReadCapability}, registered: map[string]bool{manifest.PersistentRCISessionReadCapability: true}, wantEnabled: true},
+		{name: "one unsatisfied gate", capabilities: []string{manifest.PersistentRCISessionReadCapability}, registered: map[string]bool{manifest.PersistentRCISessionReadCapability: false}, wantEnabled: false},
+		{name: "all gates satisfied", capabilities: []string{manifest.PersistentRCISessionReadCapability, manifest.PersistentRCISessionWriteCapability}, registered: map[string]bool{manifest.PersistentRCISessionReadCapability: true, manifest.PersistentRCISessionWriteCapability: true}, wantEnabled: true},
+		{name: "one of multiple gates unsatisfied", capabilities: []string{manifest.PersistentRCISessionReadCapability, manifest.PersistentRCISessionWriteCapability}, registered: map[string]bool{manifest.PersistentRCISessionReadCapability: true, manifest.PersistentRCISessionWriteCapability: false}, wantEnabled: false},
+		{name: "same predicate under read and write", capabilities: []string{manifest.PersistentRCISessionReadCapability, manifest.PersistentRCISessionWriteCapability}, registered: map[string]bool{manifest.PersistentRCISessionReadCapability: true, manifest.PersistentRCISessionWriteCapability: true}, wantEnabled: true},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			plugin := testServicePlugin(t, "demo", test.permissions, "backend/server", true)
+			plugin := testServicePlugin(t, "demo", test.capabilities, "backend/server", true)
 			gates := NewActivationGateRegistry()
 
-			for permission, satisfied := range test.registered {
-				permission := permission
+			for capability, satisfied := range test.registered {
+				capability := capability
 				satisfied := satisfied
 
-				gates.Register(permission, ActivationGate(func(_, permission string) []ActivationBlocker {
+				gates.Register(capability, ActivationGate(func(_, capability string) []ActivationBlocker {
 					if satisfied {
 						return nil
 					}
 
-					return []ActivationBlocker{{Permission: permission, Reason: "not-granted"}}
+					return []ActivationBlocker{{Capability: capability, Reason: "not-granted"}}
 				}))
 			}
 
@@ -60,7 +60,7 @@ func TestServiceSpecActivationGates(t *testing.T) {
 func TestServiceSpecActivationGatesPreserveApprovalAndEnabledState(t *testing.T) {
 	gates := NewActivationGateRegistry()
 
-	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGate(func(_, _ string) []ActivationBlocker { return nil }))
+	gates.Register(manifest.PersistentRCISessionReadCapability, ActivationGate(func(_, _ string) []ActivationBlocker { return nil }))
 
 	for _, test := range []struct {
 		name     string
@@ -71,7 +71,7 @@ func TestServiceSpecActivationGatesPreserveApprovalAndEnabledState(t *testing.T)
 		{name: "disabled", approval: state.ApprovalApproved, enabled: false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			plugin := testServicePlugin(t, "demo", []string{manifest.PersistentRCISessionReadPermission}, "backend/server", test.enabled)
+			plugin := testServicePlugin(t, "demo", []string{manifest.PersistentRCISessionReadCapability}, "backend/server", test.enabled)
 			plugin.Approval = test.approval
 
 			spec, ok := serviceSpec(plugin, gates)
@@ -87,15 +87,15 @@ func TestServiceSpecActivationGatesPreserveApprovalAndEnabledState(t *testing.T)
 	}
 }
 
-func testServicePlugin(t *testing.T, name string, permissions []string, command string, enabled bool) *registry.Plugin {
+func testServicePlugin(t *testing.T, name string, capabilities []string, command string, enabled bool) *registry.Plugin {
 	t.Helper()
 
-	permissionJSON, err := json.Marshal(permissions)
+	capabilityJSON, err := json.Marshal(capabilities)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	manifestJSON := fmt.Sprintf(`{"manifestVersion":1,"name":%q,"version":"1.0.0","type":"page","label":%q,"entry":"index.js","route":"/%s","permissions":%s,"backend":{"kind":"service","protocolVersion":1,"command":%q,"routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`, name, name, name, permissionJSON, command)
+	manifestJSON := fmt.Sprintf(`{"manifestVersion":1,"name":%q,"version":"1.0.0","type":"page","label":%q,"entry":"index.js","route":"/%s","capabilities":%s,"backend":{"kind":"service","protocolVersion":1,"command":%q,"routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`, name, name, name, capabilityJSON, command)
 	parsed, err := manifest.Validate([]byte(manifestJSON))
 	if err != nil {
 		t.Fatalf("validate test service manifest: %v", err)

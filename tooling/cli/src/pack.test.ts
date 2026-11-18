@@ -349,7 +349,7 @@ describe('packPlugin', () => {
     scaffold(dir, {
       manifest: widgetManifest({name: 'host-ticker-widget'}),
       index: 'export const createInstance = (_el, ctx) => {\n'
-        + '  const ticker = ctx.createTicker();\n'
+        + '  const ticker = ctx.timers.createTicker();\n'
         + '  ticker.start(1000);\n'
         + '  return {unmount() { ticker.destroy(); }};\n'
         + '};\n',

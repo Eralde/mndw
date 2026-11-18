@@ -71,18 +71,19 @@ widget/page queries to the dashboard and router.
 
 Each plugin instance receives a context containing:
 
-- the RCI manager shared by the host;
-- per-instance `storage` and per-plugin `sharedStorage`;
-- live UI locale and theme getters plus `locale$` and `theme$` streams;
-- device identity, firmware capabilities, switchport inventory/layout, and USB version per physical port in `deviceInfo`;
+- the host RCI manager at `device.rci`;
+- per-instance `storage.instance` and per-plugin `storage.shared`;
+- live theme at `appearance.theme` and its `appearance.theme$` stream;
+- device identity, firmware capabilities, switchport inventory/layout, and USB version per physical port in `device.info`;
 - a unique `instanceId`;
-- current applied palette plus its `palette$` stream;
-- optional permission-gated event streams and the host-managed ticker;
+- current applied palette at `appearance.palette` plus its `appearance.palette$` stream;
+- the active translation locale at `i18n.locale` and `i18n.locale$`, which emits after the matching plugin catalog is applied;
+- optional capability-gated event streams and the host-managed ticker at `timers.createTicker()`;
 - the framework-neutral overlay service;
 - an optional typed backend client.
 
-`deviceInfo.switchports` contains normalized inventory and physical layout.
-`deviceInfo.usb.ports` contains one `usb2` or `usb3` value per physical USB
+`device.info.switchports` contains normalized inventory and physical layout.
+`device.info.usb.ports` contains one `usb2` or `usb3` value per physical USB
 port. Static device info has no maximum link speed; read current speed per port
 at runtime.
 

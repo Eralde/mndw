@@ -193,9 +193,9 @@ func TestBuiltinCanBeDisabledAndEnabledWithoutBecomingDeletable(t *testing.T) {
 	}
 }
 
-func TestBuiltinPermissionUsesCurrentShippedManifestAfterDisable(t *testing.T) {
+func TestBuiltinCapabilityUsesCurrentShippedManifestAfterDisable(t *testing.T) {
 	runtime := &lifecycleTestRuntime{}
-	srv, store, _, cfg := newLifecycleHarness(t, runtime, &permissionTestController{available: true})
+	srv, store, _, cfg := newLifecycleHarness(t, runtime, &capabilityTestController{available: true})
 
 	writeBuiltinFixture(t, cfg, "core-demo", false)
 
@@ -210,20 +210,20 @@ func TestBuiltinPermissionUsesCurrentShippedManifestAfterDisable(t *testing.T) {
 
 	manifestPath := filepath.Join(cfg.BuiltinPluginsDir, "core-demo", "manifest.json")
 
-	if err := os.WriteFile(manifestPath, []byte(permissionManifest("core-demo")), 0o644); err != nil {
+	if err := os.WriteFile(manifestPath, []byte(capabilityManifest("core-demo")), 0o644); err != nil {
 		t.Fatalf("write updated builtin manifest: %v", err)
 	}
 
-	resp := postPermission(t, srv, "core-demo", "persistent-rci-session:write", true)
+	resp := postCapability(t, srv, "core-demo", "persistent-rci-session:write", true)
 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("permission status = %d, want 200", resp.StatusCode)
+		t.Fatalf("capability status = %d, want 200", resp.StatusCode)
 	}
 
-	if !store.HasGrant("core-demo", "persistent-rci-session:write") {
-		t.Fatal("updated builtin permission was not persisted")
+	if !store.HasCapabilityGrant("core-demo", "persistent-rci-session:write") {
+		t.Fatal("updated builtin capability was not persisted")
 	}
 }
 

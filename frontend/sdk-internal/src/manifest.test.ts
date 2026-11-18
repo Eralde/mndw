@@ -3,11 +3,11 @@ import type {
   PluginBackend,
   PluginBackendAccess,
   PluginBackendMethod,
+  PluginCapability,
   PluginExecBackend,
   PluginExecRoute,
   PluginHttpRoute,
   PluginManifest,
-  PluginPermission,
   PluginServiceBackend,
   PluginWebSocketRoute,
   WidgetSize,
@@ -16,11 +16,11 @@ import type {
   PluginBackendAccessOutput,
   PluginBackendMethodOutput,
   PluginBackendOutput,
+  PluginCapabilityOutput,
   PluginExecBackendOutput,
   PluginExecRouteOutput,
   PluginHttpRouteOutput,
   PluginManifestOutput,
-  PluginPermissionOutput,
   PluginServiceBackendOutput,
   PluginWebSocketRouteOutput,
   WidgetSizeOutput,
@@ -30,7 +30,7 @@ describe('manifest type single-sourcing', () => {
   it('keeps normalized outputs assignable to public compatibility views', () => {
     expectTypeOf<PluginBackendAccessOutput>().toEqualTypeOf<PluginBackendAccess>();
     expectTypeOf<PluginBackendMethodOutput>().toEqualTypeOf<PluginBackendMethod>();
-    expectTypeOf<PluginPermissionOutput>().toEqualTypeOf<PluginPermission>();
+    expectTypeOf<PluginCapabilityOutput>().toEqualTypeOf<PluginCapability>();
     expectTypeOf<PluginManifestOutput>().toMatchTypeOf<PluginManifest>();
     expectTypeOf<PluginHttpRouteOutput>().toMatchTypeOf<PluginHttpRoute>();
     expectTypeOf<PluginWebSocketRouteOutput>().toMatchTypeOf<PluginWebSocketRoute>();

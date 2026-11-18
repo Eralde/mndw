@@ -80,7 +80,11 @@ async function flushPromises(): Promise<void> {
 }
 
 function mountApp(
-  overrides: {telemetry?: Partial<PluginTelemetry>; setTileTitle?: (title: string) => void} = {},
+  overrides: {
+    telemetry?: Partial<PluginTelemetry>;
+    setTileTitle?: (title: string) => void;
+    i18n?: ReturnType<typeof createTestI18n>;
+  } = {},
 ): TestPluginContext {
   host = document.createElement('div');
   host.style.height = '190px';
@@ -88,7 +92,7 @@ function mountApp(
   document.body.append(host);
 
   fixture = createTestPluginContext({
-    i18n: createTestI18n({
+    i18n: overrides.i18n ?? createTestI18n({
       'title': 'CPU temperature',
       'loading': 'Loading…',
       'empty': 'Gathering data…',
@@ -577,8 +581,10 @@ describe('App', () => {
 
   it('updates the host tile title after a locale switch and keeps history status in the body', async () => {
     const setTileTitle = vi.fn();
+    const i18n = createTestI18n({title: 'CPU temperature'});
 
     mountApp({
+      i18n,
       setTileTitle,
       telemetry: {
         fetchProjected: vi.fn().mockResolvedValue({
@@ -593,7 +599,7 @@ describe('App', () => {
     expect(host.querySelector('.app__header')).toBeNull();
     expect(host.querySelector('[data-testid="history-status"]')).not.toBeNull();
 
-    fixture?.context.i18n.setLocale('ru', {title: 'Температура CPU'});
+    i18n.setLocale('ru', {title: 'Температура CPU'});
     await nextTick();
 
     expect(setTileTitle).toHaveBeenLastCalledWith('Температура CPU');

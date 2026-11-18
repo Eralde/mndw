@@ -39,10 +39,10 @@ from the plugin package (normally `src/index.ts`) and emits the manifest entry d
 single segment; `/`, `/login`, `/packages`, `/packages/services`, and `/settings` are reserved host routes and are
 rejected by SDK validation and host routing.
 
-## Permissions and trust
+## Capabilities and trust
 
-`permissions` describes capabilities a plugin requests. Event permissions control which topics are available through
-`ctx.events`; persistent RCI permissions can be granted for the **Background router access** setting. These declarations do
+`capabilities` describes the capabilities a plugin requests. Event capabilities control which topics are available through
+`ctx.events`; persistent RCI capabilities can be granted for the **Background router access** setting. These declarations do
 not sandbox plugin code. A plugin page runs inside the dashboard and can call the router API; when present, a plugin
 backend runs on the router as root. Install plugins only from authors you trust.
 

@@ -15,17 +15,17 @@ describe('createTestPluginContext', () => {
 
     expect(fixture.context.signal.aborted).toBe(true);
     expect(fixture.context.signal.reason).toBeInstanceOf(DOMException);
-    expect(fixture.context.signal.reason.name).toBe('AbortError');
+    expect(fixture.context.signal.reason).toMatchObject({name: 'AbortError'});
   });
 
   it('updates theme getters and streams', () => {
     const fixture = createTestPluginContext();
     const seen: string[] = [];
 
-    fixture.context.theme$.subscribe((theme) => seen.push(theme));
+    fixture.context.appearance.theme$.subscribe((theme) => seen.push(theme));
     fixture.setTheme('dark');
 
-    expect(fixture.context.theme).toBe('dark');
+    expect(fixture.context.appearance.theme).toBe('dark');
     expect(seen).toEqual(['light', 'dark']);
   });
 
@@ -33,11 +33,11 @@ describe('createTestPluginContext', () => {
     const fixture = createTestPluginContext();
     const seen: string[] = [];
 
-    fixture.context.i18n.change$.subscribe(() => seen.push(fixture.context.i18n.locale));
+    fixture.context.i18n.locale$.subscribe((locale) => seen.push(locale));
     fixture.setLocale('ru');
 
     expect(fixture.context.i18n.locale).toBe('ru');
-    expect(seen).toEqual(['ru']);
+    expect(seen).toEqual(['en', 'ru']);
   });
 
   it('leaves caller-supplied i18n under caller control', () => {
@@ -46,7 +46,7 @@ describe('createTestPluginContext', () => {
 
     fixture.setLocale('ru');
 
-    expect(fixture.context.locale).toBe('ru');
+    expect('locale' in fixture.context).toBe(false);
     expect(fixture.context.i18n.locale).toBe('en');
   });
 
@@ -54,7 +54,7 @@ describe('createTestPluginContext', () => {
     const fixture = createTestPluginContext();
     let completeCount = 0;
 
-    fixture.context.theme$.subscribe({complete: () => completeCount += 1});
+    fixture.context.appearance.theme$.subscribe({complete: () => completeCount += 1});
     fixture.unmount();
 
     expect(completeCount).toBe(1);
@@ -174,7 +174,7 @@ describe('createTestPluginContext', () => {
     const fixture = createTestPluginContext();
     const ticks: number[] = [];
     let completeCount = 0;
-    const ticker = fixture.context.createTicker();
+    const ticker = fixture.context.timers.createTicker();
 
     ticker.tick$.subscribe({
       next: (tick) => ticks.push(tick.timestamp),
@@ -196,6 +196,25 @@ describe('createTestPluginContext', () => {
 
     expect(completeCount).toBe(1);
     expect(ticks).toEqual([200, 400]);
+  });
+
+  it('freezes the grouped context objects and omits replaced top-level members', () => {
+    const fixture = createTestPluginContext();
+    const {context} = fixture;
+
+    expect(Object.getPrototypeOf(context)).toBeNull();
+    expect(Object.isFrozen(context)).toBe(true);
+    expect(Object.isFrozen(context.storage)).toBe(true);
+    expect(Object.isFrozen(context.appearance)).toBe(true);
+    expect(Object.isFrozen(context.device)).toBe(true);
+    expect(Object.isFrozen(context.timers)).toBe(true);
+    expect('sharedStorage' in context).toBe(false);
+    expect('deviceInfo' in context).toBe(false);
+    expect('rciManager' in context).toBe(false);
+    expect('createTicker' in context).toBe(false);
+    expect('theme' in context).toBe(false);
+    expect('palette' in context).toBe(false);
+    expect('locale' in context).toBe(false);
   });
 
   it('provides a page route for page contexts', () => {

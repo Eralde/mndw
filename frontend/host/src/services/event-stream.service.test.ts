@@ -95,7 +95,7 @@ describe('EventStreamManager', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
-  it('select$ applies the same permission narrowing as before', () => {
+  it('select$ applies the same capability narrowing as before', () => {
     const sockets: FakeWebSocket[] = [];
     const manager = new EventStreamManager({
       WebSocket: class extends FakeWebSocket {
@@ -123,53 +123,53 @@ describe('EventStreamManager', () => {
   it.each([
     {
       name: 'wildcard grant narrows to each requested topic',
-      permissions: ['events:*'],
+      capabilities: ['events:*'],
       request: 'net,plugin',
       topics: ['net', 'plugin'],
     },
     {
       name: 'wildcard request narrows to each granted topic',
-      permissions: ['events:wan'],
+      capabilities: ['events:wan'],
       request: '*',
       topics: ['wan'],
     },
     {
       name: 'both wildcards remain wildcard',
-      permissions: ['events:*'],
+      capabilities: ['events:*'],
       request: '*',
       topics: ['*'],
     },
     {
       name: 'parent grant narrows to child request',
-      permissions: ['events:net'],
+      capabilities: ['events:net'],
       request: 'net.dns_changed',
       topics: ['net.dns_changed'],
     },
     {
       name: 'child grant narrows parent request',
-      permissions: ['events:plugin.started'],
+      capabilities: ['events:plugin.started'],
       request: 'plugin',
       topics: ['plugin.started'],
     },
     {
       name: 'disjoint grants and requests produce no wire subscription',
-      permissions: ['events:net'],
+      capabilities: ['events:net'],
       request: 'plugin',
       topics: [],
     },
     {
       name: 'comma lists and multiple grants and requests narrow together',
-      permissions: ['events:wan,plugin', 'events:net'],
+      capabilities: ['events:wan,plugin', 'events:net'],
       request: 'plugin,net.dns_changed,wan.connected,usb',
       topics: ['net.dns_changed', 'plugin', 'wan.connected'],
     },
     {
       name: 'multiple grants intersect a wildcard request',
-      permissions: ['events:wan,plugin', 'events:net'],
+      capabilities: ['events:wan,plugin', 'events:net'],
       request: '*,usb',
       topics: ['net', 'plugin', 'wan'],
     },
-  ])('narrows $name', ({permissions, request, topics}) => {
+  ])('narrows $name', ({capabilities, request, topics}) => {
     const sockets: FakeWebSocket[] = [];
     const manager = new EventStreamManager({
       WebSocket: class extends FakeWebSocket {
@@ -179,7 +179,7 @@ describe('EventStreamManager', () => {
         }
       } as unknown as typeof WebSocket,
     });
-    const facade = manager.createFacade('instance-1', 'demo', permissions, createPluginLifetime());
+    const facade = manager.createFacade('instance-1', 'demo', capabilities, createPluginLifetime());
 
     facade?.select$(request).subscribe();
 
@@ -312,7 +312,7 @@ describe('EventStreamManager', () => {
 
     first?.unsubscribe();
 
-    expect(sockets[0]?.sent.map((message) => JSON.parse(message))).toEqual([
+    expect(sockets[0]?.sent.map((message) => JSON.parse(message) as unknown)).toEqual([
       {type: 'subscribe', topics: ['net', 'plugin']},
       {type: 'replay', after: '', limit: 100},
     ]);

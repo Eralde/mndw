@@ -18,8 +18,13 @@ describe('createInstance', () => {
     const storageSet = vi.fn().mockResolvedValue(undefined);
     const fixture = createTestPluginContext({instanceId: 'demo-1', i18n: createTestI18n(enCatalog)});
     const ctx = withOverrides(fixture.context, {
-      deviceInfo: {...fixture.context.deviceInfo, deviceName: 'Router', vendor: 'Keenetic'},
-      storage: {...fixture.context.storage, get: vi.fn().mockResolvedValue(null), set: storageSet},
+      device: {...fixture.context.device,
+        info: {...fixture.context.device.info, deviceName: 'Router', vendor: 'Keenetic'}},
+      storage: {...fixture.context.storage, instance: {
+        ...fixture.context.storage.instance,
+        get: vi.fn().mockResolvedValue(null),
+        set: storageSet,
+      }},
     });
 
     host = document.createElement('div');
@@ -53,8 +58,13 @@ describe('createInstance', () => {
     });
     const fixture = createTestPluginContext({instanceId: 'demo-1', i18n});
     const ctx = withOverrides(fixture.context, {
-      deviceInfo: {...fixture.context.deviceInfo, deviceName: 'Router', vendor: 'Keenetic'},
-      storage: {...fixture.context.storage, get: vi.fn().mockResolvedValue(null), set: vi.fn()},
+      device: {...fixture.context.device,
+        info: {...fixture.context.device.info, deviceName: 'Router', vendor: 'Keenetic'}},
+      storage: {...fixture.context.storage, instance: {
+        ...fixture.context.storage.instance,
+        get: vi.fn().mockResolvedValue(null),
+        set: vi.fn(),
+      }},
     });
 
     host = document.createElement('div');

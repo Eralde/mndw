@@ -11,30 +11,34 @@ describe('createTestI18n', () => {
     expect(i18n.direction).toBe('ltr');
   });
 
-  it('accepts nested catalogs and replaces locale/catalog before emitting change$', () => {
+  it('accepts nested catalogs and replaces locale/catalog before emitting locale$', () => {
     const i18n = createTestI18n({message: {hello: 'Hello'}}, 'en');
-    let observed = '';
+    const observed: string[] = [];
 
-    i18n.change$.subscribe(() => {
-      observed = `${i18n.locale}:${i18n.t('message.hello')}`;
+    i18n.locale$.subscribe((locale) => {
+      observed.push(`${locale}:${i18n.t('message.hello')}`);
     });
     i18n.setLocale('ru', {message: {hello: 'Привет'}});
 
-    expect(observed).toBe('ru:Привет');
+    expect(observed).toEqual(['en:Hello', 'ru:Привет']);
     expect(i18n.t('message.hello')).toBe('Привет');
   });
 
-  it('emits synchronously and supports subscription teardown', () => {
+  it('emits the current locale synchronously and supports subscription teardown', () => {
     const i18n = createTestI18n({message: 'Hello'});
     const callback = vi.fn();
-    const subscription = i18n.change$.subscribe(callback);
+    const subscription = i18n.locale$.subscribe(callback);
+
+    expect(callback).toHaveBeenCalledOnce();
+    expect(callback).toHaveBeenLastCalledWith('en');
 
     i18n.setLocale('ru', {message: 'Привет'});
-    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledTimes(2);
+    expect(callback).toHaveBeenLastCalledWith('ru');
 
     subscription.unsubscribe();
     i18n.setLocale('en', {message: 'Hello again'});
-    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledTimes(2);
   });
 
   it('formats numbers and dates using the committed locale', () => {

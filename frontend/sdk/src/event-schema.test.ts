@@ -6,7 +6,7 @@ import {
   MaxEventPayloadBytes,
   type MndwEvent,
   createEventSchemaDocument,
-  eventPermissionSchema,
+  eventCapabilitySchema,
   eventSchema,
 } from './event-schema.js';
 
@@ -110,12 +110,12 @@ describe('event contract', () => {
     ).toThrow();
   });
 
-  it('validates event permissions', () => {
-    expect(eventPermissionSchema.parse('events:*')).toBe('events:*');
-    expect(eventPermissionSchema.parse('events:wan,wifi,net')).toBe('events:wan,wifi,net');
-    expect(() => eventPermissionSchema.parse('events:WAN')).toThrow();
-    expect(() => eventPermissionSchema.parse('events:')).toThrow();
-    expect(() => eventPermissionSchema.parse('events:wan,')).toThrow();
+  it('validates event capabilities', () => {
+    expect(eventCapabilitySchema.parse('events:*')).toBe('events:*');
+    expect(eventCapabilitySchema.parse('events:wan,wifi,net')).toBe('events:wan,wifi,net');
+    expect(() => eventCapabilitySchema.parse('events:WAN')).toThrow();
+    expect(() => eventCapabilitySchema.parse('events:')).toThrow();
+    expect(() => eventCapabilitySchema.parse('events:wan,')).toThrow();
   });
 
   it('generates a JSON Schema document from the runtime schema', () => {

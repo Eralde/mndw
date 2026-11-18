@@ -218,7 +218,7 @@ type mgmtServices struct {
 	opkg                 opkg.Manager
 	selfUpdate           *selfupdate.Service
 	service              initd.Manager
-	permissionController mgmt.PersistentRCIPermissionController
+	capabilityController mgmt.PersistentRCICapabilityController
 	telemetryController  mgmt.TelemetryController
 	events               *events.InternalPublisher
 }
@@ -358,7 +358,7 @@ func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store
 		opkg:                 opkgMgr,
 		selfUpdate:           selfUpdateService,
 		service:              serviceMgr,
-		permissionController: access.session.permissionController,
+		capabilityController: access.session.capabilityController,
 		telemetryController:  access.telemetry.controller,
 		events:               internalPublisher,
 	})
@@ -515,7 +515,7 @@ func registerMgmt(mux *http.ServeMux, core daemonCore, intake *httpx.BodyIntake,
 		ServiceManager:                    services.service,
 		Builtins:                          core.reg,
 		Logger:                            core.logger,
-		PersistentRCIPermissionController: services.permissionController,
+		PersistentRCICapabilityController: services.capabilityController,
 		ServiceActionRoot:                 core.lifetime,
 		SelfUpdate:                        services.selfUpdate,
 		TelemetryController:               services.telemetryController,

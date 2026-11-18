@@ -1,8 +1,9 @@
 import type {PaletteTokenMap, Switchports} from '@mndw/sdk';
-import type {PluginPermission} from '@mndw/sdk-internal';
+import type {PluginCapability} from '@mndw/sdk-internal';
 import {
   API_TIMEOUT_MS,
   MGMT_APPROVE_URL,
+  MGMT_CAPABILITY_URL,
   MGMT_DELETE_URL,
   MGMT_DENY_URL,
   MGMT_DEVICE_HARDWARE_URL,
@@ -12,7 +13,6 @@ import {
   MGMT_LIST_URL,
   MGMT_MUTATION_TIMEOUT_MS,
   MGMT_PALETTE_URL,
-  MGMT_PERMISSION_URL,
   MGMT_RESTART_URL,
   MGMT_RUNTIME_URL,
   MGMT_TELEMETRY_URL,
@@ -57,7 +57,7 @@ export interface MgmtClient {
   approvePlugin(name: string): Promise<PluginListEntry>;
   enablePlugin(name: string): Promise<PluginListEntry>;
   disablePlugin(name: string): Promise<PluginListEntry>;
-  setPluginPermission(name: string, permission: PluginPermission, enabled: boolean): Promise<PluginListEntry>;
+  setPluginCapability(name: string, capability: PluginCapability, enabled: boolean): Promise<PluginListEntry>;
   denyPlugin(name: string): Promise<void>;
   deletePlugin(name: string): Promise<void>;
   restartPlugin(name: string): Promise<void>;
@@ -193,10 +193,10 @@ export function createMgmtClient(
     enablePlugin: (name) => mutateEntry(MGMT_ENABLE_URL, name),
     disablePlugin: (name) => mutateEntry(MGMT_DISABLE_URL, name),
 
-    async setPluginPermission(name: string, permission: PluginPermission, enabled: boolean): Promise<PluginListEntry> {
-      const body = await rest.request(MGMT_PERMISSION_URL, {
+    async setPluginCapability(name: string, capability: PluginCapability, enabled: boolean): Promise<PluginListEntry> {
+      const body = await rest.request(MGMT_CAPABILITY_URL, {
         method: 'POST',
-        json: {name, permission, enabled},
+        json: {name, capability, enabled},
         signal: timeout('mutation'),
       });
 

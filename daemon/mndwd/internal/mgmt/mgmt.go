@@ -93,8 +93,8 @@ type Config struct {
 	Runtime PluginRuntime
 	// RuntimeResolver resolves lifecycle targets; nil retains the store-backed fallback.
 	RuntimeResolver RuntimeResolver
-	// PersistentRCIPermissionController owns grant-triggered socket reconciliation.
-	PersistentRCIPermissionController PersistentRCIPermissionController
+	// PersistentRCICapabilityController owns grant-triggered socket reconciliation.
+	PersistentRCICapabilityController PersistentRCICapabilityController
 	ServiceActionRoot                 context.Context
 	ServiceActionTimeout              time.Duration
 	SelfUpdate                        SelfUpdateService
@@ -121,7 +121,7 @@ type pluginsAPI struct {
 	builtins             BuiltinSource
 	runtime              PluginRuntime
 	runtimeResolver      RuntimeResolver
-	permissionController PersistentRCIPermissionController
+	capabilityController PersistentRCICapabilityController
 	logger               *slog.Logger
 	events               managementPublisher
 	removeAll            func(string) error
@@ -204,7 +204,7 @@ func New(cfg Config) *Handler {
 			builtins:             cfg.Builtins,
 			runtime:              cfg.Runtime,
 			runtimeResolver:      cfg.RuntimeResolver,
-			permissionController: cfg.PersistentRCIPermissionController,
+			capabilityController: cfg.PersistentRCICapabilityController,
 			logger:               logger,
 			events:               publisher,
 			removeAll:            os.RemoveAll,
@@ -251,7 +251,7 @@ func (h *pluginsAPI) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/mgmt/restart", h.handleRestart)
 	mux.HandleFunc("POST /api/mgmt/update", h.handleUpdate)
 	mux.HandleFunc("GET /api/mgmt/runtime", h.handleRuntime)
-	mux.HandleFunc("POST /api/mgmt/permission", h.handlePermission)
+	mux.HandleFunc("POST /api/mgmt/capability", h.handleCapability)
 }
 
 // opkgContext returns a daemon-lifetime-derived context bounded by opkgTimeout,
@@ -273,8 +273,8 @@ type ListEntry struct {
 	Source           state.Source    `json:"source"`
 	Approval         state.Approval  `json:"approval"`
 	Enabled          bool            `json:"enabled"`
-	Permissions      []string        `json:"permissions,omitempty"`
-	PermissionGrants map[string]bool `json:"permissionGrants,omitempty"`
+	Capabilities     []string        `json:"capabilities,omitempty"`
+	CapabilityGrants map[string]bool `json:"capabilityGrants,omitempty"`
 	Size             *manifest.Size  `json:"size,omitempty"`
 	FixedHeight      *bool           `json:"fixedHeight,omitempty"`
 	Route            string          `json:"route,omitempty"`
@@ -403,23 +403,23 @@ func (h *pluginsAPI) entryFrom(m *manifest.Manifest, source state.Source, approv
 	}
 	e.DepsStatus = "ready"
 
-	for _, permission := range m.Permissions {
-		if e.Permissions == nil {
-			e.Permissions = make([]string, 0, len(m.Permissions))
+	for _, capability := range m.Capabilities {
+		if e.Capabilities == nil {
+			e.Capabilities = make([]string, 0, len(m.Capabilities))
 		}
 
-		e.Permissions = append(e.Permissions, permission)
+		e.Capabilities = append(e.Capabilities, capability)
 
-		if !manifest.IsPersistentRCIPermission(permission) {
+		if !manifest.IsPersistentRCICapability(capability) {
 			continue
 		}
 
-		if h.store.HasGrant(e.Name, permission) {
-			if e.PermissionGrants == nil {
-				e.PermissionGrants = make(map[string]bool)
+		if h.store.HasCapabilityGrant(e.Name, capability) {
+			if e.CapabilityGrants == nil {
+				e.CapabilityGrants = make(map[string]bool)
 			}
 
-			e.PermissionGrants[permission] = true
+			e.CapabilityGrants[capability] = true
 		}
 	}
 

@@ -179,7 +179,7 @@ func (g *Gateway) resolveAuthorizedRoute(writer http.ResponseWriter, request *ht
 	}
 
 	// An unmet activation prerequisite (e.g. an unconfigured persistent-RCI
-	// controller token or an ungranted permission) is a steady state, not the
+	// controller token or an ungranted capability) is a steady state, not the
 	// transient stop the traffic gate represents. Surfacing it before the
 	// per-plugin traffic gate lets callers tell "won't start until a prerequisite
 	// is met" apart from "briefly under maintenance while restarting".
@@ -523,7 +523,7 @@ func (g *Gateway) pluginTrafficBlocked(pluginID string) bool {
 }
 
 // activationBlockers returns the unmet activation prerequisites for a plugin's
-// declared permissions, in manifest order, or nil when all are satisfied.
+// declared capabilities, in manifest order, or nil when all are satisfied.
 func (g *Gateway) activationBlockers(plugin *registry.Plugin) []ActivationBlocker {
 	if g.activationGates == nil || plugin == nil || !plugin.Manifest.HasBackend() {
 		return nil
@@ -535,7 +535,7 @@ func (g *Gateway) activationBlockers(plugin *registry.Plugin) []ActivationBlocke
 		return nil
 	}
 
-	return g.activationGates.Evaluate(plugin.Name, plugin.Manifest.Permissions)
+	return g.activationGates.Evaluate(plugin.Name, plugin.Manifest.Capabilities)
 }
 
 func (g *Gateway) admitWebSocket(connection socketCloser, pluginID string) (func(), bool) {
@@ -602,7 +602,7 @@ func (g *Gateway) writeBlocked(writer http.ResponseWriter, blockers []Activation
 
 	for _, blocker := range blockers {
 		detail = append(detail, backendStatusBlocker{
-			Permission:   blocker.Permission,
+			Capability:   blocker.Capability,
 			Reason:       string(blocker.Reason),
 			Prerequisite: blocker.Prerequisite,
 		})

@@ -31,7 +31,7 @@ vi.mock('./plugin-context.js', async (importOriginal) => {
       entry: {name: string; type: 'widget' | 'page'};
       instanceId: string;
       hostInfo: HostInfo;
-      deviceInfo: PluginContext['deviceInfo'];
+      deviceInfo: PluginContext['device']['info'];
       setTileTitle: ((title: string) => void) | undefined;
       pageRoute: PluginContext['pageRoute'];
     }) => {
@@ -52,7 +52,7 @@ vi.mock('./plugin-context.js', async (importOriginal) => {
       const context = Object.freeze({
         ...template,
         hostInfo,
-        deviceInfo,
+        device: {...template.device, info: deviceInfo},
         instanceId,
         ...variant,
       }) as PluginContext;
@@ -217,12 +217,12 @@ function createSmokeContext(i18n: PluginContext['i18n'], setTileTitle?: (title: 
   return createTestPluginContext({
     i18n,
     backend,
-    rciManager: {
+    device: {rci: {
       execute: queue,
       queue,
       initBackgroundProcess: vi.fn(() => ({data$: of({data: []}), abort: vi.fn()})),
       queueBackgroundProcess: vi.fn(() => ({data$: of({data: []}), abort: vi.fn()})),
-    } as unknown as PluginContext['rciManager'],
+    } as unknown as PluginContext['device']['rci']},
     setTileTitle,
   });
 }

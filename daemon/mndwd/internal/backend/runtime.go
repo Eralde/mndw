@@ -313,7 +313,7 @@ func serviceSpec(plugin *registry.Plugin, gates *ActivationGateRegistry) (Servic
 	enabled := plugin.Enabled && plugin.Approval == state.ApprovalApproved && !plugin.RemovalPending
 
 	if enabled && gates != nil {
-		enabled = gates.Satisfied(plugin.Name, plugin.Manifest.Permissions)
+		enabled = gates.Satisfied(plugin.Name, plugin.Manifest.Capabilities)
 	}
 
 	return ServiceSpec{
@@ -333,8 +333,8 @@ func persistentRCISocket(runtimeRoot string, plugin *registry.Plugin) string {
 		return ""
 	}
 
-	for _, permission := range plugin.Manifest.Permissions {
-		if manifest.IsPersistentRCIPermission(permission) {
+	for _, capability := range plugin.Manifest.Capabilities {
+		if manifest.IsPersistentRCICapability(capability) {
 			paths, err := NewRuntimePaths(runtimeRoot, plugin.Name)
 			if err == nil {
 				return paths.RCISessionSocket

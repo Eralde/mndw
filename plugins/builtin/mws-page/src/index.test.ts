@@ -30,7 +30,7 @@ function fakeContext(backend: BackendClient | null = null): {
     backend: backend ?? undefined,
     i18n: createTestI18n(enCatalog),
     instanceId: 'test',
-    rciManager: {queue},
+    device: {rci: {queue}},
   });
   const ctx = Object.create(null) as Record<string, unknown>;
 
@@ -41,7 +41,10 @@ function fakeContext(backend: BackendClient | null = null): {
   }
 
   Object.defineProperties(ctx, descriptors);
-  Object.defineProperty(ctx, 'storage', {enumerable: true, value: new FakePluginStorage()});
+  Object.defineProperty(ctx, 'storage', {
+    enumerable: true,
+    value: {instance: new FakePluginStorage(), shared: fixture.context.storage.shared},
+  });
   Object.defineProperty(ctx, 'overlay', {enumerable: true, value: {open: vi.fn(), createLayer: vi.fn(), closeAll}});
 
   return {
@@ -111,18 +114,20 @@ describe('createInstance', () => {
 
     expect(el.childNodes.length).toBe(0);
     expect(closeAll).toHaveBeenCalledOnce();
-    expect(ctx.theme).toBe('light');
+    expect(ctx.appearance.theme).toBe('light');
   });
 
   it('mounts the app and tears it down on unmount', async () => {
     const {ctx, closeAll} = fakeContext();
     const el = document.createElement('div');
+    const setAttribute = vi.spyOn(el, 'setAttribute');
     const instance = createInstance(el, ctx);
 
     await vi.waitFor(() => {
       expect(el.querySelector('mws-map-app, .mws-page')).not.toBeNull();
     });
 
+    expect(setAttribute.mock.calls.filter(([name]) => name === 'aria-label')).toHaveLength(1);
     instance.unmount();
     expect(el.childNodes.length).toBe(0);
     expect(closeAll).toHaveBeenCalledOnce();

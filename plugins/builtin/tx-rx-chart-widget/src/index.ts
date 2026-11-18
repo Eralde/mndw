@@ -10,8 +10,8 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
   return createAngularPluginInstance(el, {
     rootComponent: AppComponent,
     providers: [
-      {provide: RCI_MANAGER, useValue: ctx.rciManager},
-      {provide: PLUGIN_STORAGE, useValue: ctx.storage},
+      {provide: RCI_MANAGER, useValue: ctx.device.rci},
+      {provide: PLUGIN_STORAGE, useValue: ctx.storage.instance},
       provideTranslator(ctx.i18n),
     ],
     configure: ({appRef, component}) => {

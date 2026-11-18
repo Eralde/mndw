@@ -77,7 +77,7 @@ const SECTION_STORAGE_KEYS = {
 const dirtySections = new Set<string>();
 
 let baseline: UptimeBaseline | null = null;
-let ticker: ReturnType<PluginContext['createTicker']> | null = null;
+let ticker: ReturnType<PluginContext['timers']['createTicker']> | null = null;
 let tickerSubscription: {unsubscribe(): void} | null = null;
 let refreshLoop: RefreshLoop | null = null;
 let projectedRefreshLoop: RefreshLoop | null = null;
@@ -93,7 +93,7 @@ interface LiveInfoRefresh {
   info: LiveDeviceInfo;
 }
 
-const firmware = computed(() => props.ctx.deviceInfo.firmwareVersion);
+const firmware = computed(() => props.ctx.device.info.firmwareVersion);
 const info = computed<LiveDeviceInfo | null>(() => {
   return loadState.value.status === 'success' ? loadState.value.data : null;
 });
@@ -300,7 +300,7 @@ const loadLiveHistory = (range: DeviceInfoRange): void => {
   const requestGeneration = liveHistoryGeneration;
   liveHistoryLoading.value = true;
 
-  void fetchDeviceHistory(props.ctx.rciManager, deviceInfoDetail(range), currentInfo.memoryTotal).then(
+  void fetchDeviceHistory(props.ctx.device.rci, deviceInfoDetail(range), currentInfo.memoryTotal).then(
     (nextHistory) => {
       if (
         !mounted
@@ -394,14 +394,14 @@ const setSectionVisibility = (key: string, visible: boolean): void => {
 
   sectionVisibility.value[key] = visible;
   dirtySections.add(key);
-  void props.ctx.storage.set(SECTION_STORAGE_KEYS[key as keyof typeof SECTION_STORAGE_KEYS], String(visible)).catch((caught: unknown) => {
+  void props.ctx.storage.instance.set(SECTION_STORAGE_KEYS[key as keyof typeof SECTION_STORAGE_KEYS], String(visible)).catch((caught: unknown) => {
     console.warn('[device-info-widget] could not persist section visibility', key, caught);
   });
 };
 
 const restoreSectionVisibility = (): void => {
   for (const [key, storageKey] of Object.entries(SECTION_STORAGE_KEYS)) {
-    void props.ctx.storage.get(storageKey).then((raw) => {
+    void props.ctx.storage.instance.get(storageKey).then((raw) => {
       if (mounted && raw !== null && !dirtySections.has(key) && (raw === 'true' || raw === 'false')) {
         sectionVisibility.value = {...sectionVisibility.value, [key]: raw === 'true'};
       }
@@ -425,7 +425,7 @@ onMounted(() => {
     }
   });
 
-  ticker = props.ctx.createTicker();
+  ticker = props.ctx.timers.createTicker();
   tickerSubscription = ticker.tick$.subscribe(() => {
     uptimeSeconds.value = getUptimeSeconds(baseline, Date.now());
   });
@@ -438,7 +438,7 @@ onMounted(() => {
       refreshAttemptAt.value = Date.now();
       const range = selectedLiveRange.value;
 
-      return {range, info: await fetchDeviceInfo(props.ctx.rciManager, deviceInfoDetail(range))};
+      return {range, info: await fetchDeviceInfo(props.ctx.device.rci, deviceInfoDetail(range))};
     },
     intervalMs: 30_000,
     onSuccess: handleInfoSuccess,
@@ -520,7 +520,7 @@ onUnmounted(() => {
         <hr class="app__divider">
         <div class="app__grid">
           <span class="app__label">{{ t('device') }}:</span>
-          <span class="app__value">{{ props.ctx.deviceInfo.model }}</span>
+          <span class="app__value">{{ props.ctx.device.info.model }}</span>
           <span class="app__label">{{ t('firmware') }}:</span>
           <span class="app__value">{{ firmware }}</span>
           <span class="app__label">{{ t('uptime') }}:</span>

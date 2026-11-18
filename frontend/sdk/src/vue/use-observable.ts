@@ -14,10 +14,10 @@ export function useObservable<T>(source: Observable<T>, initial: T): Readonly<Re
   return shallowReadonly(value);
 }
 
-export function useTheme(context: Pick<PluginContext, 'theme' | 'theme$'>): Readonly<Ref<MndwThemeName>> {
-  return useObservable(context.theme$, context.theme);
+export function useTheme(context: Pick<PluginContext, 'appearance'>): Readonly<Ref<MndwThemeName>> {
+  return useObservable(context.appearance.theme$, context.appearance.theme);
 }
 
-export function useLocale(context: Pick<PluginContext, 'locale' | 'locale$'>): Readonly<Ref<string>> {
-  return useObservable(context.locale$, context.locale);
+export function useLocale(context: Pick<PluginContext, 'i18n'>): Readonly<Ref<string>> {
+  return useObservable(context.i18n.locale$, context.i18n.locale);
 }

@@ -35,7 +35,7 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
     }
 
     if (device !== null) {
-      device.textContent = ctx.deviceInfo.deviceName;
+      device.textContent = ctx.device.info.deviceName;
     }
 
     if (button !== null) {

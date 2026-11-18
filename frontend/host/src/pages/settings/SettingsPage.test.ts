@@ -42,7 +42,7 @@ vi.mock('../../services/mgmt-client.js', async (importOriginal) => ({
     approvePlugin: vi.fn(),
     enablePlugin: vi.fn(),
     disablePlugin: vi.fn(),
-    setPluginPermission: vi.fn(),
+    setPluginCapability: vi.fn(),
     denyPlugin: vi.fn(),
     deletePlugin: vi.fn(),
   },

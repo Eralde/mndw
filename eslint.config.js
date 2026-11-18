@@ -443,8 +443,8 @@ module.exports = tseslint.config(
       '@typescript-eslint/no-unused-vars': OFF,
     },
   },
-  // Persistent RCI permission strings have one authority: frontend/sdk/src/permissions.ts. Everything
-  // else imports PERSISTENT_RCI_PERMISSIONS / isPersistentRciPermission from @mndw/sdk.
+  // Persistent RCI capability strings have one authority: frontend/sdk/src/capabilities.ts. Everything
+  // else imports PERSISTENT_RCI_CAPABILITIES / isPersistentRciCapability from @mndw/sdk.
   {
     files: [
       'frontend/**/*.{ts,svelte,vue}',
@@ -452,7 +452,7 @@ module.exports = tseslint.config(
       'tooling/**/*.{ts,svelte,vue}',
     ],
     ignores: [
-      'frontend/sdk/src/permissions.ts',
+      'frontend/sdk/src/capabilities.ts',
       '**/*.test.ts',
       '**/testing/**',
     ],
@@ -461,12 +461,12 @@ module.exports = tseslint.config(
         ERROR,
         {
           selector: 'Literal[value=/^persistent-rci-session:/]',
-          message: 'Import PERSISTENT_RCI_PERMISSIONS or isPersistentRciPermission from @mndw/sdk instead.',
+          message: 'Import PERSISTENT_RCI_CAPABILITIES or isPersistentRciCapability from @mndw/sdk instead.',
         },
         {
           // `persistent-rci-session:${mode}` — the dynamic spelling. ('…:' + mode is covered above.)
           selector: 'TemplateElement[value.raw=/^persistent-rci-session:/]',
-          message: 'Import PERSISTENT_RCI_PERMISSIONS or isPersistentRciPermission from @mndw/sdk instead.',
+          message: 'Import PERSISTENT_RCI_CAPABILITIES or isPersistentRciCapability from @mndw/sdk instead.',
         },
       ],
     },

@@ -22,7 +22,7 @@ func TestJSONManagementEndpointsRejectOversizedBodies(t *testing.T) {
 	handler.Register(mux)
 
 	paths := []string{
-		"/api/mgmt/permission",
+		"/api/mgmt/capability",
 		"/api/mgmt/service/start",
 		"/api/mgmt/service/stop",
 		"/api/mgmt/service/restart",

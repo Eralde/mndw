@@ -84,7 +84,7 @@ describe('PluginUpload', () => {
     document.body.innerHTML = '';
   });
 
-  it('explains plugin access and manifest permission limits before upload', () => {
+  it('explains plugin access and manifest capability limits before upload', () => {
     const {component, target} = mountUpload();
     const warning = target.querySelector('[role="note"]');
 

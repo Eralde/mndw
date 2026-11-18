@@ -29,7 +29,7 @@ const load = async (): Promise<void> => {
 <template>
   <section class="__MNDW_NAME__" :aria-labelledby="ctx.kind === 'page' ? 'plugin-title' : undefined">
     <h2 v-if="ctx.kind === 'page'" id="plugin-title">{{ translator.t('l10n.title') }}</h2>
-    <p class="device">Device: {{ ctx.deviceInfo.deviceName }}</p>
+    <p class="device">Device: {{ ctx.device.info.deviceName }}</p>
     <mndw-button variant="primary" type="button" @click="void load()">
       {{ translator.t('l10n.button') }}
     </mndw-button>

@@ -139,7 +139,7 @@ func TestChildEnvironmentIsFreshAndAllowlisted(t *testing.T) {
 
 func TestPersistentRCISocketPathIsDeclarationGated(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "runtime")
-	declared, err := manifest.Validate([]byte(`{"manifestVersion":1,"name":"declared","version":"1.0.0","type":"widget","label":"Declared","entry":"index.js","size":{"w":2,"h":2},"permissions":["persistent-rci-session:read"],"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`))
+	declared, err := manifest.Validate([]byte(`{"manifestVersion":1,"name":"declared","version":"1.0.0","type":"widget","label":"Declared","entry":"index.js","size":{"w":2,"h":2},"capabilities":["persistent-rci-session:read"],"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`))
 	if err != nil {
 		t.Fatalf("validate declared manifest: %v", err)
 	}
@@ -150,11 +150,11 @@ func TestPersistentRCISocketPathIsDeclarationGated(t *testing.T) {
 	}
 
 	if got := persistentRCISocket(root, &registry.Plugin{Name: "declared", Manifest: declared}); got == "" {
-		t.Fatal("declared permission did not produce a deterministic socket path")
+		t.Fatal("declared capability did not produce a deterministic socket path")
 	}
 
 	if got := persistentRCISocket(root, &registry.Plugin{Name: "undeclared", Manifest: undeclared}); got != "" {
-		t.Fatalf("undeclared permission produced socket path %q", got)
+		t.Fatalf("undeclared capability produced socket path %q", got)
 	}
 }
 

@@ -27,14 +27,14 @@ import {
 
 interface Props {
   client?: MgmtClient;
-  permissionVisible?: boolean;
-  permissionAvailable?: boolean;
+  capabilityVisible?: boolean;
+  capabilityAvailable?: boolean;
 }
 
 let {
   client = mgmtClient,
-  permissionVisible = false,
-  permissionAvailable = false,
+  capabilityVisible = false,
+  capabilityAvailable = false,
 }: Props = $props();
 let plugins = $state<PluginListEntry[]>([]);
 let runtimeLimits = $state<RuntimeLimits | null>(null);
@@ -410,8 +410,8 @@ onMount(() => {
       items={installed}
       {confirmingName}
       {rowStateFor}
-      {permissionVisible}
-      {permissionAvailable}
+      {capabilityVisible}
+      {capabilityAvailable}
       onEnable={(name) =>
       mutate(name, {kind: 'enable'}, () => client.enablePlugin(name))}
       onDisable={(name) =>
@@ -420,9 +420,9 @@ onMount(() => {
         {kind: 'disable'},
         () => client.disablePlugin(name),
       )}
-      onPermissionChange={(name, permission, enabled) =>
-      mutate(name, {kind: 'permission', permission, enabled}, () =>
-        client.setPluginPermission(name, permission, enabled))}
+      onCapabilityChange={(name, capability, enabled) =>
+      mutate(name, {kind: 'capability', capability, enabled}, () =>
+        client.setPluginCapability(name, capability, enabled))}
       onRestart={(name) =>
       mutate(name, {kind: 'restart'}, () => client.restartPlugin(name))}
       onDelete={(name) =>

@@ -6,20 +6,20 @@ describe('createTestPluginContext', () => {
   it('provides deterministic values for every PluginContext field', () => {
     const context = createTestPluginContext();
 
-    expect(context.rciManager).toBeDefined();
+    expect(context.device.rci).toBeDefined();
     expect(context.storage).toBeDefined();
-    expect(context.sharedStorage).toBeDefined();
-    expect(context.locale).toBe('en');
-    expect(context.theme).toBe('light');
-    expect(context.deviceInfo.deviceName).toBe('');
+    expect(context.storage.shared).toBeDefined();
+    expect(context.i18n.locale).toBe('en');
+    expect(context.appearance.theme).toBe('light');
+    expect(context.device.info.deviceName).toBe('');
     expect(context.i18n.t('missing')).toBe('missing');
     expect(context.instanceId).toBe('test:1');
     expect(context.kind).toBe('widget');
     expect(context.backend).toBeUndefined();
-    expect(context.theme$).toBeDefined();
-    expect(context.locale$).toBeDefined();
-    expect(context.palette$).toBeDefined();
-    expect(context.palette).toBeDefined();
+    expect(context.appearance.theme$).toBeDefined();
+    expect(context.i18n.locale$).toBeDefined();
+    expect(context.appearance.palette$).toBeDefined();
+    expect(context.appearance.palette).toBeDefined();
     expect(typeof context.overlay.closeAll).toBe('function');
     expect(context.pageRoute).toBeUndefined();
     expect(context.setTileTitle).toBeUndefined();

@@ -42,7 +42,7 @@ export interface EventStreamService {
   createFacade(
     instanceId: string,
     pluginName: string,
-    permissions: readonly string[],
+    capabilities: readonly string[],
     lifetime: PluginLifetime,
   ): PluginEventFacade | undefined;
   disposeFacade(instanceId: string): void;
@@ -94,15 +94,15 @@ const effectiveFilters = (requested: readonly string[], grants: readonly string[
   return [...result];
 };
 
-const validPermissions = (permissions: readonly string[]): string[] => {
+const validCapabilities = (capabilities: readonly string[]): string[] => {
   const grants = new Set<string>();
 
-  for (const permission of permissions) {
-    if (!permission.startsWith('events:')) {
+  for (const capability of capabilities) {
+    if (!capability.startsWith('events:')) {
       continue;
     }
 
-    const value = permission.slice('events:'.length);
+    const value = capability.slice('events:'.length);
 
     for (const grant of value.split(',')) {
       if (grant === '*' || /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)*$/.test(grant)) {
@@ -181,10 +181,10 @@ export class EventStreamManager implements EventStreamService {
   public createFacade(
     instanceId: string,
     pluginName: string,
-    permissions: readonly string[],
+    capabilities: readonly string[],
     lifetime: PluginLifetime,
   ): PluginEventFacade | undefined {
-    const grants = validPermissions(permissions);
+    const grants = validCapabilities(capabilities);
 
     if (grants.length === 0) {
       return undefined;
@@ -492,7 +492,7 @@ export class EventStreamManager implements EventStreamService {
     const previous = this.lastSentWireFilters;
 
     if (
-      previous !== undefined && previous.length === filters.length
+      previous?.length === filters.length
       && previous.every((filter, index) => filter === filters[index])
     ) {
       return;

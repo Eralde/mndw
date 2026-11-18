@@ -36,7 +36,7 @@ function clientWith(items: PluginListEntry[]): Mocked<MgmtClient> {
     approvePlugin: vi.fn().mockResolvedValue(items[0]),
     enablePlugin: vi.fn().mockResolvedValue(items[0]),
     disablePlugin: vi.fn().mockResolvedValue(items[0]),
-    setPluginPermission: vi.fn().mockResolvedValue(items[0]),
+    setPluginCapability: vi.fn().mockResolvedValue(items[0]),
     denyPlugin: vi.fn().mockResolvedValue(undefined),
     deletePlugin: vi.fn().mockResolvedValue(undefined),
     restartPlugin: vi.fn().mockResolvedValue(undefined),
@@ -62,7 +62,7 @@ function clientWith(items: PluginListEntry[]): Mocked<MgmtClient> {
 
 async function mountManager(
   client: Mocked<MgmtClient>,
-  capabilities: {permissionVisible?: boolean; permissionAvailable?: boolean} = {},
+  capabilities: {capabilityVisible?: boolean; capabilityAvailable?: boolean} = {},
 ): Promise<{component: ReturnType<typeof mount>; target: HTMLElement}> {
   const target = document.createElement('div');
 
@@ -383,25 +383,25 @@ describe('PluginManager', () => {
     void unmount(component);
   });
 
-  it('changes a permission, refreshes without offering a reload, and keeps grant state authoritative', async () => {
-    const initial = plugin({permissions: ['persistent-rci-session:write']});
+  it('changes a capability, refreshes without offering a reload, and keeps grant state authoritative', async () => {
+    const initial = plugin({capabilities: ['persistent-rci-session:write']});
     const granted = plugin({
-      permissions: ['persistent-rci-session:write'],
-      permissionGrants: {'persistent-rci-session:write': true},
+      capabilities: ['persistent-rci-session:write'],
+      capabilityGrants: {'persistent-rci-session:write': true},
     });
     const client = clientWith([initial]);
 
-    client.setPluginPermission.mockResolvedValue(granted);
+    client.setPluginCapability.mockResolvedValue(granted);
 
     const {component, target} = await mountManager(client, {
-      permissionVisible: true,
-      permissionAvailable: true,
+      capabilityVisible: true,
+      capabilityAvailable: true,
     });
 
     client.listPlugins.mockClear();
-    target.querySelector<HTMLElement>('.mndw-installed__permission-switch mndw-switch')?.click();
+    target.querySelector<HTMLElement>('.mndw-installed__capability-switch mndw-switch')?.click();
     await vi.waitFor(() =>
-      expect(client.setPluginPermission.mock.calls).toContainEqual([
+      expect(client.setPluginCapability.mock.calls).toContainEqual([
         'network-tools',
         'persistent-rci-session:write',
         true,
@@ -414,26 +414,26 @@ describe('PluginManager', () => {
     void unmount(component);
   });
 
-  it('shows socket-start error while refreshed permission grant remains checked', async () => {
-    const initial = plugin({permissions: ['persistent-rci-session:write']});
+  it('shows socket-start error while refreshed capability grant remains checked', async () => {
+    const initial = plugin({capabilities: ['persistent-rci-session:write']});
     const granted = plugin({
-      permissions: ['persistent-rci-session:write'],
-      permissionGrants: {'persistent-rci-session:write': true},
+      capabilities: ['persistent-rci-session:write'],
+      capabilityGrants: {'persistent-rci-session:write': true},
     });
     const client = clientWith([initial]);
 
-    client.setPluginPermission.mockRejectedValue(new MgmtError('socket down', 'RCI_SOCKET_START_FAILED'));
+    client.setPluginCapability.mockRejectedValue(new MgmtError('socket down', 'RCI_SOCKET_START_FAILED'));
     client.listPlugins.mockResolvedValueOnce([initial]).mockResolvedValueOnce([granted]);
 
     const {component, target} = await mountManager(client, {
-      permissionVisible: true,
-      permissionAvailable: true,
+      capabilityVisible: true,
+      capabilityAvailable: true,
     });
 
     client.listPlugins.mockClear();
-    target.querySelector<HTMLElement>('.mndw-installed__permission-switch mndw-switch')?.click();
+    target.querySelector<HTMLElement>('.mndw-installed__capability-switch mndw-switch')?.click();
     await vi.waitFor(() =>
-      expect(client.setPluginPermission.mock.calls).toContainEqual([
+      expect(client.setPluginCapability.mock.calls).toContainEqual([
         'network-tools',
         'persistent-rci-session:write',
         true,
@@ -447,7 +447,7 @@ describe('PluginManager', () => {
     );
 
     const control = target.querySelector<HTMLElement & {checked: boolean}>(
-      '.mndw-installed__permission-switch mndw-switch',
+      '.mndw-installed__capability-switch mndw-switch',
     );
 
     expect(control?.checked).toBe(true);

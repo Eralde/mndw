@@ -34,7 +34,7 @@ const load = async (): Promise<void> => {
   {#if ctx.kind === 'page'}
     <h2 id="plugin-title">{$translator.t('l10n.title')}</h2>
   {/if}
-  <p class="device">Device: {ctx.deviceInfo.deviceName}</p>
+  <p class="device">Device: {ctx.device.info.deviceName}</p>
   <mndw-button
     variant="primary"
     type="button"

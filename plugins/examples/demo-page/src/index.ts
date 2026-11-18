@@ -3,7 +3,7 @@ import {bindLocale} from '@mndw/sdk/bind-locale';
 
 export async function createInstance(el: HTMLElement, ctx: PluginContext): Promise<PluginInstance> {
   const i18n = ctx.i18n;
-  const saved = await ctx.storage.get('count');
+  const saved = await ctx.storage.instance.get('count');
   let count = saved ? parseInt(saved, 10) || 0 : 0;
 
   el.innerHTML = `
@@ -40,8 +40,8 @@ export async function createInstance(el: HTMLElement, ctx: PluginContext): Promi
 
   const render = (): void => {
     instanceLabelEl.textContent = i18n.t('instance-id');
-    deviceEl.textContent = `${i18n.t('device')}: ${ctx.deviceInfo.deviceName}`;
-    vendorEl.textContent = `${i18n.t('vendor')}: ${ctx.deviceInfo.vendor}`;
+    deviceEl.textContent = `${i18n.t('device')}: ${ctx.device.info.deviceName}`;
+    vendorEl.textContent = `${i18n.t('vendor')}: ${ctx.device.info.vendor}`;
     counterEl.textContent = i18n.t('count', {count});
     saveBtn.textContent = i18n.t('save');
   };
@@ -54,7 +54,7 @@ export async function createInstance(el: HTMLElement, ctx: PluginContext): Promi
   }, 1000);
 
   saveBtn.addEventListener('click', async () => {
-    await ctx.storage.set('count', String(count));
+    await ctx.storage.instance.set('count', String(count));
     storedEl.textContent = `(saved: ${count})`;
   });
 

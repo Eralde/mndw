@@ -1,17 +1,17 @@
 package backend
 
 // ActivationBlocker is a machine-readable reason a declared activation
-// permission is not currently available.
+// capability is not currently available.
 type ActivationBlocker struct {
-	Permission   string
+	Capability   string
 	Reason       BlockerReason
 	Prerequisite string
 }
 
-// ActivationGate evaluates one declared permission for one plugin.
-type ActivationGate func(pluginName, permission string) []ActivationBlocker
+// ActivationGate evaluates one declared capability for one plugin.
+type ActivationGate func(pluginName, capability string) []ActivationBlocker
 
-// ActivationGateRegistry maps manifest permission IDs to their activation
+// ActivationGateRegistry maps manifest capability IDs to their activation
 // predicates. It is assembled before runtime use and then treated as read-only.
 type ActivationGateRegistry struct {
 	gates map[string]ActivationGate
@@ -21,7 +21,7 @@ func NewActivationGateRegistry() *ActivationGateRegistry {
 	return &ActivationGateRegistry{gates: make(map[string]ActivationGate)}
 }
 
-func (r *ActivationGateRegistry) Register(permissionID string, gate ActivationGate) {
+func (r *ActivationGateRegistry) Register(capabilityID string, gate ActivationGate) {
 	if r == nil || gate == nil {
 		return
 	}
@@ -30,22 +30,22 @@ func (r *ActivationGateRegistry) Register(permissionID string, gate ActivationGa
 		r.gates = make(map[string]ActivationGate)
 	}
 
-	r.gates[permissionID] = gate
+	r.gates[capabilityID] = gate
 }
 
-func (r *ActivationGateRegistry) Lookup(permissionID string) (ActivationGate, bool) {
+func (r *ActivationGateRegistry) Lookup(capabilityID string) (ActivationGate, bool) {
 	if r == nil {
 		return nil, false
 	}
 
-	gate, ok := r.gates[permissionID]
+	gate, ok := r.gates[capabilityID]
 
 	return gate, ok
 }
 
-// Evaluate returns active blockers in manifest permission order, retaining only
+// Evaluate returns active blockers in manifest capability order, retaining only
 // the first instance of each blocker tuple.
-func (r *ActivationGateRegistry) Evaluate(pluginName string, permissions []string) []ActivationBlocker {
+func (r *ActivationGateRegistry) Evaluate(pluginName string, capabilities []string) []ActivationBlocker {
 	if r == nil {
 		return nil
 	}
@@ -53,16 +53,16 @@ func (r *ActivationGateRegistry) Evaluate(pluginName string, permissions []strin
 	blockers := make([]ActivationBlocker, 0)
 	seen := make(map[activationBlockerKey]struct{})
 
-	for _, permission := range permissions {
-		gate, ok := r.Lookup(permission)
+	for _, capability := range capabilities {
+		gate, ok := r.Lookup(capability)
 
 		if !ok {
 			continue
 		}
 
-		for _, blocker := range gate(pluginName, permission) {
+		for _, blocker := range gate(pluginName, capability) {
 			key := activationBlockerKey{
-				permission:   blocker.Permission,
+				capability:   blocker.Capability,
 				reason:       blocker.Reason,
 				prerequisite: blocker.Prerequisite,
 			}
@@ -79,12 +79,12 @@ func (r *ActivationGateRegistry) Evaluate(pluginName string, permissions []strin
 	return blockers
 }
 
-func (r *ActivationGateRegistry) Satisfied(pluginName string, permissions []string) bool {
-	return len(r.Evaluate(pluginName, permissions)) == 0
+func (r *ActivationGateRegistry) Satisfied(pluginName string, capabilities []string) bool {
+	return len(r.Evaluate(pluginName, capabilities)) == 0
 }
 
 type activationBlockerKey struct {
-	permission   string
+	capability   string
 	reason       BlockerReason
 	prerequisite string
 }

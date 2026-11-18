@@ -28,7 +28,7 @@ function context(): {
 
   return {
     pluginContext: {
-      rciManager: {queue, queueBackgroundProcess} as unknown as PluginRciManager,
+      device: {rci: {queue, queueBackgroundProcess} as unknown as PluginRciManager},
       overlay: {} as OverlayService,
       i18n: createTestI18n(enCatalog),
     } as unknown as PluginContext,

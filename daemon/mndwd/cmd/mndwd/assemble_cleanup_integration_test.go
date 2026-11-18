@@ -88,10 +88,10 @@ func newCleanupFixture(t *testing.T, deviceURL string) cleanupFixture {
 			Source:   state.SourceUpload,
 			Approval: state.ApprovalApproved,
 			Enabled:  true,
-			Manifest: servicePermissionManifestWithCommand("demo", "backend/server"),
+			Manifest: serviceCapabilityManifestWithCommand("demo", "backend/server"),
 		}
-		st.PermissionGrants = map[string]map[string]bool{
-			"demo": {manifest.PersistentRCISessionWritePermission: true},
+		st.CapabilityGrants = map[string]map[string]bool{
+			"demo": {manifest.PersistentRCISessionWriteCapability: true},
 		}
 
 		return nil
@@ -179,8 +179,8 @@ func TestAssembleTokenlessSurvivesStoreOpenFailure(t *testing.T) {
 		t.Fatalf("assembleRCISession returned error: %v", registration.err)
 	}
 
-	if registration.permissionController == nil {
-		t.Fatal("assembleRCISession did not create permission controller after token store open failure")
+	if registration.capabilityController == nil {
+		t.Fatal("assembleRCISession did not create capability controller after token store open failure")
 	}
 
 	request := httptest.NewRequest(http.MethodGet, "/api/mndw/rci-session/capability", nil)

@@ -105,7 +105,7 @@ describe('BackendApprovalModal', () => {
     try {
       expect(text()).toContain('declares a backend. Review its capabilities before approving.');
       expect(text()).toContain(
-        'Plugins run with full access. A plugin page runs in this dashboard and can call the router API; if it has a backend, that backend runs on the router as root. Manifest permissions describe what the plugin asks for; they are not a sandbox. Install plugins only from authors you trust.',
+        'Plugins run with full access. A plugin page runs in this dashboard and can call the router API; if it has a backend, that backend runs on the router as root. Manifest capabilities describe what the plugin asks for; they are not a sandbox. Install plugins only from authors you trust.',
       );
       expect(text()).toContain('Deny');
       expect(text()).toContain('Approve');
@@ -115,7 +115,7 @@ describe('BackendApprovalModal', () => {
 
       expect(text()).toContain('объявляет серверную часть. Проверьте её возможности перед подтверждением.');
       expect(text()).toContain(
-        'Плагины работают с полным доступом. Страница плагина работает внутри панели и может вызывать API роутера; если у плагина есть серверная часть, она запускается на роутере с правами root. Разрешения в манифесте описывают запросы плагина, но не изолируют его. Устанавливайте плагины только от авторов, которым доверяете.',
+        'Плагины работают с полным доступом. Страница плагина работает внутри панели и может вызывать API роутера; если у плагина есть серверная часть, она запускается на роутере с правами root. Доступы в манифесте описывают запросы плагина, но не изолируют его. Устанавливайте плагины только от авторов, которым доверяете.',
       );
       expect(text()).toContain('Отклонить');
       expect(text()).toContain('Подтвердить');

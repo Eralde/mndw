@@ -100,6 +100,7 @@ export default defineConfig({
             {text: 'Local development', link: '/guides/local-development'},
             {text: 'Validation and packaging', link: '/guides/validation-and-packaging'},
             {text: 'Upgrading to 0.2', link: '/guides/upgrading-to-0-2'},
+            {text: 'Upgrading to 0.3', link: '/guides/upgrading-to-0-3'},
           ],
         },
         {

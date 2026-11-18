@@ -82,14 +82,14 @@
       "blocked": {
         "title": "Extra features need access",
         "body": "Plugin access for extra features is not enabled.",
-        "permission": {
-          "body": "Grant the required plugin permission in settings."
+        "capability": {
+          "body": "Grant the plugin the required capability in settings."
         },
         "controller-token": {
           "body": "Turn on background router access in settings."
         },
         "combined": {
-          "body": "Grant the required plugin permission and turn on background router access in settings."
+          "body": "Grant the plugin the required capability and turn on background router access in settings."
         },
         "generic": {
           "body": "Complete extra-feature setup in settings."

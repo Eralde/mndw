@@ -92,11 +92,11 @@ describe('CapabilityReview capability summary', () => {
     document.body.innerHTML = '';
   });
 
-  it('renders backend kind, packages, args, public routes, and permissions', () => {
+  it('renders backend kind, packages, args, public routes, and capabilities', () => {
     const {component, target} = mountReview({
       ...baseEntry,
       review: {kind: 'service', packages: ['ttyd'], args: ['--foreground'], publicRoutes: ['health']},
-      permissions: ['persistent-rci-session:read'],
+      capabilities: ['persistent-rci-session:read'],
       backend: {routes: {health: {transport: 'http', method: 'GET', path: 'health'}}},
     });
 
@@ -121,7 +121,7 @@ describe('CapabilityReview capability summary', () => {
     expect(target.textContent).not.toContain('Installs packages');
     expect(target.textContent).not.toContain('Service arguments');
     expect(target.textContent).not.toContain('Public routes');
-    expect(target.textContent).not.toContain('Permissions');
+    expect(target.textContent).not.toContain('Capabilities');
 
     void unmount(component);
   });

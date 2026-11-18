@@ -74,8 +74,8 @@ CSS contains selectors outside the plugin prefix. Third-party selectors can be l
 `package.json` under `mndw.cssSelectorAllowlist`; see [validation and packaging](validation-and-packaging.md).
 
 Use CSS tokens for rendered colors. If JavaScript needs colors (for example, to draw on canvas), read
-the current palette from `ctx.palette` and subscribe to `ctx.palette$` to update it when the applied
-palette changes. `ctx.theme` returns the current theme name; `ctx.theme$` emits it on subscribe and on
+the current palette from `ctx.appearance.palette` and subscribe to `ctx.appearance.palette$` to update it when the applied
+palette changes. `ctx.appearance.theme` returns the current theme name; `ctx.appearance.theme$` emits it on subscribe and on
 later changes. Do not read the generated default `MNDW_TOKENS` constant for live device overrides.
 Token names and types are maintained in
 [`frontend/sdk/src/tokens.css`](https://github.com/Eralde/mndw/blob/master/frontend/sdk/src/tokens.css)

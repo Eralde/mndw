@@ -49,7 +49,7 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 
 	fixture := newActivationIntegrationFixture(t, false)
 
-	if len(fixture.assembly.ActivationBlockers("demo", manifest.PersistentRCISessionWritePermission)) == 0 {
+	if len(fixture.assembly.ActivationBlockers("demo", manifest.PersistentRCISessionWriteCapability)) == 0 {
 		t.Fatal("initial assembly satisfied gate without controller token")
 	}
 
@@ -65,7 +65,7 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 
 	fixture = newActivationIntegrationFixture(t, true)
 
-	if len(fixture.assembly.ActivationBlockers("demo", manifest.PersistentRCISessionWritePermission)) != 0 {
+	if len(fixture.assembly.ActivationBlockers("demo", manifest.PersistentRCISessionWriteCapability)) != 0 {
 		t.Fatal("initial assembly did not publish granted controller-token snapshot")
 	}
 
@@ -123,23 +123,23 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 		t.Fatalf("retained-token Unauthorized pokes = %d, want %d", got, base+2)
 	}
 
-	if err := fixture.store.SetGrant("demo", manifest.PersistentRCISessionWritePermission, false); err != nil {
+	if err := fixture.store.SetCapabilityGrant("demo", manifest.PersistentRCISessionWriteCapability, false); err != nil {
 		t.Fatalf("disable grant: %v", err)
 	}
 
-	if err := fixture.assembly.PermissionChanged("demo"); err != nil {
-		t.Fatalf("PermissionChanged after grant disable: %v", err)
+	if err := fixture.assembly.CapabilityChanged("demo"); err != nil {
+		t.Fatalf("CapabilityChanged after grant disable: %v", err)
 	}
 
 	waitForRuntimeState(t, fixture.runtime, "demo", backend.StateStopped)
 	waitForReservedServices(t, fixture.runtime, 0)
 
-	if err := fixture.store.SetGrant("demo", manifest.PersistentRCISessionWritePermission, true); err != nil {
+	if err := fixture.store.SetCapabilityGrant("demo", manifest.PersistentRCISessionWriteCapability, true); err != nil {
 		t.Fatalf("enable grant: %v", err)
 	}
 
-	if err := fixture.assembly.PermissionChanged("demo"); err != nil {
-		t.Fatalf("PermissionChanged after grant enable: %v", err)
+	if err := fixture.assembly.CapabilityChanged("demo"); err != nil {
+		t.Fatalf("CapabilityChanged after grant enable: %v", err)
 	}
 
 	waitForRuntimeState(t, fixture.runtime, "demo", backend.StateReady)
@@ -221,12 +221,12 @@ func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIn
 			Source:   state.SourceUpload,
 			Approval: state.ApprovalApproved,
 			Enabled:  true,
-			Manifest: servicePermissionManifestWithCommand("demo", "backend/service-helper"),
+			Manifest: serviceCapabilityManifestWithCommand("demo", "backend/service-helper"),
 		}
-		st.PermissionGrants = map[string]map[string]bool{}
+		st.CapabilityGrants = map[string]map[string]bool{}
 
 		if withToken {
-			st.PermissionGrants["demo"] = map[string]bool{manifest.PersistentRCISessionWritePermission: true}
+			st.CapabilityGrants["demo"] = map[string]bool{manifest.PersistentRCISessionWriteCapability: true}
 		}
 
 		return nil
@@ -280,7 +280,7 @@ func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIn
 		fixture.runtime.Reconcile(context.Background(), fixture.registry.AllBackendPlugins())
 	})
 
-	assembledCoordinator, ok := registration.permissionController.(*coordinator.Coordinator)
+	assembledCoordinator, ok := registration.capabilityController.(*coordinator.Coordinator)
 
 	if !ok {
 		t.Fatal("activation assembly was not wired")
@@ -462,8 +462,8 @@ func unixSocketAvailable(t *testing.T) bool {
 	return false
 }
 
-func servicePermissionManifestWithCommand(name, command string) []byte {
-	return []byte(`{"manifestVersion":1,"name":"` + name + `","version":"1.0.0","type":"page","label":"` + name + `","entry":"index.js","route":"/` + name + `","permissions":["persistent-rci-session:write"],"backend":{"kind":"service","protocolVersion":1,"command":"` + command + `","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`)
+func serviceCapabilityManifestWithCommand(name, command string) []byte {
+	return []byte(`{"manifestVersion":1,"name":"` + name + `","version":"1.0.0","type":"page","label":"` + name + `","entry":"index.js","route":"/` + name + `","capabilities":["persistent-rci-session:write"],"backend":{"kind":"service","protocolVersion":1,"command":"` + command + `","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`)
 }
 
 func buildActivationServiceHelper(t *testing.T, output string) {

@@ -1,4 +1,4 @@
-import {type PluginLifetime, hostSignal$} from '../runtime/plugin-lifetime.js';
+import {type PluginLifetime, hostValue$} from '../runtime/plugin-lifetime.js';
 import type {PluginI18n} from '@mndw/sdk';
 import type {PluginManifestI18n} from '@mndw/sdk-internal';
 import {type PluginCatalog, parseCatalog} from '@mndw/sdk-internal/catalog';
@@ -434,9 +434,12 @@ export function formatPluginTranslation(
 export function createPluginI18n(
   cell: PluginCatalogCell | undefined,
   getHostLocale: () => string,
-  subscribeHostLocale: (callback: () => void) => () => void,
+  subscribeHostLocale: (callback: (locale: string) => void) => () => void,
   lifetime: PluginLifetime,
 ): PluginI18n {
+  const listen = cell === undefined
+    ? subscribeHostLocale
+    : (callback: (locale: string) => void): () => void => cell.subscribe(() => callback(getHostLocale()));
   const facade: PluginI18n = {
     get locale(): string {
       return getHostLocale();
@@ -447,7 +450,7 @@ export function createPluginI18n(
       new Intl.NumberFormat(normalizeFormatterLocale(getHostLocale()), options).format(value),
     formatDate: (value, options) =>
       new Intl.DateTimeFormat(normalizeFormatterLocale(getHostLocale()), options).format(value),
-    change$: hostSignal$(cell?.subscribe.bind(cell) ?? subscribeHostLocale, lifetime),
+    locale$: hostValue$(getHostLocale, listen, lifetime),
   };
 
   return Object.freeze(facade);

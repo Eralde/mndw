@@ -131,7 +131,7 @@ func (h *pluginsAPI) handleEnable(w http.ResponseWriter, r *http.Request) {
 				return apiErr
 			}
 
-			h.reconcilePermission(name, "plugin enable")
+			h.reconcileCapability(name, "plugin enable")
 
 			return nil
 		})
@@ -174,7 +174,7 @@ func (h *pluginsAPI) handleDisable(w http.ResponseWriter, r *http.Request) {
 			persistErr := h.setEnabled(name, false, "disable", "plugin disabled by operator", p)
 
 			if persistErr == nil {
-				h.reconcilePermission(name, "plugin disable")
+				h.reconcileCapability(name, "plugin disable")
 			}
 
 			if stopErr != nil {
@@ -417,7 +417,7 @@ func (h *pluginsAPI) handleDelete(w http.ResponseWriter, r *http.Request) {
 				h.removePluginBackups(name)
 			}
 
-			if apiErr := h.dropRecord(name, "delete", "plugin removed by operator; permission grants purged"); apiErr != nil {
+			if apiErr := h.dropRecord(name, "delete", "plugin removed by operator; capability grants purged"); apiErr != nil {
 				return apiErr
 			}
 
@@ -434,7 +434,7 @@ func (h *pluginsAPI) handleDelete(w http.ResponseWriter, r *http.Request) {
 	})
 
 	h.logger.Info("plugin deleted", "plugin", name)
-	h.reconcilePermission(name, "plugin delete")
+	h.reconcileCapability(name, "plugin delete")
 	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -462,7 +462,7 @@ func (h *pluginsAPI) markRemovalPending(name string) *httpx.APIError {
 func (h *pluginsAPI) dropRecord(name, action, detail string) *httpx.APIError {
 	return h.mutateWithAudit(action, name, detail, func(st *state.State) error {
 		delete(st.Plugins, name)
-		delete(st.PermissionGrants, name)
+		delete(st.CapabilityGrants, name)
 
 		return nil
 	})

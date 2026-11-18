@@ -96,12 +96,12 @@
       "source": "upload",
       "approval": "approved",
       "enabled": true,
-      "permissions": [
+      "capabilities": [
         "persistent-rci-session:read",
         "persistent-rci-session:write",
         "events:wan"
       ],
-      "permissionGrants": {
+      "capabilityGrants": {
         "persistent-rci-session:read": true
       },
       "size": {

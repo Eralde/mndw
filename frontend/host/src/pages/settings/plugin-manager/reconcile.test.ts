@@ -45,19 +45,19 @@ describe('plugin lifecycle reconciliation', () => {
     expect(listPlugins).not.toHaveBeenCalled();
   });
 
-  it('matches permission state from operation payload', () => {
+  it('matches capability state from operation payload', () => {
     const entry = plugin({
-      permissions: ['persistent-rci-session:write'],
-      permissionGrants: {'persistent-rci-session:write': true},
+      capabilities: ['persistent-rci-session:write'],
+      capabilityGrants: {'persistent-rci-session:write': true},
     });
 
     expect(expectedStateReached(
-      {kind: 'permission', permission: 'persistent-rci-session:write', enabled: true},
+      {kind: 'capability', capability: 'persistent-rci-session:write', enabled: true},
       'network-tools',
       [entry],
     )).toBe(true);
     expect(expectedStateReached(
-      {kind: 'permission', permission: 'persistent-rci-session:write', enabled: false},
+      {kind: 'capability', capability: 'persistent-rci-session:write', enabled: false},
       'network-tools',
       [entry],
     )).toBe(false);

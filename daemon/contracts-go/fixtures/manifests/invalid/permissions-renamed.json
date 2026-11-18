@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "name": "legacy-permissions",
+  "version": "1.0.0",
+  "type": "widget",
+  "label": "Legacy permissions",
+  "entry": "index.js",
+  "size": {"w": 2, "h": 2},
+  "permissions": ["events:*"]
+}

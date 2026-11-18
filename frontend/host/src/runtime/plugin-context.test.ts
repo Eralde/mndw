@@ -367,7 +367,11 @@ describe('createPluginContext service boundaries', () => {
       services: {locale: injectedLocale, palette: injectedPalette},
     });
 
-    const subscriptions = [ctx.theme$.subscribe(), ctx.locale$.subscribe(), ctx.palette$.subscribe()];
+    const subscriptions = [
+      ctx.appearance.theme$.subscribe(),
+      ctx.i18n.locale$.subscribe(),
+      ctx.appearance.palette$.subscribe(),
+    ];
 
     themeState.current = 'light';
 
@@ -389,9 +393,9 @@ describe('createPluginContext service boundaries', () => {
       listener(palette);
     }
 
-    expect(ctx.theme).toBe('light');
-    expect(ctx.locale).toBe('ru');
-    expect(ctx.palette).toBe(nextPalette);
+    expect(ctx.appearance.theme).toBe('light');
+    expect(ctx.i18n.locale).toBe('ru');
+    expect(ctx.appearance.palette).toBe(nextPalette);
     expect(typeof ctx.telemetry.fetchProjected).toBe('function');
     expect(ctx.telemetry.gathering$).toBeDefined();
 
@@ -402,7 +406,7 @@ describe('createPluginContext service boundaries', () => {
     const handle = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
     let completeCount = 0;
 
-    handle.context.theme$.subscribe({complete: () => completeCount += 1});
+    handle.context.appearance.theme$.subscribe({complete: () => completeCount += 1});
     handle.dispose('plugin-unmount');
 
     expect(completeCount).toBe(1);
@@ -486,10 +490,9 @@ describe('createPluginContext service boundaries', () => {
       pageRoute,
     });
 
-    expect('next' in ctx.theme$).toBe(false);
-    expect('next' in ctx.locale$).toBe(false);
-    expect('next' in ctx.palette$).toBe(false);
-    expect('next' in ctx.i18n.change$).toBe(false);
+    expect('next' in ctx.appearance.theme$).toBe(false);
+    expect('next' in ctx.i18n.locale$).toBe(false);
+    expect('next' in ctx.appearance.palette$).toBe(false);
     expect('next' in (ctx.kind === 'page' ? ctx.pageRoute.childPath$ : of(''))).toBe(false);
   });
 
@@ -506,8 +509,8 @@ describe('createPluginContext service boundaries', () => {
       services: {locale: injectedLocale, palette: injectedPalette},
     });
 
-    expect(ctx.locale).toBe('ru');
-    expect(ctx.palette).toBe(MNDW_TOKENS);
+    expect(ctx.i18n.locale).toBe('ru');
+    expect(ctx.appearance.palette).toBe(MNDW_TOKENS);
     expect(localeSpy).toHaveBeenCalled();
     expect(paletteSpy).toHaveBeenCalled();
   });
@@ -516,9 +519,9 @@ describe('createPluginContext service boundaries', () => {
     const {rciService} = await import('../services/rci.service.js');
     const driver = rciService.driver as unknown as Record<string, unknown>;
     const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
-    const facade = ctx.rciManager as unknown as Record<string, unknown>;
+    const facade = ctx.device.rci as unknown as Record<string, unknown>;
 
-    expect(ctx.rciManager).not.toBe(driver);
+    expect(ctx.device.rci).not.toBe(driver);
     expect(facade.execute).toBeInstanceOf(Function);
   });
 
@@ -527,7 +530,7 @@ describe('createPluginContext service boundaries', () => {
     const driver = rciService.driver as unknown as Record<string, unknown>;
     const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
 
-    const result = ctx.rciManager.execute({path: 'x'});
+    const result = ctx.device.rci.execute({path: 'x'});
 
     const execute = driver.execute as ReturnType<typeof vi.fn>;
 
@@ -540,17 +543,17 @@ describe('plugin RCI facade', () => {
   it('exposes exactly the plugin RCI methods', () => {
     const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
 
-    expect(Object.keys(ctx.rciManager).sort()).toEqual([...PLUGIN_RCI_MANAGER_METHODS].sort());
-    expect('destroy' in ctx.rciManager).toBe(false);
-    expect('replaceBatchScheduler' in ctx.rciManager).toBe(false);
-    expect('toggleStats' in ctx.rciManager).toBe(false);
-    expect('stats$' in ctx.rciManager).toBe(false);
-    expect(Object.isFrozen(ctx.rciManager)).toBe(true);
+    expect(Object.keys(ctx.device.rci).sort()).toEqual([...PLUGIN_RCI_MANAGER_METHODS].sort());
+    expect('destroy' in ctx.device.rci).toBe(false);
+    expect('replaceBatchScheduler' in ctx.device.rci).toBe(false);
+    expect('toggleStats' in ctx.device.rci).toBe(false);
+    expect('stats$' in ctx.device.rci).toBe(false);
+    expect(Object.isFrozen(ctx.device.rci)).toBe(true);
   });
 });
 
 describe('palette access', () => {
-  it('exposes the applied palette and notifies on change$', () => {
+  it('exposes the applied palette and notifies on change', () => {
     const service = hostServices.palette;
     const handle = createPluginContext({
       entry: widgetEntry(),
@@ -561,10 +564,10 @@ describe('palette access', () => {
     });
     const {context: ctx} = handle;
 
-    expect(ctx.palette).toEqual(service.getTokens());
+    expect(ctx.appearance.palette).toEqual(service.getTokens());
 
     const seen: PaletteTokenMap[] = [];
-    const subscription = ctx.palette$.subscribe((tokens) => seen.push(tokens));
+    const subscription = ctx.appearance.palette$.subscribe((tokens) => seen.push(tokens));
     const next = JSON.parse(JSON.stringify(MNDW_TOKENS)) as PaletteTokenMap;
 
     next.dark.accent = '#ff0000';
@@ -573,7 +576,7 @@ describe('palette access', () => {
     expect(seen).toHaveLength(2);
     expect(seen[0]).toEqual(MNDW_TOKENS);
     expect(seen[1]).toEqual(next);
-    expect(ctx.palette).toEqual(MNDW_TOKENS);
+    expect(ctx.appearance.palette).toEqual(MNDW_TOKENS);
 
     subscription.unsubscribe();
     service.discardPreview();
@@ -583,6 +586,24 @@ describe('palette access', () => {
 });
 
 describe('createPluginContext security boundaries', () => {
+  it('freezes grouped context objects and omits replaced top-level members', () => {
+    const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
+
+    expect(Object.getPrototypeOf(ctx)).toBeNull();
+    expect(Object.isFrozen(ctx)).toBe(true);
+    expect(Object.isFrozen(ctx.storage)).toBe(true);
+    expect(Object.isFrozen(ctx.appearance)).toBe(true);
+    expect(Object.isFrozen(ctx.device)).toBe(true);
+    expect(Object.isFrozen(ctx.timers)).toBe(true);
+    expect('sharedStorage' in ctx).toBe(false);
+    expect('deviceInfo' in ctx).toBe(false);
+    expect('rciManager' in ctx).toBe(false);
+    expect('createTicker' in ctx).toBe(false);
+    expect('theme' in ctx).toBe(false);
+    expect('palette' in ctx).toBe(false);
+    expect('locale' in ctx).toBe(false);
+  });
+
   it('does not expose host session lifecycle or legacy context members to plugins', () => {
     const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
 
@@ -603,21 +624,29 @@ describe('createPluginContext security boundaries', () => {
     const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
 
     expect(Object.isFrozen(ctx)).toBe(true);
-    expect(Object.isFrozen(ctx.rciManager)).toBe(true);
+    expect(Object.isFrozen(ctx.storage)).toBe(true);
+    expect(Object.isFrozen(ctx.appearance)).toBe(true);
+    expect(Object.isFrozen(ctx.device)).toBe(true);
+    expect(Object.isFrozen(ctx.timers)).toBe(true);
+    expect(Object.isFrozen(ctx.device.rci)).toBe(true);
   });
 
   it('gives every security-boundary object a null prototype', () => {
     const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
 
     expect(Object.getPrototypeOf(ctx)).toBeNull();
-    expect(Object.getPrototypeOf(ctx.rciManager)).toBeNull();
+    expect(Object.getPrototypeOf(ctx.storage)).toBeNull();
+    expect(Object.getPrototypeOf(ctx.appearance)).toBeNull();
+    expect(Object.getPrototypeOf(ctx.device)).toBeNull();
+    expect(Object.getPrototypeOf(ctx.timers)).toBeNull();
+    expect(Object.getPrototypeOf(ctx.device.rci)).toBeNull();
   });
 
   it('gives separate instances their own facade objects', () => {
     const {context: a} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
     const {context: b} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:2', hostInfo, deviceInfo});
 
-    expect(a.rciManager).not.toBe(b.rciManager);
+    expect(a.device.rci).not.toBe(b.device.rci);
   });
 });
 
@@ -632,7 +661,7 @@ describe('createPluginContext ownership', () => {
 
     expect(handle.context.signal.aborted).toBe(true);
     expect(handle.context.signal.reason).toBeInstanceOf(DOMException);
-    expect(handle.context.signal.reason.name).toBe('AbortError');
+    expect(handle.context.signal.reason).toMatchObject({name: 'AbortError'});
   });
 
   it('creates a ticker that is destroyed with the plugin lifetime', () => {
@@ -640,7 +669,7 @@ describe('createPluginContext ownership', () => {
 
     try {
       const handle = createPluginContext({entry: widgetEntry(), instanceId: 'ticker:1', hostInfo, deviceInfo});
-      const ticker = handle.context.createTicker();
+      const ticker = handle.context.timers.createTicker();
       const complete = vi.fn();
 
       ticker.tick$.subscribe({complete});

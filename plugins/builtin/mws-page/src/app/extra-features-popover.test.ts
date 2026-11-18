@@ -199,7 +199,7 @@ describe('openExtraFeaturesPopover', () => {
 
   it('renders combined blocker setup copy from machine-readable reasons', () => {
     const {overlay, layer, anchor} = createOverlay();
-    const reasons: ExtraFeaturesSetupReason[] = ['permission', 'controller-token'];
+    const reasons: ExtraFeaturesSetupReason[] = ['capability', 'controller-token'];
 
     openPopover(overlay, anchor, 'blocked', (key) => key, hiddenNavigation, reasons);
 
@@ -210,19 +210,28 @@ describe('openExtraFeaturesPopover', () => {
     const cases = [
       {
         catalog: enCatalog,
+        capability: 'Grant the plugin the required capability in settings.',
         controller: 'Turn on background router access in settings.',
-        combined: 'Grant the required plugin permission and turn on background router access in settings.',
+        combined: 'Grant the plugin the required capability and turn on background router access in settings.',
       },
       {
         catalog: ruCatalog,
+        capability: 'Выдайте плагину нужный доступ в настройках.',
         controller: 'Включите фоновый доступ к роутеру в настройках.',
-        combined: 'Выдайте плагину необходимое разрешение и включите фоновый доступ к роутеру в настройках.',
+        combined: 'Выдайте плагину нужный доступ и включите фоновый доступ к роутеру в настройках.',
       },
     ];
 
-    for (const {catalog, controller, combined} of cases) {
+    for (const {catalog, capability, controller, combined} of cases) {
       const i18n = createTestI18n(catalog);
       const translate = (key: string): string => i18n.t(key);
+      const capabilityPopover = createOverlay();
+
+      openPopover(capabilityPopover.overlay, capabilityPopover.anchor, 'blocked', translate, hiddenNavigation, [
+        'capability',
+      ]);
+      expect(capabilityPopover.layer.contentElement.querySelector('p')?.textContent).toBe(capability);
+
       const controllerPopover = createOverlay();
 
       openPopover(controllerPopover.overlay, controllerPopover.anchor, 'blocked', translate, hiddenNavigation, [
@@ -233,7 +242,7 @@ describe('openExtraFeaturesPopover', () => {
       const combinedPopover = createOverlay();
 
       openPopover(combinedPopover.overlay, combinedPopover.anchor, 'blocked', translate, hiddenNavigation, [
-        'permission',
+        'capability',
         'controller-token',
       ]);
       expect(combinedPopover.layer.contentElement.querySelector('p')?.textContent).toBe(combined);

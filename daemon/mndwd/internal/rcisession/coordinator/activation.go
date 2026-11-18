@@ -6,7 +6,7 @@ import (
 )
 
 // RegisterActivationGates makes gates consult this coordinator for both
-// persistent-RCI permissions.
+// persistent-RCI capabilities.
 func (c *Coordinator) RegisterActivationGates(gates *backend.ActivationGateRegistry) {
 	if gates == nil {
 		return
@@ -14,8 +14,8 @@ func (c *Coordinator) RegisterActivationGates(gates *backend.ActivationGateRegis
 
 	gate := backend.ActivationGate(c.ActivationBlockers)
 
-	gates.Register(manifest.PersistentRCISessionReadPermission, gate)
-	gates.Register(manifest.PersistentRCISessionWritePermission, gate)
+	gates.Register(manifest.PersistentRCISessionReadCapability, gate)
+	gates.Register(manifest.PersistentRCISessionWriteCapability, gate)
 }
 
 type activationSnapshot struct {
@@ -28,8 +28,8 @@ type activationGrantFacts struct {
 	write bool
 }
 
-func (c *Coordinator) ActivationBlockers(pluginName, permission string) []backend.ActivationBlocker {
-	if permission != manifest.PersistentRCISessionReadPermission && permission != manifest.PersistentRCISessionWritePermission {
+func (c *Coordinator) ActivationBlockers(pluginName, capability string) []backend.ActivationBlocker {
+	if capability != manifest.PersistentRCISessionReadCapability && capability != manifest.PersistentRCISessionWriteCapability {
 		return nil
 	}
 
@@ -37,27 +37,27 @@ func (c *Coordinator) ActivationBlockers(pluginName, permission string) []backen
 
 	if snapshot == nil {
 		return []backend.ActivationBlocker{
-			{Permission: permission, Reason: backend.BlockerNotGranted},
-			{Permission: permission, Reason: backend.BlockerPrerequisiteUnavailable, Prerequisite: "controller-token"},
+			{Capability: capability, Reason: backend.BlockerNotGranted},
+			{Capability: capability, Reason: backend.BlockerPrerequisiteUnavailable, Prerequisite: "controller-token"},
 		}
 	}
 
 	facts := snapshot.grants[pluginName]
 	grant := facts.read || facts.write
 
-	if permission == manifest.PersistentRCISessionWritePermission {
+	if capability == manifest.PersistentRCISessionWriteCapability {
 		grant = facts.write
 	}
 
 	blockers := make([]backend.ActivationBlocker, 0, 2)
 
 	if !grant {
-		blockers = append(blockers, backend.ActivationBlocker{Permission: permission, Reason: backend.BlockerNotGranted})
+		blockers = append(blockers, backend.ActivationBlocker{Capability: capability, Reason: backend.BlockerNotGranted})
 	}
 
 	if !snapshot.controllerToken {
 		blockers = append(blockers, backend.ActivationBlocker{
-			Permission:   permission,
+			Capability:   capability,
 			Reason:       backend.BlockerPrerequisiteUnavailable,
 			Prerequisite: "controller-token",
 		})
@@ -70,8 +70,8 @@ func (c *Coordinator) publishActivationSnapshotLocked(present bool) bool {
 	next := make(map[string]activationGrantFacts)
 
 	for _, plugin := range c.registry.AllBackendPlugins() {
-		read := c.store.HasGrant(plugin.Name, manifest.PersistentRCISessionReadPermission)
-		write := c.store.HasGrant(plugin.Name, manifest.PersistentRCISessionWritePermission)
+		read := c.store.HasCapabilityGrant(plugin.Name, manifest.PersistentRCISessionReadCapability)
+		write := c.store.HasCapabilityGrant(plugin.Name, manifest.PersistentRCISessionWriteCapability)
 		next[plugin.Name] = activationGrantFacts{read: read, write: write}
 	}
 

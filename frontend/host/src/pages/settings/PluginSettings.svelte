@@ -2,16 +2,16 @@
 import PluginManager from './plugin-manager/PluginManager.svelte';
 
 interface Props {
-  permissionVisible: boolean;
-  permissionAvailable: boolean;
+  capabilityVisible: boolean;
+  capabilityAvailable: boolean;
 }
 
-let {permissionVisible, permissionAvailable}: Props = $props();
+let {capabilityVisible, capabilityAvailable}: Props = $props();
 </script>
 
 <section class="mndw-plugin-settings">
   <PluginManager
-    {permissionVisible}
-    {permissionAvailable}
+    {capabilityVisible}
+    {capabilityAvailable}
   />
 </section>

@@ -3,7 +3,7 @@
 ## What RCI is
 
 RCI is the router's HTTP API for reading and changing configuration, also used by its web interface. Plugins call it
-through the host's `ctx.rciManager`; they do not need their own backend route. RCI calls are not declared in
+through the host's `ctx.device.rci`; they do not need their own backend route. RCI calls are not declared in
 `manifest.json` and do not use `ctx.backend.call()`.
 
 ## Request shape and responses
@@ -29,7 +29,7 @@ import {firstValueFrom} from 'rxjs';
 
 export async function readVersion(): Promise<void> {
   try {
-    const result = await firstValueFrom(ctx.rciManager.queue({path: 'show.version'}));
+    const result = await firstValueFrom(ctx.device.rci.queue({path: 'show.version'}));
     console.info(result);
   } catch (error: unknown) {
     console.error('Could not read device version', error);

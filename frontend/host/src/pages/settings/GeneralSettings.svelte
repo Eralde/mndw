@@ -13,13 +13,13 @@ import {
   PersistentRciSessionError,
 } from '../../services/persistent-rci-session.service.js';
 
-interface PermissionState {
+interface CapabilityState {
   visible: boolean;
   available: boolean;
 }
 
 interface Props {
-  onPermissionStateChange: (state: PermissionState) => void;
+  onCapabilityStateChange: (state: CapabilityState) => void;
 }
 
 const TELEMETRY_SAVE_TOAST_KEY = 'settings.telemetry.save';
@@ -28,7 +28,7 @@ const CONTROLLER_TEST_TOAST_KEY = 'settings.controller.test';
 const CONTROLLER_SAVE_TOAST_KEY = 'settings.controller.save';
 const CONTROLLER_CLEAR_TOAST_KEY = 'settings.controller.clear';
 
-let {onPermissionStateChange}: Props = $props();
+let {onCapabilityStateChange}: Props = $props();
 const services = getHostServices();
 const locale = services.locale;
 const persistentRci = services.persistentRci;
@@ -79,7 +79,7 @@ let extendersWithoutAccess = $derived(
 );
 
 $effect(() => {
-  onPermissionStateChange({
+  onCapabilityStateChange({
     visible: persistentAuth !== 'unknown',
     available: persistentCapability?.controller.support === 'supported',
   });

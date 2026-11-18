@@ -1,4 +1,4 @@
-import {Subject} from 'rxjs';
+import {BehaviorSubject} from 'rxjs';
 import type {PluginI18n} from '../i18n.js';
 import {parseCatalog} from '../catalog.js';
 import {formatMessage, normalizeFormatterLocale} from '../i18n-format.js';
@@ -12,7 +12,7 @@ export interface TestI18n extends PluginI18n {
 export function createTestI18n(catalog: TestCatalog = {}, locale = 'en'): TestI18n {
   let currentCatalog = parseCatalog(catalog, '<test catalog>');
   let currentLocale = locale;
-  const changes = new Subject<void>();
+  const localeChanges = new BehaviorSubject(locale);
 
   const i18n: TestI18n = {
     get locale(): string {
@@ -24,11 +24,11 @@ export function createTestI18n(catalog: TestCatalog = {}, locale = 'en'): TestI1
       new Intl.NumberFormat(normalizeFormatterLocale(currentLocale), options).format(value),
     formatDate: (value, options) =>
       new Intl.DateTimeFormat(normalizeFormatterLocale(currentLocale), options).format(value),
-    change$: changes.asObservable(),
+    locale$: localeChanges.asObservable(),
     setLocale: (next, nextCatalog) => {
       currentLocale = next;
       currentCatalog = parseCatalog(nextCatalog, '<test catalog>');
-      changes.next();
+      localeChanges.next(next);
     },
   };
 

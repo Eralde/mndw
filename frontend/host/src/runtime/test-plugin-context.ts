@@ -1,15 +1,21 @@
-import type {WidgetPluginContext} from '@mndw/sdk';
+import type {PluginRciManager, WidgetPluginContext} from '@mndw/sdk';
 import {createTestPluginContext as createSdkTestPluginContext} from '@mndw/sdk/testing';
 
-export type TestPluginContextOverrides = Partial<Omit<WidgetPluginContext, 'kind'>> & {kind?: 'widget'};
+export type TestPluginContextOverrides =
+  & Omit<Partial<WidgetPluginContext>, 'kind' | 'appearance' | 'storage' | 'device'>
+  & {
+    kind?: 'widget';
+    appearance?: Partial<WidgetPluginContext['appearance']>;
+    storage?: Partial<WidgetPluginContext['storage']>;
+    device?: {info?: WidgetPluginContext['device']['info']; rci?: Partial<PluginRciManager>};
+  };
 
 export function createTestPluginContext(overrides: TestPluginContextOverrides = {}): WidgetPluginContext {
   const fixture = createSdkTestPluginContext({
-    theme: overrides.theme,
-    locale: overrides.locale,
-    palette: overrides.palette,
+    appearance: overrides.appearance,
+    storage: overrides.storage,
+    device: overrides.device,
     i18n: overrides.i18n,
-    rciManager: overrides.rciManager,
     backend: overrides.backend,
     telemetry: overrides.telemetry,
     instanceId: overrides.instanceId,
@@ -27,7 +33,14 @@ export function createTestPluginContext(overrides: TestPluginContextOverrides = 
   }
 
   Object.defineProperties(context, descriptors);
-  Object.assign(context, overrides, {kind: 'widget'});
+  const {appearance: _appearance, storage: _storage, device: _device, ...flatOverrides} = overrides;
+
+  Object.assign(context, flatOverrides, {
+    appearance: fixture.context.appearance,
+    storage: fixture.context.storage,
+    device: fixture.context.device,
+    kind: 'widget',
+  });
 
   return Object.freeze(context);
 }

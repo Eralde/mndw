@@ -1,4 +1,4 @@
-import {mkdtempSync, readFileSync, readdirSync, statSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import assert from 'node:assert/strict';
@@ -71,7 +71,7 @@ const generatedPaths = [
   'daemon/mndwd/internal/palette/theme_tokens_generated.go',
   'contracts/events/events.schema.json',
   'daemon/contracts-go/events/events.go',
-  'daemon/contracts-go/manifest/permissions_generated.go',
+  'daemon/contracts-go/manifest/capabilities_generated.go',
   ...generatedDirectories.flatMap((directory) =>
     listFiles(join(repoRoot, directory)).map((file) => join(directory, file))
   ),
@@ -97,8 +97,14 @@ const run = (): void => {
   testUnsupportedGoSchemas();
 
   const outputRoot = mkdtempSync(join(tmpdir(), 'mndw-contracts-'));
+  const legacyGeneratedPath = join(outputRoot, 'daemon/contracts-go/manifest/permissions_generated.go');
+
+  mkdirSync(join(outputRoot, 'daemon/contracts-go/manifest'), {recursive: true});
+  writeFileSync(legacyGeneratedPath, 'stale generated file');
 
   generateContracts({repoRoot, outputRoot});
+
+  assert.equal(existsSync(legacyGeneratedPath), false, 'legacy generated capability file must be removed');
 
   for (const relativePath of generatedPaths) {
     const expected = readFileSync(join(repoRoot, relativePath));

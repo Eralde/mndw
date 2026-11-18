@@ -11,9 +11,9 @@ import (
 	"mndwd/internal/state"
 )
 
-type PersistentRCIPermissionController interface {
-	ControllerPermissionAvailable() bool
-	PermissionChanged(plugin string) error
+type PersistentRCICapabilityController interface {
+	ControllerCapabilityAvailable() bool
+	CapabilityChanged(plugin string) error
 }
 
 // PersistentRCISocketStartFailure marks an error as a persistent RCI socket start failure.
@@ -28,30 +28,30 @@ func isPersistentRCISocketStartFailure(err error) bool {
 	return errors.As(err, &socketStartFailure) && socketStartFailure.PersistentRCISocketStartFailed()
 }
 
-type permissionRequest struct {
+type capabilityRequest struct {
 	Name       string `json:"name"`
-	Permission string `json:"permission"`
+	Capability string `json:"capability"`
 	Enabled    *bool  `json:"enabled"`
 }
 
-func (h *pluginsAPI) handlePermission(w http.ResponseWriter, r *http.Request) {
-	var request permissionRequest
+func (h *pluginsAPI) handleCapability(w http.ResponseWriter, r *http.Request) {
+	var request capabilityRequest
 
 	defer r.Body.Close()
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body must contain name, permission, and enabled"))
+		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body must contain name, capability, and enabled"))
 
 		return
 	}
 
-	if request.Name == "" || request.Permission == "" || request.Enabled == nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "name, permission, and enabled are required"))
+	if request.Name == "" || request.Capability == "" || request.Enabled == nil {
+		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "name, capability, and enabled are required"))
 
 		return
 	}
 
-	m, source, approval, enabled, dir, apiErr := h.permissionTarget(request.Name)
+	m, source, approval, enabled, dir, apiErr := h.capabilityTarget(request.Name)
 
 	if apiErr != nil {
 		httpx.WriteError(w, h.logger, apiErr)
@@ -60,73 +60,73 @@ func (h *pluginsAPI) handlePermission(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if approval == state.ApprovalPending {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "plugin "+request.Name+" must be approved before changing permissions"))
+		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "plugin "+request.Name+" must be approved before changing capabilities"))
 
 		return
 	}
 
-	if !manifest.IsPersistentRCIPermission(request.Permission) {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "permission is unknown"))
+	if !manifest.IsPersistentRCICapability(request.Capability) {
+		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "capability is unknown"))
 
 		return
 	}
 
-	if !declaresPermission(m, request.Permission) {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "plugin manifest does not declare permission"))
+	if !declaresCapability(m, request.Capability) {
+		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "plugin manifest does not declare capability"))
 
 		return
 	}
 
 	if *request.Enabled {
-		if h.permissionController == nil || !h.permissionController.ControllerPermissionAvailable() {
+		if h.capabilityController == nil || !h.capabilityController.ControllerCapabilityAvailable() {
 			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusConflict, httpx.CodeControllerSessionUnavailable, "Controller token session is not available; configure it before enabling persistent RCI."))
 
 			return
 		}
 
-		if err := h.store.SetGrant(request.Name, request.Permission, true); err != nil {
-			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to update permission grant"))
+		if err := h.store.SetCapabilityGrant(request.Name, request.Capability, true); err != nil {
+			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to update capability grant"))
 
 			return
 		}
 
-		if err := h.permissionController.PermissionChanged(request.Name); err != nil {
+		if err := h.capabilityController.CapabilityChanged(request.Name); err != nil {
 			if isPersistentRCISocketStartFailure(err) {
-				httpx.WriteError(w, h.logger, httpx.NewError(http.StatusServiceUnavailable, httpx.CodeRCISocketStartFailed, "Persistent RCI session permission granted, but its socket could not be started."))
+				httpx.WriteError(w, h.logger, httpx.NewError(http.StatusServiceUnavailable, httpx.CodeRCISocketStartFailed, "Persistent RCI session capability granted, but its socket could not be started."))
 
 				return
 			}
 
-			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "permission reconciliation failed"))
+			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "capability reconciliation failed"))
 
 			return
 		}
 	} else {
-		if err := h.store.SetGrant(request.Name, request.Permission, false); err != nil {
-			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to update permission grant"))
+		if err := h.store.SetCapabilityGrant(request.Name, request.Capability, false); err != nil {
+			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to update capability grant"))
 
 			return
 		}
 
-		if h.permissionController != nil {
-			h.reconcilePermission(request.Name, "permission revoke")
+		if h.capabilityController != nil {
+			h.reconcileCapability(request.Name, "capability revoke")
 		}
 	}
 
 	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, source, approval, enabled, dir))
 }
 
-func (h *pluginsAPI) reconcilePermission(plugin, reason string) {
-	if h.permissionController == nil {
+func (h *pluginsAPI) reconcileCapability(plugin, reason string) {
+	if h.capabilityController == nil {
 		return
 	}
 
-	if err := h.permissionController.PermissionChanged(plugin); err != nil {
+	if err := h.capabilityController.CapabilityChanged(plugin); err != nil {
 		h.logger.Warn("persistent RCI socket reconciliation failed", "plugin", plugin, "reason", reason)
 	}
 }
 
-func (h *pluginsAPI) permissionTarget(name string) (*manifest.Manifest, state.Source, state.Approval, bool, string, *httpx.APIError) {
+func (h *pluginsAPI) capabilityTarget(name string) (*manifest.Manifest, state.Source, state.Approval, bool, string, *httpx.APIError) {
 	if plugin, ok := h.store.Get(name); ok {
 		if plugin.Source == state.SourceBuiltin {
 			builtin, apiErr := h.lookupBuiltin(name)
@@ -170,9 +170,9 @@ func (h *pluginsAPI) permissionTarget(name string) (*manifest.Manifest, state.So
 	return nil, "", "", false, "", httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name)
 }
 
-func declaresPermission(m *manifest.Manifest, permission string) bool {
-	for _, declared := range m.Permissions {
-		if declared == permission {
+func declaresCapability(m *manifest.Manifest, capability string) bool {
+	for _, declared := range m.Capabilities {
+		if declared == capability {
 			return true
 		}
 	}

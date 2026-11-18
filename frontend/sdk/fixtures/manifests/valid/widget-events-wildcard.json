@@ -6,5 +6,5 @@
   "label": "All Events",
   "entry": "index.js",
   "size": {"w": 4, "h": 3},
-  "permissions": ["events:*"]
+  "capabilities": ["events:*"]
 }

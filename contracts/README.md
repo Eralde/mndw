@@ -45,9 +45,9 @@ contracts/rci-session/fixtures/capability
   → frontend/host/src/services/fixtures/rci-session/capability
   → daemon/mndwd/internal/rcisession/testdata/capability
 
-frontend/sdk/src/permissions.ts + frontend/sdk/src/event-schema.ts (EVENT_PERMISSION_PATTERN),
+frontend/sdk/src/capabilities.ts + frontend/sdk/src/event-schema.ts (EVENT_CAPABILITY_PATTERN),
 reached by build tooling through `frontend/sdk-internal/src/sdk-source.ts`
-  → daemon/contracts-go/manifest/permissions_generated.go
+  → daemon/contracts-go/manifest/capabilities_generated.go
 
 contracts/mgmt/fixtures
   → daemon/mndwd/internal/mgmt/fixtures/mgmt
@@ -69,7 +69,7 @@ manifest-schema compatibility wrapper.
 `contracts/mgmt/fixtures` is golden evidence for the management list-entry wire
 shape. The Go handler test (`internal/mgmt/wire_contract_test.go`) seeds fixed
 state and requires `GET /api/mgmt/list`, `GET /api/mgmt/pending`, and
-`POST /api/mgmt/permission` to match the golden evidence. The host test
+`POST /api/mgmt/capability` to match the golden evidence. The host test
 (`frontend/host/src/runtime/mgmt-wire-contract.test.ts`) requires each golden to
 decode losslessly; that is the cross-language gate. A Go reflection test
 requires every JSON field of `ListEntry` (nested types included) to appear in at

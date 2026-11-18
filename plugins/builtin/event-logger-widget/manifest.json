@@ -6,6 +6,6 @@
   "label": "Event Logger",
   "entry": "index.js",
   "size": {"w": 4, "h": 6, "minW": 3, "minH": 3},
-  "permissions": ["events:*"],
+  "capabilities": ["events:*"],
   "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}}
 }

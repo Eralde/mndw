@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"mndwd/internal/httpx"
-	"mndwd/internal/manifest"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
@@ -39,13 +38,15 @@ func retryAfterSeconds(now time.Time, next *time.Time) *int {
 func (g *Gateway) projectBackendStatus(plugin *registry.Plugin, now time.Time) backendStatusResponse {
 	response := backendStatusResponse{RetryAfterSeconds: nil}
 
-	if plugin == nil || plugin.Manifest == nil || plugin.Manifest.Backend == nil || plugin.Manifest.Backend.Kind == nil {
+	if plugin == nil || !plugin.Manifest.HasBackendKind() {
 		response.State = "unavailable"
 
 		return response
 	}
 
-	response.Kind = string(*plugin.Manifest.Backend.Kind)
+	kind, _ := plugin.Manifest.BackendKind()
+
+	response.Kind = string(kind)
 
 	// Approval precedes the enabled flag: uploaded backends are stored as
 	// pending with enabled=false, so checking enabled first would report the
@@ -65,7 +66,7 @@ func (g *Gateway) projectBackendStatus(plugin *registry.Plugin, now time.Time) b
 	// An unmet activation prerequisite is a steady state, distinct from the
 	// transient traffic gate. Report it ahead of maintenance so the frontend can
 	// render the missing prerequisite rather than a generic "under maintenance".
-	if g.activationGates != nil && *plugin.Manifest.Backend.Kind == manifest.BackendKindService {
+	if g.activationGates != nil && plugin.Manifest.IsService() {
 		if blockers := g.activationGates.Evaluate(plugin.Name, plugin.Manifest.Permissions); len(blockers) > 0 {
 			response.State = "blocked"
 			response.Blockers = make([]backendStatusBlocker, 0, len(blockers))
@@ -89,13 +90,13 @@ func (g *Gateway) projectBackendStatus(plugin *registry.Plugin, now time.Time) b
 		return response
 	}
 
-	if *plugin.Manifest.Backend.Kind == manifest.BackendKindExec {
+	if plugin.Manifest.IsExec() {
 		response.State = "ready"
 
 		return response
 	}
 
-	if *plugin.Manifest.Backend.Kind != manifest.BackendKindService || g.runtime == nil {
+	if !plugin.Manifest.IsService() || g.runtime == nil {
 		response.State = "unavailable"
 
 		return response
@@ -151,7 +152,7 @@ func (g *Gateway) handleStatus(writer http.ResponseWriter, request *http.Request
 
 	plugin, found := g.registry.Resolve(request.PathValue("name"))
 
-	if !found || plugin.Manifest == nil || plugin.Manifest.Backend == nil || plugin.Manifest.Backend.Kind == nil {
+	if !found || !plugin.Manifest.HasBackendKind() {
 		g.writeError(writer, httpx.NewError(http.StatusNotFound, httpx.CodeRouteNotFound, "no such backend route"))
 
 		return

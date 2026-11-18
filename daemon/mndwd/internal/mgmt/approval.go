@@ -78,7 +78,7 @@ func (h *Handler) executeApprove(name string) (*manifest.Manifest, *httpx.APIErr
 				rec.Approval = state.ApprovalApproved
 				rec.Enabled = true
 				rec.RemovalPending = false
-				rec.ActiveVersion = deref(m.Version)
+				rec.ActiveVersion = m.VersionValue()
 				rec.ActiveVersionDir = installPath
 
 				st.AppendAudit("approve", name, "backend approved and activated")
@@ -92,8 +92,8 @@ func (h *Handler) executeApprove(name string) (*manifest.Manifest, *httpx.APIErr
 				return httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to record approval")
 			}
 
-			h.publishPluginInstalled(name, deref(m.Version))
-			h.publishPluginApproved(name, deref(m.Version))
+			h.publishPluginInstalled(name, m.VersionValue())
+			h.publishPluginApproved(name, m.VersionValue())
 
 			return nil
 		})

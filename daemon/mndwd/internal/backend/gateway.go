@@ -148,7 +148,7 @@ func (g *Gateway) resolveAuthorizedRoute(writer http.ResponseWriter, request *ht
 
 	plugin, found := g.registry.Resolve(request.PathValue("name"))
 
-	if !found || plugin.Manifest == nil || plugin.Manifest.Backend == nil || plugin.Manifest.Backend.Kind == nil {
+	if !found || !plugin.Manifest.HasBackendKind() {
 		if !g.authenticate(writer, request) {
 			return routeDecision{}, false
 		}
@@ -235,7 +235,9 @@ func (g *Gateway) handle(writer http.ResponseWriter, request *http.Request) {
 		}
 	}
 
-	switch *plugin.Manifest.Backend.Kind {
+	kind, _ := plugin.Manifest.BackendKind()
+
+	switch kind {
 	case manifest.BackendKindExec:
 		g.serveExec(writer, request, plugin, route)
 	case manifest.BackendKindService:
@@ -521,13 +523,13 @@ func (g *Gateway) pluginTrafficBlocked(pluginID string) bool {
 // activationBlockers returns the unmet activation prerequisites for a plugin's
 // declared permissions, in manifest order, or nil when all are satisfied.
 func (g *Gateway) activationBlockers(plugin *registry.Plugin) []ActivationBlocker {
-	if g.activationGates == nil || plugin == nil || plugin.Manifest == nil || plugin.Manifest.Backend == nil {
+	if g.activationGates == nil || plugin == nil || !plugin.Manifest.HasBackend() {
 		return nil
 	}
 
 	// Activation gates are enforced only for service backends (see serviceSpec);
 	// exec backends are never gated, so never report them as blocked.
-	if plugin.Manifest.Backend.Kind == nil || *plugin.Manifest.Backend.Kind != manifest.BackendKindService {
+	if !plugin.Manifest.IsService() {
 		return nil
 	}
 

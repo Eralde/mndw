@@ -349,18 +349,18 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 // including its always-present depsStatus.
 func (h *Handler) entryFrom(m *manifest.Manifest, source state.Source, approval state.Approval, enabled bool, dir string) ListEntry {
 	e := ListEntry{
-		Name:        deref(m.Name),
-		Type:        deref(m.Type),
-		Version:     deref(m.Version),
-		Label:       deref(m.Label),
-		Entry:       deref(m.Entry),
-		Icon:        deref(m.Icon),
+		Name:        m.NameValue(),
+		Type:        m.TypeValue(),
+		Version:     m.VersionValue(),
+		Label:       m.LabelValue(),
+		Entry:       m.EntryValue(),
+		Icon:        m.IconValue(),
 		Source:      source,
 		Approval:    approval,
 		Enabled:     enabled,
 		Size:        m.Size,
 		FixedHeight: m.FixedHeight,
-		Route:       deref(m.Route),
+		Route:       m.RouteValue(),
 		I18n:        m.I18n,
 		Backend:     manifest.Descriptor(m),
 		Review:      manifest.Review(m),
@@ -388,20 +388,12 @@ func (h *Handler) entryFrom(m *manifest.Manifest, source state.Source, approval 
 		}
 	}
 
-	if m.Backend != nil && m.Backend.Kind != nil {
+	if m.HasBackendKind() {
 		status := h.runtime.Status(e.Name)
 		e.Runtime = &status
 	}
 
 	return e
-}
-
-func deref(s *string) string {
-	if s == nil {
-		return ""
-	}
-
-	return *s
 }
 
 // nameRequest is the shared body of approve/deny/delete.

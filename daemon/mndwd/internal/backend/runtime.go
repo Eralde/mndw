@@ -306,13 +306,13 @@ func (r *RuntimeImpl) LiveDiagnostics(ctx context.Context, pluginID string) ([]b
 }
 
 func serviceSpec(plugin *registry.Plugin, gates *ActivationGateRegistry) (ServiceSpec, bool) {
-	if plugin == nil || plugin.Manifest == nil || plugin.Manifest.Backend == nil {
+	if plugin == nil || !plugin.Manifest.HasBackend() {
 		return ServiceSpec{}, false
 	}
 
 	backend := plugin.Manifest.Backend
 
-	if backend.Kind == nil || *backend.Kind != manifest.BackendKindService || backend.Command == nil {
+	if !backend.IsService() || backend.Command == nil {
 		return ServiceSpec{}, false
 	}
 

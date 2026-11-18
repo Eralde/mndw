@@ -29,7 +29,6 @@ import (
 	"mndwd/internal/httpx"
 	"mndwd/internal/initd"
 	"mndwd/internal/listen"
-	"mndwd/internal/manifest"
 	"mndwd/internal/mgmt"
 	"mndwd/internal/opkg"
 	"mndwd/internal/palette"
@@ -577,7 +576,7 @@ func diagnosticsPlugins(reg *registry.Registry, runtime *backend.RuntimeImpl) []
 	plugins := make([]diagnostics.Plugin, 0)
 
 	for _, plugin := range reg.AllBackendPlugins() {
-		if plugin.Manifest.Backend == nil || plugin.Manifest.Backend.Kind == nil || *plugin.Manifest.Backend.Kind != manifest.BackendKindService {
+		if !plugin.Manifest.IsService() {
 			continue
 		}
 

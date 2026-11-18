@@ -65,7 +65,7 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := deref(m.Name)
+	name := m.NameValue()
 	previous, exists := h.store.Get(name)
 
 	if !exists || previous.Source == state.SourceBuiltin {
@@ -80,7 +80,7 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if manifest.HasBackend(m) {
+	if m.HasBackend() {
 		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusConflict, httpx.CodeApprovalRequired,
 			"updates that declare a backend require approval; delete the plugin and upload the new version"))
 
@@ -106,7 +106,7 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.publishPluginInstalled(name, deref(m.Version))
+	h.publishPluginInstalled(name, m.VersionValue())
 
 	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, previous.Source, state.ApprovalApproved, true, activeDir))
 }
@@ -130,7 +130,11 @@ func safeVersion(version string) string {
 }
 
 func validateCommands(dir string, m *manifest.Manifest) *httpx.APIError {
-	if m == nil || m.Backend == nil || m.Backend.Kind == nil {
+	if m == nil || !m.HasBackend() {
+		return nil
+	}
+
+	if _, ok := m.BackendKind(); !ok {
 		return nil
 	}
 
@@ -249,11 +253,11 @@ func (h *Handler) executeUpdate(
 		}
 
 		record.Manifest = append(json.RawMessage(nil), manifestBytes...)
-		record.Version = deref(m.Version)
-		record.Label = deref(m.Label)
-		record.Type = deref(m.Type)
-		record.InstalledVersion = deref(m.Version)
-		record.ActiveVersion = deref(m.Version)
+		record.Version = m.VersionValue()
+		record.Label = m.LabelValue()
+		record.Type = m.TypeValue()
+		record.InstalledVersion = m.VersionValue()
+		record.ActiveVersion = m.VersionValue()
 		record.ActiveVersionDir = activeDir
 		record.InstalledAt = time.Now().UTC()
 		record.RemovalPending = false

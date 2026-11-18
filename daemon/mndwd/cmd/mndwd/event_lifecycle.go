@@ -61,7 +61,7 @@ func publishActivePluginEvents(reg *registry.Registry, store *state.Store, publi
 			continue
 		}
 
-		if err := publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: name, Version: derefVersion(plugin.Manifest.Version)}); err != nil {
+		if err := publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: name, Version: plugin.Manifest.VersionValueOr("unknown")}); err != nil {
 			logger.Warn("plugin.installed publish failed", "plugin", name, "error", err)
 		}
 	}
@@ -78,18 +78,10 @@ func publishActivePluginEvents(reg *registry.Registry, store *state.Store, publi
 			continue
 		}
 
-		if err := publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: plugin.Name, Version: derefVersion(plugin.Manifest.Version)}); err != nil {
+		if err := publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: plugin.Name, Version: plugin.Manifest.VersionValueOr("unknown")}); err != nil {
 			logger.Warn("plugin.installed publish failed", "plugin", plugin.Name, "error", err)
 		}
 	}
-}
-
-func derefVersion(value *string) string {
-	if value == nil {
-		return "unknown"
-	}
-
-	return *value
 }
 
 // Start launches the producers under a child of ctx and announces

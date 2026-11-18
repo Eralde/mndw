@@ -122,7 +122,7 @@ func (c *Coordinator) serviceLogger() *slog.Logger {
 }
 
 func isService(m *manifest.Manifest) bool {
-	return m != nil && m.Backend != nil && m.Backend.Kind != nil && *m.Backend.Kind == manifest.BackendKindService && m.Backend.ProtocolVersion != nil && *m.Backend.ProtocolVersion == 1
+	return m.IsService() && m.Backend.ProtocolVersion != nil && *m.Backend.ProtocolVersion == 1
 }
 
 func hasPersistentRCIPermission(m *manifest.Manifest) bool {

@@ -62,14 +62,10 @@ func Review(m *Manifest) *ApprovalReview {
 	}
 
 	b := m.Backend
-	kind := ""
-
-	if b.Kind != nil {
-		kind = string(*b.Kind)
-	}
+	kind, _ := m.BackendKind()
 
 	review := &ApprovalReview{
-		Kind:     kind,
+		Kind:     string(kind),
 		Packages: append([]string(nil), b.Packages...),
 		Args:     append([]string(nil), b.Args...),
 	}
@@ -87,5 +83,5 @@ func Review(m *Manifest) *ApprovalReview {
 // Plugins without a backend skip the approval gate because they expose no
 // executable server-side capability.
 func HasBackend(m *Manifest) bool {
-	return m != nil && m.Backend != nil
+	return m.HasBackend()
 }

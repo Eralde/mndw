@@ -54,7 +54,7 @@ func (h *Handler) installDeps(parent context.Context, m *manifest.Manifest) *htt
 	defer cancel()
 
 	if err := h.opkg.Install(ctx, packages); err != nil {
-		h.logger.Error("opkg dependency install failed", "plugin", deref(m.Name), "packages", packages, "error", err)
+		h.logger.Error("opkg dependency install failed", "plugin", m.NameValue(), "packages", packages, "error", err)
 
 		if errors.Is(err, opkg.ErrBusy) {
 			return httpx.NewError(http.StatusConflict, httpx.CodeOpkgBusy, "package manager is busy")
@@ -283,8 +283,8 @@ func stateForBuiltin(plugin *registry.Plugin) (*state.Plugin, error) {
 	}
 
 	return &state.Plugin{
-		Name: plugin.Name, Source: state.SourceBuiltin, Type: deref(plugin.Manifest.Type),
-		Version: deref(plugin.Manifest.Version), Label: deref(plugin.Manifest.Label),
+		Name: plugin.Name, Source: state.SourceBuiltin, Type: plugin.Manifest.TypeValue(),
+		Version: plugin.Manifest.VersionValue(), Label: plugin.Manifest.LabelValue(),
 		Approval: state.ApprovalApproved, Enabled: true, Manifest: manifestJSON, InstalledAt: time.Now().UTC(),
 	}, nil
 }

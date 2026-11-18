@@ -117,7 +117,7 @@ func (c *lifecycleTestControl) StartPlugin(plugin *registry.Plugin) error {
 	c.runtime.events = append(c.runtime.events, fmt.Sprintf("start:stored=%s/%t:requested=%s/%t", storedApproval, storedEnabled, plugin.Approval, plugin.Enabled))
 
 	if plugin.Manifest != nil {
-		c.runtime.startVersions = append(c.runtime.startVersions, deref(plugin.Manifest.Version))
+		c.runtime.startVersions = append(c.runtime.startVersions, plugin.Manifest.VersionValue())
 	}
 
 	if len(c.runtime.startErrors) > 0 {

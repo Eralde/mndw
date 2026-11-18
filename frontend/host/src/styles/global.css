@@ -295,6 +295,11 @@ body {
   text-align: center;
 }
 
+.mndw-login__hint {
+  color: var(--mndw-text-subtle);
+  font-size: var(--mndw-text-sm);
+}
+
 /* === Settings === */
 
 .mndw-settings {

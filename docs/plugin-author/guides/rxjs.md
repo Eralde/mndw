@@ -49,21 +49,24 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
 
 ## Await one RCI response
 
-For one request, `firstValueFrom` resolves with the first emitted value and rejects if the Observable errors before that
-value. Handle that rejection with `try`/`catch`:
+Use `query()` for a one-shot RCI call. It returns a Promise and accepts an optional `AbortSignal`:
 
 ```ts
-import {firstValueFrom} from 'rxjs';
-
-export async function readVersion(): Promise<void> {
+export async function readVersion(signal?: AbortSignal): Promise<void> {
   try {
-    const version = await firstValueFrom(ctx.device.rci.queue({path: 'show.version'}));
+    const version = await ctx.device.rci.query(
+      {path: 'show.version'},
+      signal === undefined ? undefined : {signal},
+    );
     console.info(version);
   } catch (error: unknown) {
     console.error('Could not read device version', error);
   }
 }
 ```
+
+Aborting stops waiting for the result. The queued request is still sent to the router, and a write is not rolled back.
+Keep using `queue()` when composing RCI Observables with operators or when a caller needs the Observable itself.
 
 ## Save button: choose the operator for the user's intent
 

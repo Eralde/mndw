@@ -10,7 +10,6 @@
   "devDependencies": {
     "@mndw/sdk": "workspace:*",
     "@mndw/ui": "workspace:*",
-    "@rci-tools/core": "catalog:",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@types/node": "22.19.15",
     "happy-dom": "20.11.1",

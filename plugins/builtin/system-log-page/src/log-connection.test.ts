@@ -1,7 +1,6 @@
 import {EMPTY, NEVER, Observable, Subject, of, throwError} from 'rxjs';
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import type {RciBackgroundProcess} from '@rci-tools/core';
-import type {PluginTimers, Ticker, TickerTick} from '@mndw/sdk';
+import type {PluginTimers, RciBackgroundProcess, Ticker, TickerTick} from '@mndw/sdk';
 import type {NormalizedLogRecord} from './log-types';
 import type {SystemLogApi, SystemLogStream} from './system-log-api';
 import {type LogConnectionState, createLogConnectionController} from './log-connection';

@@ -1,6 +1,5 @@
-import type {PluginRciManager} from '@mndw/sdk';
+import type {PluginRciManager, RciQuery} from '@mndw/sdk';
 import {TestBed} from '@angular/core/testing';
-import type {RciQuery} from '@rci-tools/core';
 import {firstValueFrom, of} from 'rxjs';
 import {afterEach, describe, expect, it} from 'vitest';
 

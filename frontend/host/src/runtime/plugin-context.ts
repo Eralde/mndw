@@ -5,6 +5,7 @@ import {
   type PageRoute,
   type PluginContext,
   type TelemetryGathering,
+  createPluginRci,
 } from '@mndw/sdk';
 import {createPluginTimers} from '@mndw/sdk/internal/timers';
 import {type BackendDescriptor, createBackendClient} from '@mndw/sdk-internal';
@@ -122,6 +123,7 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
     palette$: {enumerable: true, value: palette$},
   });
   Object.freeze(appearance);
+
   const {service, dispose: disposeOverlay} = createPluginOverlayService(entry.name, instanceId);
   const eventFacadeId = createEventFacadeId();
   const events = eventStream.createFacade(eventFacadeId, entry.name, entry.capabilities ?? [], lifetime);
@@ -176,7 +178,7 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
       },
       {
         info: createDeviceInfoContext(deviceInfo),
-        rci: createServiceFacade(rciService.driver, PLUGIN_RCI_MANAGER_METHODS),
+        rci: createPluginRci(createServiceFacade(rciService.driver, PLUGIN_RCI_MANAGER_METHODS)),
       },
     )),
     i18n: createPluginI18n(catalogCell, getHostLocale, subscribeHostLocaleValue, lifetime),

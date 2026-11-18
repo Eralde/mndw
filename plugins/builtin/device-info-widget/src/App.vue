@@ -428,12 +428,12 @@ onMounted(() => {
   ticker.start(1000);
 
   refreshLoop = props.ctx.timers.createRefreshLoop({
-    load: async (): Promise<LiveInfoRefresh> => {
+    load: async (signal): Promise<LiveInfoRefresh> => {
       requestInFlight.value = true;
       refreshAttemptAt.value = Date.now();
       const range = selectedLiveRange.value;
 
-      return {range, info: await fetchDeviceInfo(props.ctx.device.rci, deviceInfoDetail(range))};
+      return {range, info: await fetchDeviceInfo(props.ctx.device.rci, deviceInfoDetail(range), signal)};
     },
     intervalMs: 30_000,
     onSuccess: handleInfoSuccess,

@@ -1,4 +1,4 @@
-import {Subject} from 'rxjs';
+import {Subject, of} from 'rxjs';
 import {describe, expect, it} from 'vitest';
 import type {MndwEvent} from '../event-schema.js';
 import {createTestI18n} from './i18n.js';
@@ -16,6 +16,13 @@ describe('createTestPluginContext', () => {
     expect(fixture.context.signal.aborted).toBe(true);
     expect(fixture.context.signal.reason).toBeInstanceOf(DOMException);
     expect(fixture.context.signal.reason).toMatchObject({name: 'AbortError'});
+  });
+
+  it('implements query from a queue-only RCI override', async () => {
+    const response = {version: '1'};
+    const fixture = createTestPluginContext({device: {rci: {queue: () => of(response) as never}}});
+
+    await expect(fixture.context.device.rci.query({path: 'show.version'})).resolves.toBe(response);
   });
 
   it('updates theme getters and streams', () => {

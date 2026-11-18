@@ -1,6 +1,6 @@
-import type {PluginRciManager} from '@mndw/sdk';
+import type {RciQuery} from '@mndw/sdk';
+import {createTestPluginContext} from '@mndw/sdk/testing';
 import {describe, expect, it, vi} from 'vitest';
-import type {RciQuery} from '@rci-tools/core';
 import {of, throwError} from 'rxjs';
 import fixture from '../fixtures/show-device-list.json' with {type: 'json'};
 import {type ClientRecord, ClientsParseError, fetchClients, filterVisibleClients, normalizeClients} from './clients.js';
@@ -209,7 +209,7 @@ describe('filterVisibleClients', () => {
 describe('fetchClients', () => {
   it('issues the exact query and returns normalized records', async () => {
     const queue = vi.fn((_query: RciQuery) => of(fixture));
-    const rci = {queue} as unknown as PluginRciManager;
+    const rci = createTestPluginContext({device: {rci: {queue: queue as never}}}).context.device.rci;
 
     const records = await fetchClients(rci);
 
@@ -219,13 +219,17 @@ describe('fetchClients', () => {
   });
 
   it('propagates an RCI failure', async () => {
-    const rci = {queue: () => throwError(() => new Error('offline'))} as unknown as PluginRciManager;
+    const rci = createTestPluginContext({
+      device: {rci: {queue: (() => throwError(() => new Error('offline'))) as never}},
+    }).context.device.rci;
 
     await expect(fetchClients(rci)).rejects.toThrow('offline');
   });
 
   it('propagates a parse failure', async () => {
-    const rci = {queue: () => of({host: 'nope'})} as unknown as PluginRciManager;
+    const rci = createTestPluginContext({
+      device: {rci: {queue: (() => of({host: 'nope'})) as never}},
+    }).context.device.rci;
 
     await expect(fetchClients(rci)).rejects.toThrow(ClientsParseError);
   });

@@ -1,5 +1,4 @@
-import type {PluginRciManager} from '@mndw/sdk';
-import type {RciBackgroundProcess} from '@rci-tools/core';
+import type {PluginRciManager, RciBackgroundProcess} from '@mndw/sdk';
 import type {Observable} from 'rxjs';
 import {map} from 'rxjs/operators';
 import {normalizeTransitionLogFrame} from '../domain/transition-log/transition-log-normalizer';

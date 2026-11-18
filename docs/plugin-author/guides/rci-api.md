@@ -6,6 +6,9 @@ RCI is the router's HTTP API for reading and changing configuration, also used b
 through the host's `ctx.device.rci`; they do not need their own backend route. RCI calls are not declared in
 `manifest.json` and do not use `ctx.backend.call()`.
 
+The RCI types and response helper backed by `@rci-tools/core` are part of the plugin contract. Breaking RCI contract
+changes ship with minor `mndw` versions.
+
 ## Request shape and responses
 
 An RCI query has a dot-separated `path`, such as `show.version`. A write can pass its value in `data`:
@@ -21,21 +24,25 @@ paths, request data, response values, and status entries.
 
 ## Read one value
 
-`queue()` returns an RxJS `Observable`. Use `firstValueFrom` when one request should produce one result that you can
-`await`:
+Use `query()` when one request should produce one result that you can `await`:
 
 ```ts
-import {firstValueFrom} from 'rxjs';
-
-export async function readVersion(): Promise<void> {
+export async function readVersion(signal?: AbortSignal): Promise<void> {
   try {
-    const result = await firstValueFrom(ctx.device.rci.queue({path: 'show.version'}));
+    const result = await ctx.device.rci.query(
+      {path: 'show.version'},
+      signal === undefined ? undefined : {signal},
+    );
     console.info(result);
   } catch (error: unknown) {
     console.error('Could not read device version', error);
   }
 }
 ```
+
+`query(query, options?)` queues the request and resolves with its first result. Its options extend the queue options with
+an optional `AbortSignal`. Aborting stops waiting and unsubscribes from the result, but a request already queued is
+still sent to the router; aborting a write does not roll it back. Use `execute()` to bypass the queue.
 
 ## Write deliberately and check the response
 
@@ -51,6 +58,7 @@ The plugin-facing manager exposes `execute`, `queue`, `initBackgroundProcess`, a
 
 | Method | Use it for |
 | --- | --- |
+| `query(query, options?)` | A one-shot request that should join the batch queue and resolve as a Promise. Pass `{signal}` to stop waiting when its caller is cancelled. |
 | `execute(query)` | A request that should run directly when its Observable is subscribed, without entering the manager's batch queue. Accepts one query or an array. |
 | `queue(query)` | Regular requests that can join the manager's batch queue. Calls are batched with other queued work; accepts one query or an array. |
 | `initBackgroundProcess(query)` | Creating a background-process handle that the caller starts with `.start()` or attaches to a running process with `.attachToRunning()`. Observe its `data$`, `result$`, `state$`, and `done$` streams. |

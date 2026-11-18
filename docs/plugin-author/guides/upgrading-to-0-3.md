@@ -25,6 +25,11 @@ are frozen too.
 
 In tests, keep your own `createTestI18n()` reference; `context.i18n` is the plugin-facing view.
 
+## RCI one-shot calls
+
+Use `await ctx.device.rci.query({path: 'show.version'})` for a one-shot request. It returns a Promise and accepts an
+optional `{signal}` option. Import `RciQuery`, `RciBackgroundProcess`, and `RciResponseHelper` from `@mndw/sdk`.
+
 ## Migrate manifest permissions to capabilities
 
 Rename `permissions` to `capabilities` in `manifest.json`. Capability values stay the same:

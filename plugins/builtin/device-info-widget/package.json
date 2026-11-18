@@ -9,7 +9,6 @@
   "devDependencies": {
     "@mndw/sdk": "workspace:*",
     "@mndw/ui": "workspace:*",
-    "@rci-tools/core": "catalog:",
     "@vitejs/plugin-vue": "^6.0.0",
     "happy-dom": "20.11.1",
     "rxjs": "^7.8.0",

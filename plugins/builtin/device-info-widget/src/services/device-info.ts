@@ -1,5 +1,4 @@
-import type {PluginRciManager} from '@mndw/sdk';
-import type {RciQuery} from '@rci-tools/core';
+import type {PluginRciManager, RciQuery} from '@mndw/sdk';
 import {catchError, firstValueFrom, forkJoin, of} from 'rxjs';
 import {type RrdResponse, type RrdTick, filterValidRrdTicks, sortRrdTicks} from '@mndw/sdk/rrd';
 
@@ -91,17 +90,22 @@ function toUptimeSeconds(value: number | string | undefined): number | null {
 }
 
 /** Reads selected identity/system data and isolates optional load-history failures. */
-export async function fetchDeviceInfo(rci: PluginRciManager, detail = 0): Promise<LiveDeviceInfo> {
+export async function fetchDeviceInfo(
+  rci: PluginRciManager,
+  detail = 0,
+  signal?: AbortSignal,
+): Promise<LiveDeviceInfo> {
   const [cpuQuery, memoryQuery] = historyQueries(detail);
-  const optional = (query: RciQuery) => rci.queue(query).pipe(catchError(() => of(undefined)));
-  const responses = await firstValueFrom(forkJoin([
-    rci.queue({path: 'show.identification'}),
-    rci.queue({path: 'show.system'}),
+  const options = signal === undefined ? undefined : {signal};
+  const optional = (query: RciQuery) => rci.query(query, options).catch(() => undefined);
+  const [identificationResponse, systemResponse, cpuResponse, memoryResponse] = await Promise.all([
+    rci.query({path: 'show.identification'}, options),
+    rci.query({path: 'show.system'}, options),
     optional(cpuQuery),
     optional(memoryQuery),
-  ]));
-  const identification = responses[0] as Identification | undefined;
-  const system = responses[1] as System | undefined;
+  ]);
+  const identification = identificationResponse as Identification | undefined;
+  const system = systemResponse as System | undefined;
 
   if (identification === undefined || system === undefined) {
     throw new Error('Required device information is unavailable.');
@@ -110,8 +114,8 @@ export async function fetchDeviceInfo(rci: PluginRciManager, detail = 0): Promis
   const memoryTotal = readMemoryTotal(system);
   const memoryUsed = Number(system.memory?.split('/')[0] ?? Number.NaN);
   const loadHistory = mapLoadHistory(
-    responses[2] as RrdResponse | undefined,
-    responses[3] as RrdResponse | undefined,
+    cpuResponse as RrdResponse | undefined,
+    memoryResponse as RrdResponse | undefined,
     memoryTotal,
   );
 

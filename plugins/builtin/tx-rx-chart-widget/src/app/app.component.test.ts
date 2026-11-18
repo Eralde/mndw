@@ -3,9 +3,8 @@ import {DestroyRef, inject, ɵresolveComponentResources as resolveComponentResou
 import {createTranslatorSignals} from '@mndw/sdk/angular';
 import {createTestI18n} from '@mndw/sdk/testing';
 import {type ComponentFixture, TestBed} from '@angular/core/testing';
-import type {PluginRciManager, PluginStorage} from '@mndw/sdk';
+import type {PluginRciManager, PluginStorage, RciQuery} from '@mndw/sdk';
 import type {RrdResponse} from '@mndw/sdk/rrd';
-import type {RciQuery} from '@rci-tools/core';
 import {type Observable, Subject, type Subscription, map, of, throwError, timer} from 'rxjs';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import type {OpenSettingsFn} from '../open-settings-dialog';

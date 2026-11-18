@@ -4,11 +4,11 @@ import type {
   PluginContext,
   PluginRciManager,
   ProjectedSnapshot,
+  RciQuery,
   TelemetryGathering,
   TickerTick,
 } from '@mndw/sdk';
 import {type TestPluginContext, createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
-import type {RciQuery} from '@rci-tools/core';
 import {createApp, nextTick} from 'vue';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {Observable, Subject, forkJoin, of, throwError} from 'rxjs';
@@ -73,6 +73,7 @@ function successfulResponse(query: RciQuery): Observable<unknown> {
 }
 
 type WidgetTestContext = PluginContext & {navigationCalls: HostTarget[]};
+
 const pluginContextFixtures: TestPluginContext[] = [];
 
 function createContext(
@@ -95,7 +96,9 @@ function createContext(
           : queue(query),
     } as unknown as Partial<PluginRciManager>},
   });
+
   pluginContextFixtures.push(fixture);
+
   const context = Object.create(null) as Record<string, unknown>;
   const descriptors = Object.getOwnPropertyDescriptors(fixture.context);
 

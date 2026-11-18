@@ -1,6 +1,5 @@
-import type {PluginRciManager} from '@mndw/sdk';
+import type {PluginRciManager, RciBackgroundProcess} from '@mndw/sdk';
 import {Subject} from 'rxjs';
-import type {RciBackgroundProcess} from '@rci-tools/core';
 import {describe, expect, it, vi} from 'vitest';
 import {createTransitionLogStream} from './transition-log-api';
 

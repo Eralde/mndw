@@ -52,7 +52,7 @@ let isLoading = $state(true);
 // Intentional: context timers are stable for this plugin lifetime.
 // svelte-ignore state_referenced_locally
 const chartLoop = timers.createRefreshLoop({
-  load: (_signal) => loadChartData(),
+  load: (signal) => loadChartData(signal),
   intervalMs: POLL_INTERVAL,
   onSuccess: (nextData) => {
     rawChartData = nextData;
@@ -65,7 +65,7 @@ const chartLoop = timers.createRefreshLoop({
 });
 // svelte-ignore state_referenced_locally
 const timeLoop = timers.createRefreshLoop({
-  load: (_signal) => loadDeviceTime(),
+  load: (signal) => loadDeviceTime(signal),
   intervalMs: DEVICE_TIME_INTERVAL,
   onSuccess: (nextTime) => deviceTime = nextTime,
   onError: (caught) => console.error('[device-traffic-widget]', caught),
@@ -101,8 +101,8 @@ async function loadHosts() {
   }
 }
 
-async function loadDeviceTime(): Promise<Date> {
-  const d: ClockDate = await rciService.getDeviceTime();
+async function loadDeviceTime(signal?: AbortSignal): Promise<Date> {
+  const d: ClockDate = await rciService.getDeviceTime(signal);
 
   return new Date(
     d.year,
@@ -115,12 +115,16 @@ async function loadDeviceTime(): Promise<Date> {
   );
 }
 
-async function loadChartData(): Promise<HostBar[]> {
+async function loadChartData(signal?: AbortSignal): Promise<HostBar[]> {
   if (!selectedMac) {
     return [];
   }
 
-  const rciChartData = await rciService.getChartData([selectedMac], detail);
+  const rciChartData = await rciService.getChartData(
+    [selectedMac],
+    detail,
+    signal,
+  );
 
   return rciChartData.bar || [];
 }

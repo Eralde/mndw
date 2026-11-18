@@ -1,13 +1,15 @@
-import type {PluginRciManager} from '@mndw/sdk';
+import type {PluginRciManager, RciQuery} from '@mndw/sdk';
+import {createTestPluginContext} from '@mndw/sdk/testing';
 import {of} from 'rxjs';
-import type {RciQuery} from '@rci-tools/core';
 import {describe, expect, it} from 'vitest';
 import {RciService} from './rci.js';
 
 /** A fake PluginRciManager whose queue() dispatches on the query so getChartData's three
  *  per-attribute calls each get distinct canned data. */
 function fakeRci(handler: (q: RciQuery) => unknown): PluginRciManager {
-  return {queue: (q: RciQuery) => of(handler(q))} as unknown as PluginRciManager;
+  const queue = (q: RciQuery) => of(handler(q));
+
+  return createTestPluginContext({device: {rci: {queue: queue as never}}}).context.device.rci;
 }
 
 describe('RciService.getHosts', () => {

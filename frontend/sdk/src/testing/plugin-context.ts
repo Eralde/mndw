@@ -13,7 +13,7 @@ import type {MndwEvent, PluginEventFacade} from '../event-schema.js';
 import type {PluginI18n} from '../i18n.js';
 import {MNDW_TOKENS, type MndwThemeName} from '../tokens.js';
 import type {PaletteTokenMap} from '../palette.js';
-import type {PluginRciManager} from '../rci.js';
+import {type PluginRciManager, type PluginRciManagerMethod, createPluginRci} from '../rci.js';
 import type {PluginTelemetry} from '../telemetry-client.js';
 import type {OverlayService} from '../overlay.js';
 import type {PluginStorage} from '../storage.js';
@@ -33,7 +33,7 @@ export interface TestPluginContextOptions {
   };
   device?: {
     info?: DeviceInfo;
-    rci?: Partial<PluginRciManager>;
+    rci?: Partial<Pick<PluginRciManager, PluginRciManagerMethod>>;
   };
   timers?: {
     createTicker?: () => Ticker;
@@ -148,8 +148,10 @@ function createDeviceInfo(): DeviceInfo {
   });
 }
 
-function createRciManager(overrides: Partial<PluginRciManager> | undefined): PluginRciManager {
-  const methods: PluginRciManager = {
+function createRciManager(
+  overrides: Partial<Pick<PluginRciManager, PluginRciManagerMethod>> | undefined,
+): PluginRciManager {
+  const methods: Pick<PluginRciManager, PluginRciManagerMethod> = {
     execute: () => {
       throw new Error('test device.rci.execute not configured');
     },
@@ -164,7 +166,9 @@ function createRciManager(overrides: Partial<PluginRciManager> | undefined): Plu
     },
   };
 
-  return Object.freeze({...methods, ...overrides});
+  const manager = Object.assign(methods, overrides);
+
+  return createPluginRci(manager);
 }
 
 function createTelemetry(ended: ReplaySubject<void>, overrides: Partial<PluginTelemetry> = {}): PluginTelemetry {

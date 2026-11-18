@@ -543,12 +543,24 @@ describe('plugin RCI facade', () => {
   it('exposes exactly the plugin RCI methods', () => {
     const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
 
-    expect(Object.keys(ctx.device.rci).sort()).toEqual([...PLUGIN_RCI_MANAGER_METHODS].sort());
+    expect(Object.keys(ctx.device.rci).sort()).toEqual([...PLUGIN_RCI_MANAGER_METHODS, 'query'].sort());
     expect('destroy' in ctx.device.rci).toBe(false);
     expect('replaceBatchScheduler' in ctx.device.rci).toBe(false);
     expect('toggleStats' in ctx.device.rci).toBe(false);
     expect('stats$' in ctx.device.rci).toBe(false);
     expect(Object.isFrozen(ctx.device.rci)).toBe(true);
+  });
+
+  it('implements query through the shared manager queue', async () => {
+    const {rciService} = await import('../services/rci.service.js');
+    const driver = rciService.driver as unknown as {queue: ReturnType<typeof vi.fn>};
+    const response = {version: '1'};
+
+    driver.queue.mockReturnValueOnce(of(response));
+    const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
+
+    await expect(ctx.device.rci.query({path: 'show.version'})).resolves.toBe(response);
+    expect(driver.queue).toHaveBeenCalledWith({path: 'show.version'}, undefined);
   });
 });
 

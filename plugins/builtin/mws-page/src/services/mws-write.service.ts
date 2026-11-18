@@ -1,7 +1,5 @@
 import {Injectable, inject} from '@angular/core';
-import type {BackendClient, PluginRciManager} from '@mndw/sdk';
-import {type RciQuery, RciResponseHelper} from '@rci-tools/core';
-import {firstValueFrom} from 'rxjs';
+import {type BackendClient, type PluginRciManager, type RciQuery, RciResponseHelper} from '@mndw/sdk';
 import {
   type MwsPortRole,
   buildSetAutoApShutdownQueries,
@@ -176,7 +174,7 @@ export class MwsWriteService {
   }
 
   private async executeRciWrite(queries: RciQuery[], stepNames: string[]): Promise<MwsWriteResult> {
-    const response = await firstValueFrom(this.rci.queue(queries));
+    const response = await this.rci.query(queries);
     const responses = Array.isArray(response) ? response : [response];
     const steps = stepNames.map((step, index) => {
       const stepResponse = responses[index];

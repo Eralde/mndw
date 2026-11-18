@@ -261,7 +261,7 @@ normalized value is a valid read result, but cannot be submitted as a write.
 The 64-character limit is this example's input policy, measured with JavaScript
 `String.length` after trimming.
 
-A one-off read could use `firstValueFrom(rci.queue({path: 'show.version'}))`.
+A one-off read could use `await rci.query({path: 'show.version'})`.
 This tutorial keeps operations as streams because Save and Restore are user
 intents that need validation, sequencing, cancellation, and read-back. See the
 [RxJS guide](/guides/rxjs) for one-off calls and stream patterns.

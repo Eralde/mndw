@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 import {flushSync, mount, settled, unmount} from 'svelte';
-import type {RciQuery} from '@rci-tools/core';
-import type {PluginRciManager, PluginStorage} from '@mndw/sdk';
+import type {PluginRciManager, PluginStorage, RciQuery} from '@mndw/sdk';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import enCatalog from '../../i18n/en.json';
@@ -39,7 +38,11 @@ function storageWithSelectedDevice(): PluginStorage & {
 }
 
 function fakeRci(queue: ReturnType<typeof vi.fn>): PluginRciManager {
-  return {queue} as unknown as PluginRciManager;
+  const fixture = createTestPluginContext({device: {rci: {queue: queue as never}}});
+
+  pluginContexts.push(fixture);
+
+  return fixture.context.device.rci;
 }
 
 async function flush(): Promise<void> {

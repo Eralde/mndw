@@ -1,4 +1,4 @@
-import type {RciQuery} from '@rci-tools/core';
+import type {RciQuery} from '@mndw/sdk';
 import {normalizeMac} from './normalize';
 
 export type MwsPortRole = 'disabled' | 'primary' | {segment: string};

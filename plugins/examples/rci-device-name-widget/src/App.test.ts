@@ -1,5 +1,4 @@
-import type {PluginRciManager} from '@mndw/sdk';
-import type {RciQuery} from '@rci-tools/core';
+import type {PluginRciManager, RciQuery} from '@mndw/sdk';
 import {flushSync, mount, unmount} from 'svelte';
 import {Observable, Subject, of, throwError} from 'rxjs';
 import {afterEach, describe, expect, it, vi} from 'vitest';

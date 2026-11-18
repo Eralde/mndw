@@ -1,4 +1,4 @@
-import type {PluginRciManager} from '@mndw/sdk';
+import {type PluginRciManager, RciResponseHelper} from '@mndw/sdk';
 import {
   CUSTOM_ELEMENTS_SCHEMA,
   Component,
@@ -11,8 +11,6 @@ import {
   viewChild,
 } from '@angular/core';
 import type {MndwChartSample} from '@mndw/ui';
-import {RciResponseHelper} from '@rci-tools/core';
-import {firstValueFrom, fromEvent, takeUntil} from 'rxjs';
 import {normalizeBridgeSegments, parseNodeEditState} from '../../api/node-edit-state';
 import type {MwsNode, MwsRadioPower, MwsUtilSeries} from '../../domain/mws/mws.types';
 import {formatCpuLoad, formatMemory, formatRate, formatRssi, formatSpeed, formatUptime} from '../../format';
@@ -223,15 +221,12 @@ export class NodeDrawerComponent implements OnDestroy {
     reconciliation: boolean,
   ): Promise<void> {
     try {
-      const responses = await firstValueFrom(
-        this.rci.queue([
-          {path: 'show.sc.ip.dhcp.host'},
-          {path: 'show.sc.mws.member'},
-          {path: 'show.sc.interface'},
-          {path: 'show.interface'},
-        ]).pipe(takeUntil(fromEvent(signal, 'abort'))),
-        {defaultValue: undefined},
-      );
+      const responses = await this.rci.query([
+        {path: 'show.sc.ip.dhcp.host'},
+        {path: 'show.sc.mws.member'},
+        {path: 'show.sc.interface'},
+        {path: 'show.interface'},
+      ], {signal});
 
       if (!this.isCurrentSettings(node, generation, signal)) {
         return;

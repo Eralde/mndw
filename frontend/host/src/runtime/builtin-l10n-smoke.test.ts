@@ -349,6 +349,9 @@ smoke('packed built-in l10n smoke', () => {
 
       expect(await handle.whenReady()).toBe(true);
       await flushPlugin(name);
+      await vi.waitFor(() => {
+        expect(container.querySelector(localeTarget.selector)).not.toBeNull();
+      });
 
       const target = container.querySelector<HTMLElement>(localeTarget.selector);
 

@@ -779,11 +779,14 @@ describe.skipIf(skipSlowTests)('packExamplePlugins', () => {
 
     const widgetBundle = bundle('device-traffic-widget');
 
-    expect(widgetBundle).toMatch(/from\s*["']rxjs["']/);
     expect(widgetBundle).not.toMatch(/["']@rci-tools\/core["']/);
     expect(widgetBundle).toMatch(/from\s*["']@mndw\/ui["']/);
     expect(widgetBundle).not.toMatch(/from\s*["']d3["']/);
     expect(widgetBundle).not.toContain('d3-selection');
+
+    const rxjsBundle = bundle('rci-device-name-widget');
+
+    expect(rxjsBundle).toMatch(/from\s*["']rxjs["']/);
 
     const svelteBundle = bundle('device-traffic-widget');
 

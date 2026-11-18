@@ -375,7 +375,9 @@ describe('Task 4 Observable contract docs', () => {
 
     expect(rxjs).toContain('Observable');
     expect(rxjs).toContain('Promise');
-    expect(rxjs).toContain('firstValueFrom(ctx.device.rci.queue({path: \'show.version\'}))');
+    expect(rxjs).toContain('ctx.device.rci.query(');
+    expect(rxjs).toContain('still sent to the router');
+    expect(rxjs).toContain('queue()');
     expect(rxjs).toContain('subscription.unsubscribe()');
 
     for (const operator of ['map', 'filter', 'switchMap', 'exhaustMap', 'concatMap', 'catchError', 'takeUntil']) {
@@ -388,10 +390,11 @@ describe('Task 4 Observable contract docs', () => {
     expect(rxjs).not.toContain('createInstance(_ctx');
   });
 
-  it('uses firstValueFrom for one-off RCI calls and keeps stream sequencing guidance', () => {
+  it('uses query for one-off RCI calls and keeps stream sequencing guidance', () => {
     const rci = readFileSync(resolve(repoRoot, 'docs/plugin-author/guides/rci-api.md'), 'utf8');
 
-    expect(rci).toContain('firstValueFrom');
+    expect(rci).toContain('query(query, options?)');
+    expect(rci).toContain('still sent to the router');
     expect(rci).toContain('status: "error"');
     expect(rci).toContain('execute');
     expect(rci).toContain('queue');

@@ -10,8 +10,10 @@ export {
 } from './capabilities.js';
 export type {PersistentRciCapability} from './capabilities.js';
 export {PageRouteError} from './context.js';
-export {PLUGIN_RCI_MANAGER_METHODS} from './rci.js';
+export {RciResponseHelper} from '@rci-tools/core';
+export {createPluginRci, PLUGIN_RCI_MANAGER_METHODS} from './rci.js';
 export type {PluginRciManager, PluginRciManagerMethod} from './rci.js';
+export type {RciBackgroundProcess, RciQuery} from '@rci-tools/core';
 export type {
   HostNavigation,
   HostTarget,

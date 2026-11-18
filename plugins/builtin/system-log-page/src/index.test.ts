@@ -3,8 +3,7 @@ import {flushSync} from 'svelte';
 import {NEVER, Subject} from 'rxjs';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {createTestI18n} from '@mndw/sdk/testing';
-import type {OverlayService, PluginContext, PluginRciManager} from '@mndw/sdk';
-import type {RciBackgroundProcess} from '@rci-tools/core';
+import type {OverlayService, PluginContext, PluginRciManager, RciBackgroundProcess} from '@mndw/sdk';
 import enCatalog from '../i18n/en.json';
 import {createInstance} from './index';
 

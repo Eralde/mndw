@@ -1,9 +1,8 @@
-import type {RciQuery} from '@rci-tools/core';
+import type {PluginContext, PluginRciManager, RciQuery} from '@mndw/sdk';
 import {flushSync} from 'svelte';
 import {of} from 'rxjs';
 import {describe, expect, it, vi} from 'vitest';
 
-import type {PluginContext, PluginRciManager} from '@mndw/sdk';
 import {createTestI18n} from '@mndw/sdk/testing';
 import {createInstance} from './index.js';
 import {createContainer, createI18n} from './test-helpers.js';

@@ -169,7 +169,7 @@ function restore(key: string, apply: (raw: string) => void): void {
 
 onMounted(() => {
   refreshLoop = props.ctx.timers.createRefreshLoop({
-    load: () => {
+    load: (signal) => {
       const state = loadState.value;
 
       if (state.status === 'success' || state.status === 'refreshing') {
@@ -180,7 +180,7 @@ onMounted(() => {
         loadState.value = {status: 'loading'};
       }
 
-      return fetchClients(props.ctx.device.rci);
+      return fetchClients(props.ctx.device.rci, signal);
     },
     intervalMs: refreshIntervalSeconds.value * 1000,
     onSuccess: (clients) => {

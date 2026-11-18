@@ -1,5 +1,4 @@
-import type {PluginRciManager} from '@mndw/sdk';
-import type {RciQuery} from '@rci-tools/core';
+import type {PluginRciManager, RciQuery} from '@mndw/sdk';
 import {Observable, of, throwError} from 'rxjs';
 import {describe, expect, it, vi} from 'vitest';
 

@@ -2,6 +2,7 @@ import {signal} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {BackendClient, PluginRciManager} from '@mndw/sdk';
+import {createTestPluginContext} from '@mndw/sdk/testing';
 import {of} from 'rxjs';
 import {MWSD_BACKEND, RCI_MANAGER} from '../tokens';
 import {type ExtraFeaturesAvailability, MwsDataService} from './mws-data.service';
@@ -9,12 +10,14 @@ import {type MwsWriteResult, MwsWriteService} from './mws-write.service';
 
 describe('MwsWriteService', () => {
   let queue: ReturnType<typeof vi.fn>;
+  let rci: PluginRciManager;
 
   beforeEach(() => {
     TestBed.resetTestingModule();
     queue = vi.fn();
+    rci = createTestPluginContext({device: {rci: {queue: queue as never}}}).context.device.rci;
     TestBed.configureTestingModule({providers: [
-      {provide: RCI_MANAGER, useValue: {queue} as unknown as PluginRciManager},
+      {provide: RCI_MANAGER, useValue: rci},
     ]});
   });
 
@@ -117,7 +120,7 @@ describe('MwsWriteService', () => {
     expect(queue).toHaveBeenCalledWith([
       {path: 'known.host', data: {mac: '02:7d:4a:91:c3:21', name: 'Extender'}},
       {path: 'system.configuration.save'},
-    ]);
+    ], undefined);
     expect(call).not.toHaveBeenCalled();
   });
 
@@ -190,12 +193,12 @@ describe('MwsWriteService', () => {
     expect(queue).toHaveBeenLastCalledWith([
       {path: 'mws.member', data: {member: '02:7d:4a:91:c3:21', port: {port: '3', access: {interface: 'Bridge1'}}}},
       {path: 'system.configuration.save'},
-    ]);
+    ], undefined);
 
     await service.setAutoUpdateSchedule(null);
     expect(queue).toHaveBeenLastCalledWith([
       {path: 'components.auto-update', data: {schedule: {no: true}}},
       {path: 'system.configuration.save'},
-    ]);
+    ], undefined);
   });
 });

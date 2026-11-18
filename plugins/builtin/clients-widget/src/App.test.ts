@@ -1,9 +1,8 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import type {PluginContext, PluginRciManager} from '@mndw/sdk';
+import type {PluginContext, RciQuery} from '@mndw/sdk';
 import type {MndwTable} from '@mndw/ui';
 import {type TestPluginContext, createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
-import type {RciQuery} from '@rci-tools/core';
 import {Observable, of, throwError} from 'rxjs';
 import {type App as VueApp, createApp, nextTick} from 'vue';
 import fixture from './fixtures/show-device-list.json' with {type: 'json'};
@@ -28,14 +27,14 @@ let setTileTitle: ReturnType<typeof vi.fn>;
 const pluginContextFixtures: TestPluginContext[] = [];
 
 function createContext(i18n = createTestI18n(enCatalog)): PluginContext {
-  const fixtureContext = createTestPluginContext({i18n});
+  const fixtureContext = createTestPluginContext({i18n, device: {rci: {queue: queue as never}}});
 
   pluginContextFixtures.push(fixtureContext);
 
   return {
     kind: 'widget',
     setTileTitle,
-    device: {rci: {queue} as unknown as PluginRciManager},
+    device: {rci: fixtureContext.context.device.rci},
     storage: {
       instance: {
         get: storageGet,

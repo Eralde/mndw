@@ -1,6 +1,6 @@
 import {Injectable, inject} from '@angular/core';
 import {Observable, map} from 'rxjs';
-import type {RciQuery} from '@rci-tools/core';
+import type {RciQuery} from '@mndw/sdk';
 import type {RrdResponse, RrdTick} from '@mndw/sdk/rrd';
 import type {ClockDate, ShowInterfaceResponse} from '../types/rci.types';
 import {RCI_MANAGER} from '../tokens';

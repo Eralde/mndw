@@ -2,10 +2,17 @@
 import {NEVER, Observable, Subject, of, throwError} from 'rxjs';
 import {flushSync, mount, settled, unmount} from 'svelte';
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import type {OverlayLayer, OverlayOpenOptions, OverlayService, PluginI18n, Ticker, TickerTick} from '@mndw/sdk';
+import type {
+  OverlayLayer,
+  OverlayOpenOptions,
+  OverlayService,
+  PluginI18n,
+  RciBackgroundProcess,
+  Ticker,
+  TickerTick,
+} from '@mndw/sdk';
 import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import enCatalog from '../i18n/en.json';
-import type {RciBackgroundProcess} from '@rci-tools/core';
 import type {SystemLogApi, SystemLogStream} from './system-log-api';
 import type {NormalizedLogRecord} from './log-types';
 import type {ClearResult} from './clear-log-confirmation';

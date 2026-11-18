@@ -1,6 +1,4 @@
-import type {PluginRciManager} from '@mndw/sdk';
-import {firstValueFrom} from 'rxjs';
-import type {RciQuery} from '@rci-tools/core';
+import type {PluginRciManager, RciQuery} from '@mndw/sdk';
 import type {ChartResponse, HostBar, HostClient} from '../types.js';
 
 export interface ClockDate {
@@ -22,7 +20,7 @@ export class RciService {
       path: 'show.device-list',
       extractData: true,
     };
-    const response = await firstValueFrom(this.rci.queue(query));
+    const response = await this.rci.query(query);
 
     return (response.host || []).map((h: any) => ({
       mac: h.mac,
@@ -32,21 +30,26 @@ export class RciService {
     }));
   }
 
-  private async getChartAttribute(items: string[], detail: number, attribute: string): Promise<ChartResponse> {
+  private async getChartAttribute(
+    items: string[],
+    detail: number,
+    attribute: string,
+    signal?: AbortSignal,
+  ): Promise<ChartResponse> {
     const query: RciQuery = {
       path: 'show.ip.hotspot.chart',
       data: {attributes: attribute, detail, items: items.join(',')},
       extractData: true,
     };
 
-    return await firstValueFrom(this.rci.queue(query));
+    return await this.rci.query(query, signal === undefined ? undefined : {signal});
   }
 
-  public async getChartData(items: string[], detail: number): Promise<ChartResponse> {
+  public async getChartData(items: string[], detail: number, signal?: AbortSignal): Promise<ChartResponse> {
     const [tx, rx, sum] = await Promise.all([
-      this.getChartAttribute(items, detail, 'txspeed'),
-      this.getChartAttribute(items, detail, 'rxspeed'),
-      this.getChartAttribute(items, detail, 'sumspeed'),
+      this.getChartAttribute(items, detail, 'txspeed', signal),
+      this.getChartAttribute(items, detail, 'rxspeed', signal),
+      this.getChartAttribute(items, detail, 'sumspeed', signal),
     ]);
 
     const macMap = new Map<string, HostBar>();
@@ -67,9 +70,9 @@ export class RciService {
     return {bar: Array.from(macMap.values())};
   }
 
-  public async getDeviceTime(): Promise<ClockDate> {
+  public async getDeviceTime(signal?: AbortSignal): Promise<ClockDate> {
     const query: RciQuery = {path: 'show.clock.date', extractData: true};
 
-    return await firstValueFrom(this.rci.queue(query));
+    return await this.rci.query(query, signal === undefined ? undefined : {signal});
   }
 }

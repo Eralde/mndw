@@ -1,6 +1,5 @@
-import type {PluginRciManager} from '@mndw/sdk';
+import type {PluginRciManager, RciBackgroundProcess, RciQuery} from '@mndw/sdk';
 import {Subject, firstValueFrom, of} from 'rxjs';
-import type {RciBackgroundProcess, RciQuery} from '@rci-tools/core';
 import {describe, expect, it, vi} from 'vitest';
 import validResponse from './fixtures/log-response.json';
 import {createSystemLogApi} from './system-log-api';

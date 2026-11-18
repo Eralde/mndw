@@ -2,7 +2,7 @@ import '@angular/compiler';
 import {readFileSync} from 'node:fs';
 import {signal, ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
-import {type TestI18n, createTestI18n} from '@mndw/sdk/testing';
+import {type TestI18n, createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import {Subject, of, throwError} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {normalizeDeviceHosts, normalizeMembers} from '../../api/normalize';
@@ -124,12 +124,9 @@ describe('NodeDrawerComponent', () => {
         {provide: MwsDataService, useValue: {refreshNow, freshnessNow: () =>
           10_000, extraFeaturesAvailability: availability}},
         {provide: MwsWriteService, useValue: {setPower, setName}},
-        {
-          provide: RCI_MANAGER,
-          useValue: {
-            queue: settingsQueue,
-          },
-        },
+        {provide: RCI_MANAGER, useValue: createTestPluginContext({
+          device: {rci: {queue: settingsQueue as never}},
+        }).context.device.rci},
         {provide: TRANSLATOR, useValue: testI18n},
       ],
     }).compileComponents();
@@ -306,7 +303,7 @@ describe('NodeDrawerComponent', () => {
       {path: 'show.sc.mws.member'},
       {path: 'show.sc.interface'},
       {path: 'show.interface'},
-    ]);
+    ], {});
   });
 
   it('shows settings actions in the drawer footer only after a form change', async () => {

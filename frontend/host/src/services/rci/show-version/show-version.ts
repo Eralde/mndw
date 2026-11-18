@@ -1,4 +1,4 @@
-import {RciQuery} from '@rci-tools/core';
+import type {RciQuery} from '@mndw/sdk';
 import {Observable, map} from 'rxjs';
 import {rciService} from '../../rci.service.js';
 import {showVersionResponseSchema} from './show-version.schema.js';

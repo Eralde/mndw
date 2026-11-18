@@ -1,7 +1,6 @@
-import type {PluginRciManager} from '@mndw/sdk';
+import type {PluginRciManager, RciBackgroundProcess} from '@mndw/sdk';
 import {map} from 'rxjs/operators';
 import type {Observable} from 'rxjs';
-import type {RciBackgroundProcess} from '@rci-tools/core';
 import {DEFAULT_MAX_LINES, normalizeLogResponse} from './log-normalizer';
 import type {NormalizedLogRecord} from './log-types';
 

@@ -32,7 +32,7 @@ func (b *Bus) setRingCapacityForTest(capacity int) {
 	}
 }
 
-func (m *StorageMonitor) SetTickerFactory(factory StorageTickerFactory) {
+func (m *StorageMonitor) SetTickerFactory(factory storageTickerFactory) {
 	if factory != nil {
 		m.ticker = factory
 	}

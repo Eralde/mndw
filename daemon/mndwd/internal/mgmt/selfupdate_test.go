@@ -23,6 +23,8 @@ type fakeSelfUpdateService struct {
 	revertCalls int
 }
 
+var _ SelfUpdateService = (*selfupdate.Service)(nil)
+
 func (s *fakeSelfUpdateService) Status() (selfupdate.Status, error) { return s.status, s.err }
 
 func (s *fakeSelfUpdateService) Check(context.Context) (selfupdate.CheckResult, error) {
@@ -43,7 +45,7 @@ func (s *fakeSelfUpdateService) BeginRevert(context.Context) (selfupdate.Accepte
 	return s.accepted, s.err
 }
 
-func newSelfUpdateHandler(t *testing.T, service selfupdate.Service) *Handler {
+func newSelfUpdateHandler(t *testing.T, service SelfUpdateService) *Handler {
 	t.Helper()
 
 	return New(Config{SelfUpdate: service, Runtime: passthroughRuntime{}}, nil, nil, nil, nil, discardLogger())

@@ -66,6 +66,14 @@ type PluginRuntime interface {
 	Limits() backend.RuntimeLimitsSnapshot
 }
 
+// SelfUpdateService exposes the update operations used by management handlers.
+type SelfUpdateService interface {
+	Status() (selfupdate.Status, error)
+	Check(context.Context) (selfupdate.CheckResult, error)
+	BeginUpdate(context.Context) (selfupdate.Accepted, error)
+	BeginRevert(context.Context) (selfupdate.Accepted, error)
+}
+
 // Config carries the on-disk locations the handlers operate over.
 type Config struct {
 	// StagingDir holds uploaded-but-unapproved plugins.
@@ -84,7 +92,7 @@ type Config struct {
 	PersistentRCIPermissionController PersistentRCIPermissionController
 	ServiceActionRoot                 context.Context
 	ServiceActionTimeout              time.Duration
-	SelfUpdate                        selfupdate.Service
+	SelfUpdate                        SelfUpdateService
 	TelemetryController               TelemetryController
 	EventPublisher                    ManagementEventPublisher
 }
@@ -100,7 +108,7 @@ type Handler struct {
 	logger               *slog.Logger
 	runtime              PluginRuntime
 	permissionController PersistentRCIPermissionController
-	selfUpdate           selfupdate.Service
+	selfUpdate           SelfUpdateService
 	telemetry            TelemetryController
 	eventPublisher       ManagementEventPublisher
 	removeAll            func(string) error

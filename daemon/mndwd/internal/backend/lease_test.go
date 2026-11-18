@@ -6,11 +6,11 @@ import (
 	"testing"
 )
 
-func TestValidateServiceLeaseRequiresFullSameBootIdentity(t *testing.T) {
+func TestServiceLeaseValidationRequiresFullSameBootIdentity(t *testing.T) {
 	lease := ServiceLease{BootID: "boot-a", PID: 42, PGID: 42, StartTimeTicks: 99, ExecutablePath: "/plugins/demo/server", ExecutableDev: 1, ExecutableIno: 2}
 	reader := fakeProcessReader{bootID: "boot-a", process: ProcessIdentity{PID: 42, PGID: 42, StartTimeTicks: 99, ExecutablePath: lease.ExecutablePath, ExecutableDev: 1, ExecutableIno: 2}}
 
-	if matched, err := ValidateServiceLease(lease, reader); err != nil || !matched {
+	if matched, err := validateServiceLease(lease, reader); err != nil || !matched {
 		t.Fatalf("full lease match = %v, %v", matched, err)
 	}
 
@@ -25,9 +25,9 @@ func TestValidateServiceLeaseRequiresFullSameBootIdentity(t *testing.T) {
 
 			change(&candidate)
 
-			matched, err := ValidateServiceLease(lease, candidate)
+			matched, err := validateServiceLease(lease, candidate)
 			if err != nil || matched {
-				t.Fatalf("ValidateServiceLease = %v, %v, want false nil", matched, err)
+				t.Fatalf("validateServiceLease = %v, %v, want false nil", matched, err)
 			}
 		})
 	}

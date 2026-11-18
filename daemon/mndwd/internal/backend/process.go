@@ -50,7 +50,7 @@ type ProcessIdentity struct {
 	ExecutableIno  uint64
 }
 
-type ProcessReader interface {
+type processReader interface {
 	BootID() (string, error)
 	ProcessIdentity(pid int) (ProcessIdentity, error)
 }
@@ -63,7 +63,7 @@ func (systemProcessReader) ProcessIdentity(pid int) (ProcessIdentity, error) {
 	return ReadProcessIdentity(pid)
 }
 
-func ValidateServiceLease(lease ServiceLease, reader ProcessReader) (bool, error) {
+func validateServiceLease(lease ServiceLease, reader processReader) (bool, error) {
 	if lease.BootID == "" || lease.PID <= 0 || lease.PGID <= 0 || lease.StartTimeTicks == 0 || lease.ExecutablePath == "" {
 		return false, fmt.Errorf("lease is incomplete")
 	}
@@ -309,7 +309,7 @@ func recoverStaleRuntime(paths RuntimePaths, timeout time.Duration) error {
 		return err
 	}
 
-	matched, err := ValidateServiceLease(lease, systemProcessReader{})
+	matched, err := validateServiceLease(lease, systemProcessReader{})
 	if err != nil {
 		_ = removeRuntimeEvidence(paths)
 

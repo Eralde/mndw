@@ -293,7 +293,7 @@ func TestResolveAuthorizedRoutePublicRouteDuringMaintenance(t *testing.T) {
 func TestResolveAuthorizedRouteBlockedPluginAuthenticatesFirst(t *testing.T) {
 	gates := NewActivationGateRegistry()
 
-	gates.Register("persistent-rci-session:read", ActivationGateFunc(func(_, permission string) []ActivationBlocker {
+	gates.Register("persistent-rci-session:read", ActivationGate(func(_, permission string) []ActivationBlocker {
 		return []ActivationBlocker{{Permission: permission, Reason: "not-granted"}}
 	}))
 

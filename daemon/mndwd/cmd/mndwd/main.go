@@ -216,7 +216,7 @@ type daemonCore struct {
 // of daemonCore.
 type mgmtServices struct {
 	opkg                 opkg.Manager
-	selfUpdate           selfupdate.Service
+	selfUpdate           *selfupdate.Service
 	service              initd.Manager
 	permissionController mgmt.PersistentRCIPermissionController
 	telemetryController  mgmt.TelemetryController

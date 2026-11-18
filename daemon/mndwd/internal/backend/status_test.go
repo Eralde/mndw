@@ -108,7 +108,7 @@ func TestProjectBackendStatusApprovalPrecedesEnabled(t *testing.T) {
 	runtime := newStatusTestRuntime(now)
 	gates := NewActivationGateRegistry()
 
-	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(_, permission string) []ActivationBlocker {
+	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGate(func(_, permission string) []ActivationBlocker {
 		return []ActivationBlocker{{Permission: permission, Reason: BlockerNotGranted}}
 	}))
 
@@ -170,7 +170,7 @@ func TestProjectBackendStatusExecSkipsActivationEvaluation(t *testing.T) {
 	var calls int
 	gates := NewActivationGateRegistry()
 
-	gates.Register(manifest.PersistentRCISessionWritePermission, ActivationGateFunc(func(_, permission string) []ActivationBlocker {
+	gates.Register(manifest.PersistentRCISessionWritePermission, ActivationGate(func(_, permission string) []ActivationBlocker {
 		calls++
 
 		return []ActivationBlocker{{Permission: permission, Reason: "not-granted"}}
@@ -193,7 +193,7 @@ func TestProjectBackendStatusExecSkipsActivationEvaluation(t *testing.T) {
 func TestProjectBackendStatusPreservesTypedBlockerWireValues(t *testing.T) {
 	gates := NewActivationGateRegistry()
 
-	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(_, permission string) []ActivationBlocker {
+	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGate(func(_, permission string) []ActivationBlocker {
 		return []ActivationBlocker{
 			{Permission: permission, Reason: BlockerNotGranted},
 			{Permission: permission, Reason: BlockerPrerequisiteUnavailable, Prerequisite: "controller-token"},

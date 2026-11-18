@@ -71,7 +71,7 @@ func newFakeLease(t *testing.T) *fakeLease {
 	return &fakeLease{file: file}
 }
 
-func newTestService(t *testing.T, manager *fakePackageManager) *service {
+func newTestService(t *testing.T, manager *fakePackageManager) *Service {
 	t.Helper()
 
 	root := t.TempDir()
@@ -81,7 +81,7 @@ func newTestService(t *testing.T, manager *fakePackageManager) *service {
 		t.Fatal(err)
 	}
 
-	return &service{
+	return &Service{
 		manager:        manager,
 		store:          NewStateStore(filepath.Join(root, "state")),
 		stateDir:       filepath.Join(root, "state"),

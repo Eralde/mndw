@@ -9,16 +9,7 @@ type ActivationBlocker struct {
 }
 
 // ActivationGate evaluates one declared permission for one plugin.
-type ActivationGate interface {
-	Evaluate(pluginName, permission string) []ActivationBlocker
-}
-
-// ActivationGateFunc adapts a function to ActivationGate.
-type ActivationGateFunc func(pluginName, permission string) []ActivationBlocker
-
-func (f ActivationGateFunc) Evaluate(pluginName, permission string) []ActivationBlocker {
-	return f(pluginName, permission)
-}
+type ActivationGate func(pluginName, permission string) []ActivationBlocker
 
 // ActivationGateRegistry maps manifest permission IDs to their activation
 // predicates. It is assembled before runtime use and then treated as read-only.
@@ -69,7 +60,7 @@ func (r *ActivationGateRegistry) Evaluate(pluginName string, permissions []strin
 			continue
 		}
 
-		for _, blocker := range gate.Evaluate(pluginName, permission) {
+		for _, blocker := range gate(pluginName, permission) {
 			key := activationBlockerKey{
 				permission:   blocker.Permission,
 				reason:       blocker.Reason,

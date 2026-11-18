@@ -14,16 +14,16 @@ const (
 )
 
 type StorageStatFunc func(path string) (availableBytes uint64, err error)
-type StorageTicker interface {
+type storageTicker interface {
 	C() <-chan time.Time
 	Stop()
 }
-type StorageTickerFactory func(time.Duration) StorageTicker
+type storageTickerFactory func(time.Duration) storageTicker
 
 type StorageMonitor struct {
 	path      string
 	stat      StorageStatFunc
-	ticker    StorageTickerFactory
+	ticker    storageTickerFactory
 	publisher *InternalPublisher
 	logger    *slog.Logger
 	low       bool
@@ -49,7 +49,7 @@ func NewStorageMonitor(path string, stat StorageStatFunc, publisher *InternalPub
 		publisher: publisher,
 		logger:    logger,
 		mu:        make(chan struct{}, 1),
-		ticker: func(interval time.Duration) StorageTicker {
+		ticker: func(interval time.Duration) storageTicker {
 			return realStorageTicker{Ticker: time.NewTicker(interval)}
 		},
 	}

@@ -6,7 +6,7 @@ import (
 )
 
 func TestActivationGateRegistryLooksUpPermissionIDs(t *testing.T) {
-	gate := ActivationGateFunc(func(pluginName, permission string) []ActivationBlocker {
+	gate := ActivationGate(func(pluginName, permission string) []ActivationBlocker {
 		if pluginName == "ready" && permission == "permission:read" {
 			return nil
 		}
@@ -19,7 +19,7 @@ func TestActivationGateRegistryLooksUpPermissionIDs(t *testing.T) {
 
 	got, ok := registry.Lookup("permission:read")
 
-	if !ok || len(got.Evaluate("ready", "permission:read")) != 0 || len(got.Evaluate("blocked", "permission:read")) == 0 {
+	if !ok || len(got("ready", "permission:read")) != 0 || len(got("blocked", "permission:read")) == 0 {
 		t.Fatalf("lookup = %#v, ok=%v", got, ok)
 	}
 
@@ -31,10 +31,10 @@ func TestActivationGateRegistryLooksUpPermissionIDs(t *testing.T) {
 func TestActivationGateRegistryEvaluatesAllDeclaredPermissionsInOrder(t *testing.T) {
 	registry := NewActivationGateRegistry()
 
-	registry.Register("permission:read", ActivationGateFunc(func(_, permission string) []ActivationBlocker {
+	registry.Register("permission:read", ActivationGate(func(_, permission string) []ActivationBlocker {
 		return []ActivationBlocker{{Permission: permission, Reason: "not-granted"}, {Permission: permission, Reason: "not-granted"}}
 	}))
-	registry.Register("permission:write", ActivationGateFunc(func(_, permission string) []ActivationBlocker {
+	registry.Register("permission:write", ActivationGate(func(_, permission string) []ActivationBlocker {
 		return []ActivationBlocker{{Permission: permission, Reason: "prerequisite-unavailable", Prerequisite: "controller-token"}}
 	}))
 
@@ -52,7 +52,7 @@ func TestActivationGateRegistryEvaluatesAllDeclaredPermissionsInOrder(t *testing
 func TestActivationGateRegistryDeduplicatesBlockersAndIgnoresMissingGates(t *testing.T) {
 	registry := NewActivationGateRegistry()
 
-	registry.Register("permission:read", ActivationGateFunc(func(_, permission string) []ActivationBlocker {
+	registry.Register("permission:read", ActivationGate(func(_, permission string) []ActivationBlocker {
 		return []ActivationBlocker{
 			{Permission: permission, Reason: "not-granted"},
 			{Permission: permission, Reason: "not-granted"},
@@ -70,7 +70,7 @@ func TestActivationGateRegistryDeduplicatesBlockersAndIgnoresMissingGates(t *tes
 func TestActivationGateRegistrySatisfiedUsesStructuredEvaluation(t *testing.T) {
 	registry := NewActivationGateRegistry()
 
-	registry.Register("permission:read", ActivationGateFunc(func(_, permission string) []ActivationBlocker {
+	registry.Register("permission:read", ActivationGate(func(_, permission string) []ActivationBlocker {
 		return []ActivationBlocker{{Permission: permission, Reason: "not-granted"}}
 	}))
 
@@ -91,8 +91,8 @@ func TestActivationGateRegistryNilLookupIsMissing(t *testing.T) {
 	}
 }
 
-func TestActivationGateFuncImplementsActivationGate(t *testing.T) {
-	var gate ActivationGate = ActivationGateFunc(func(pluginName, permission string) []ActivationBlocker {
+func TestActivationGateCallPreservesBlockerResults(t *testing.T) {
+	gate := ActivationGate(func(pluginName, permission string) []ActivationBlocker {
 		if pluginName == "demo" && permission == "permission:read" {
 			return nil
 		}
@@ -100,7 +100,7 @@ func TestActivationGateFuncImplementsActivationGate(t *testing.T) {
 		return []ActivationBlocker{{Permission: permission, Reason: "not-granted"}}
 	})
 
-	if len(gate.Evaluate("demo", "permission:read")) != 0 || len(gate.Evaluate("other", "permission:read")) == 0 {
+	if len(gate("demo", "permission:read")) != 0 || len(gate("other", "permission:read")) == 0 {
 		t.Fatal("function adapter returned unexpected satisfaction")
 	}
 }

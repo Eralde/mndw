@@ -12,7 +12,7 @@ func (c *Coordinator) RegisterActivationGates(gates *backend.ActivationGateRegis
 		return
 	}
 
-	gate := backend.ActivationGateFunc(c.ActivationBlockers)
+	gate := backend.ActivationGate(c.ActivationBlockers)
 
 	gates.Register(manifest.PersistentRCISessionReadPermission, gate)
 	gates.Register(manifest.PersistentRCISessionWritePermission, gate)

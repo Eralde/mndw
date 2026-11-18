@@ -93,7 +93,7 @@ func TestRuntimeConfigAppliesExecDefaults(t *testing.T) {
 func TestRuntimeGatedServiceReservesNoSlotAndLifecycleStartDoesNotSpawn(t *testing.T) {
 	gates := NewActivationGateRegistry()
 
-	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(_, permission string) []ActivationBlocker {
+	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGate(func(_, permission string) []ActivationBlocker {
 		return []ActivationBlocker{{Permission: permission, Reason: "not-granted"}}
 	}))
 

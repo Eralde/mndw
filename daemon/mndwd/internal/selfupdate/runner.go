@@ -24,13 +24,6 @@ type PackageManager interface {
 	SelfUpdateLocked() (bool, error)
 }
 
-type Service interface {
-	Status() (Status, error)
-	Check(context.Context) (CheckResult, error)
-	BeginUpdate(context.Context) (Accepted, error)
-	BeginRevert(context.Context) (Accepted, error)
-}
-
 type CheckResult struct {
 	CurrentVersion    string `json:"currentVersion"`
 	TargetVersion     string `json:"targetVersion,omitempty"`
@@ -53,7 +46,8 @@ type Config struct {
 
 type startProcessFunc func(script string, args []string, lockFile *os.File) error
 
-type service struct {
+// Service runs the system self-update and rollback workflow.
+type Service struct {
 	manager        PackageManager
 	store          *StateStore
 	stateDir       string
@@ -63,7 +57,7 @@ type service struct {
 	startProcess   startProcessFunc
 }
 
-func New(config Config, manager PackageManager) Service {
+func New(config Config, manager PackageManager) *Service {
 	if config.StateDir == "" {
 		config.StateDir = "/opt/var/mndw"
 	}
@@ -80,7 +74,7 @@ func New(config Config, manager PackageManager) Service {
 		config.Logger = slog.New(slog.DiscardHandler)
 	}
 
-	return &service{
+	return &Service{
 		manager:        manager,
 		store:          NewStateStore(config.StateDir),
 		stateDir:       config.StateDir,
@@ -91,7 +85,7 @@ func New(config Config, manager PackageManager) Service {
 	}
 }
 
-func (s *service) helperPath() string { return filepath.Join(s.stateDir, "self-update.sh") }
+func (s *Service) helperPath() string { return filepath.Join(s.stateDir, "self-update.sh") }
 
 func normalizeManagerError(err error) error {
 	if errors.Is(err, opkg.ErrBusy) {
@@ -101,7 +95,7 @@ func normalizeManagerError(err error) error {
 	return err
 }
 
-func (s *service) Status() (Status, error) {
+func (s *Service) Status() (Status, error) {
 	locked, err := s.manager.SelfUpdateLocked()
 	if err != nil {
 		return Status{}, err
@@ -110,7 +104,7 @@ func (s *service) Status() (Status, error) {
 	return s.store.Status(s.runningVersion, locked), nil
 }
 
-func (s *service) Check(ctx context.Context) (CheckResult, error) {
+func (s *Service) Check(ctx context.Context) (CheckResult, error) {
 	candidate, err := s.manager.CheckSelfUpdate(ctx)
 	if err != nil {
 		return CheckResult{}, normalizeManagerError(err)
@@ -127,7 +121,7 @@ func (s *service) Check(ctx context.Context) (CheckResult, error) {
 	}, nil
 }
 
-func (s *service) copyHelper() error {
+func (s *Service) copyHelper() error {
 	info, err := os.Lstat(s.packagedHelper)
 	if err != nil {
 		return fmt.Errorf("inspect packaged self-update helper: %w", err)
@@ -193,7 +187,7 @@ func (s *service) copyHelper() error {
 	return nil
 }
 
-func (s *service) cleanupCandidate(path string) {
+func (s *Service) cleanupCandidate(path string) {
 	if path == "" {
 		return
 	}
@@ -203,7 +197,7 @@ func (s *service) cleanupCandidate(path string) {
 	}
 }
 
-func (s *service) launch(operation Operation, current, target, installPath string, lease opkg.LeaseHandle, cleanupPath string) (Accepted, error) {
+func (s *Service) launch(operation Operation, current, target, installPath string, lease opkg.LeaseHandle, cleanupPath string) (Accepted, error) {
 	cleanup := cleanupPath != ""
 
 	defer func() {
@@ -252,7 +246,7 @@ func (s *service) launch(operation Operation, current, target, installPath strin
 	return Accepted{Operation: operation, TargetVersion: target}, nil
 }
 
-func (s *service) BeginUpdate(ctx context.Context) (Accepted, error) {
+func (s *Service) BeginUpdate(ctx context.Context) (Accepted, error) {
 	candidate, lease, err := s.manager.PrepareSelfUpdate(ctx)
 	if err != nil {
 		return Accepted{}, normalizeManagerError(err)
@@ -265,7 +259,7 @@ func (s *service) BeginUpdate(ctx context.Context) (Accepted, error) {
 	return s.launch(OperationUpdate, candidate.CurrentVersion, candidate.TargetVersion, candidate.PackagePath, lease, candidate.PackagePath)
 }
 
-func (s *service) BeginRevert(ctx context.Context) (Accepted, error) {
+func (s *Service) BeginRevert(ctx context.Context) (Accepted, error) {
 	lease, err := s.manager.LockForSelfUpdate(ctx)
 	if err != nil {
 		return Accepted{}, normalizeManagerError(err)

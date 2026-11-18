@@ -10,6 +10,7 @@ import (
 	contractEvents "mndw.local/contracts/events"
 	rci "mndw.local/rci"
 	"mndwd/internal/events"
+	"mndwd/internal/rcisession"
 	"mndwd/internal/registry"
 	"mndwd/internal/selfupdate"
 	"mndwd/internal/state"
@@ -29,6 +30,7 @@ type eventLifecycle struct {
 	selfUpdate         selfUpdateStatusReader
 	selfUpdateStateDir string
 	rciClient          *rci.Client
+	session            *rcisession.Service
 	reg                *registry.Registry
 	store              *state.Store
 	logger             *slog.Logger
@@ -109,19 +111,39 @@ func (l *eventLifecycle) Start(ctx context.Context) error {
 	if l.rciClient == nil {
 		l.logger.Warn("event log poller disabled: no RCI client available")
 	} else {
-		deviceTZ := events.QueryDeviceTimezone(eventCtx, l.rciClient)
-		parser := events.NewLogParser(l.normalizer, deviceTZ, nil, l.logger)
+		parser := events.NewLogParser(l.normalizer, time.UTC, nil, l.logger)
 		pollTicker := time.NewTicker(events.LogPollInterval)
+		wake := make(chan struct{}, 1)
+		unsubscribe := func() {}
+
+		if l.session != nil {
+			unsubscribe = l.session.SubscribeMutations(func() {
+				select {
+				case wake <- struct{}{}:
+				default:
+				}
+			})
+		}
+
 		poller := events.NewLogPoller(events.LogPollerConfig{
-			Source:     events.NewRCILogSource(l.rciClient),
-			Parser:     parser,
-			Publisher:  l.ingest,
-			Ticker:     pollTicker.C,
-			StopTicker: pollTicker.Stop,
-			Logger:     l.logger,
+			Source:         events.NewRCILogSource(l.rciClient),
+			Parser:         parser,
+			Publisher:      l.ingest,
+			Ticker:         pollTicker.C,
+			StopTicker:     pollTicker.Stop,
+			Wake:           wake,
+			SessionPresent: sessionPresentFunc(l.session),
+			OnSessionAvailable: func(ctx context.Context) {
+				parser.SetLocation(events.QueryDeviceTimezone(ctx, l.rciClient))
+			},
+			Logger: l.logger,
 		})
 
-		go poller.Run(eventCtx)
+		go func() {
+			defer unsubscribe()
+
+			poller.Run(eventCtx)
+		}()
 	}
 
 	storage := events.NewStorageMonitor("/opt", nil, l.internal, l.logger)
@@ -137,6 +159,14 @@ func (l *eventLifecycle) Start(ctx context.Context) error {
 	l.started = true
 
 	return nil
+}
+
+func sessionPresentFunc(session *rcisession.Service) func() bool {
+	if session == nil {
+		return nil
+	}
+
+	return session.SessionPresent
 }
 
 // Stop announces daemon.stopping and cancels the producers. It does nothing

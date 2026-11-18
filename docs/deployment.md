@@ -142,12 +142,21 @@ requires target Entware verification of opkg lifecycle ordering and that
 `/opt/share/www` and `/opt/var/lib` share a filesystem; host shell tests do not
 prove either condition.
 
-For listener diagnostics, inspect the selected port, mndwd log, device
+The daemon keeps operational logs in RAM at `/tmp/mndwd.log`, rotating once to
+`/tmp/mndwd.log.1` at 512 KiB. Diagnostics include the current log, its backup
+when needed, and any non-empty `/opt/var/log/mndwd.crash.log`. On startup, init
+moves a non-empty crash log to `/opt/var/log/mndwd.crash.log.1`, replacing the
+older backup, then captures the new run's stdout and stderr in the current crash
+log. The current crash log and one previous trace survive a router reboot;
+bounded operational logs in RAM do not. The legacy `/opt/var/log/mndwd.log` is
+removed during upgrade.
+
+For listener diagnostics, inspect the selected port, current mndwd log, device
 discovery, and live listeners:
 
 ```sh
 cat /opt/var/lib/mndw/frontend-port
-grep -a -- '--frontend-dir' /opt/var/log/mndwd.log
+grep -a -- '--frontend-dir' /tmp/mndwd.log
 sh /opt/share/www/mndw/bin/mndw-device-port.sh detect 192.168.1.1
 netstat -lnt 2>/dev/null
 ```

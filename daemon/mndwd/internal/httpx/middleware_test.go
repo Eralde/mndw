@@ -2,11 +2,15 @@ package httpx
 
 import (
 	"bufio"
+	"bytes"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNoCORSResponseWriterStripsHeadersCaseInsensitively(t *testing.T) {
@@ -34,6 +38,52 @@ func TestNoCORSResponseWriterStripsHeadersCaseInsensitively(t *testing.T) {
 
 	if got := recorder.Header().Get("Content-Type"); got != "text/plain" {
 		t.Fatalf("Content-Type = %q, want text/plain", got)
+	}
+}
+
+func TestLogMiddlewareUsesSeverityAndOmitsQueryAndBody(t *testing.T) {
+	start := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
+	tests := []struct {
+		name     string
+		status   int
+		duration time.Duration
+		level    string
+	}{
+		{name: "healthy", status: http.StatusOK, duration: time.Second, level: "DEBUG"},
+		{name: "server error", status: http.StatusInternalServerError, duration: time.Second, level: "WARN"},
+		{name: "slow", status: http.StatusOK, duration: 6 * time.Second, level: "WARN"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			logger := slog.New(slog.NewTextHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			clockCalls := 0
+			handler := logMiddleware(logger, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				writer.WriteHeader(test.status)
+			}), func() time.Time {
+				clockCalls++
+
+				if clockCalls == 1 {
+					return start
+				}
+
+				return start.Add(test.duration)
+			})
+			request := httptest.NewRequest(http.MethodPost, "/api/items?token=QUERY_SECRET", strings.NewReader("BODY_SECRET"))
+
+			handler.ServeHTTP(httptest.NewRecorder(), request)
+
+			text := output.String()
+
+			if !strings.Contains(text, "level="+test.level) || !strings.Contains(text, "method=POST") || !strings.Contains(text, "path=/api/items") || !strings.Contains(text, "status="+strconv.Itoa(test.status)) || !strings.Contains(text, "duration="+test.duration.String()) {
+				t.Fatalf("request log missing fields or severity: %s", text)
+			}
+
+			if strings.Contains(text, "QUERY_SECRET") || strings.Contains(text, "BODY_SECRET") {
+				t.Fatalf("request log leaked query or body: %s", text)
+			}
+		})
 	}
 }
 

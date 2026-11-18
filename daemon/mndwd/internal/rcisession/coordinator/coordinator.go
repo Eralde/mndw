@@ -52,27 +52,28 @@ type Config struct {
 // Coordinator owns the persistent-RCI socket bindings and their reconciliation
 // with the encrypted credential state.
 type Coordinator struct {
-	registry        *registry.Registry
-	store           *state.Store
-	runtimeRoot     string
-	service         *rcisession.Service
-	enumerator      rcisession.Enumerator
-	manager         *sessionmanager.Manager
-	establisher     establisher.Establisher
-	heartbeat       heartbeat.Probe
-	lifetime        context.Context
-	cancel          context.CancelFunc
-	tickDone        chan struct{}
-	poke            chan struct{}
-	activeCancel    context.CancelFunc
-	establishSem    chan struct{}
-	heartbeatEvery  time.Duration
-	reconciler      *rcisessionsocket.Reconciler
-	logger          *slog.Logger
-	activation      atomic.Pointer[activationSnapshot]
-	activationPoke  func()
-	mu              sync.Mutex
-	establishmentWG sync.WaitGroup
+	registry            *registry.Registry
+	store               *state.Store
+	runtimeRoot         string
+	service             *rcisession.Service
+	unsubscribeMutation func()
+	enumerator          rcisession.Enumerator
+	manager             *sessionmanager.Manager
+	establisher         establisher.Establisher
+	heartbeat           heartbeat.Probe
+	lifetime            context.Context
+	cancel              context.CancelFunc
+	tickDone            chan struct{}
+	poke                chan struct{}
+	activeCancel        context.CancelFunc
+	establishSem        chan struct{}
+	heartbeatEvery      time.Duration
+	reconciler          *rcisessionsocket.Reconciler
+	logger              *slog.Logger
+	activation          atomic.Pointer[activationSnapshot]
+	activationPoke      func()
+	mu                  sync.Mutex
+	establishmentWG     sync.WaitGroup
 }
 
 // New builds a Coordinator whose lifetime is cancelled by Close or its parent.
@@ -123,7 +124,7 @@ func New(cfg Config) *Coordinator {
 	}
 
 	if cfg.Service != nil {
-		cfg.Service.SubscribeMutations(coordinator.onServiceMutation)
+		coordinator.unsubscribeMutation = cfg.Service.SubscribeMutations(coordinator.onServiceMutation)
 	}
 
 	return coordinator
@@ -327,6 +328,10 @@ func establishmentCategory(err error) status.Category {
 }
 
 func (c *Coordinator) Close() {
+	if c.unsubscribeMutation != nil {
+		c.unsubscribeMutation()
+	}
+
 	if c.cancel != nil {
 		c.cancel()
 	}

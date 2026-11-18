@@ -1,6 +1,9 @@
 package deviceproxy
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -28,6 +31,45 @@ func newIPv4Server(handler http.Handler) *httptest.Server {
 func TestNewRequiresLogger(t *testing.T) {
 	if _, err := New("http://device", nil); err == nil {
 		t.Fatal("New accepted nil logger")
+	}
+}
+
+func TestProxyErrorHandlerIgnoresClientCancellationAndPreservesResponse(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&output, nil))
+	request := httptest.NewRequest(http.MethodGet, "/rci", nil)
+	ctx, cancel := context.WithCancel(request.Context())
+
+	cancel()
+
+	request = request.WithContext(ctx)
+	response := httptest.NewRecorder()
+
+	proxyErrorHandler(logger)(response, request, errors.New("client closed connection"))
+
+	if response.Code != http.StatusBadGateway || response.Body.Len() != 0 {
+		t.Fatalf("canceled response = %d %q, want empty 502 response", response.Code, response.Body.String())
+	}
+
+	if output.Len() != 0 {
+		t.Fatalf("client cancellation logged warning: %s", output.String())
+	}
+}
+
+func TestProxyErrorHandlerWarnsForOtherFailures(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&output, nil))
+	request := httptest.NewRequest(http.MethodGet, "/rci", nil)
+	response := httptest.NewRecorder()
+
+	proxyErrorHandler(logger)(response, request, errors.New("upstream unavailable"))
+
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("response status = %d, want 502", response.Code)
+	}
+
+	if !strings.Contains(output.String(), "device proxy error") {
+		t.Fatalf("other proxy failure was not logged: %s", output.String())
 	}
 }
 

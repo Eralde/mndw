@@ -56,8 +56,9 @@ if [ -d "$APP_ROOT" ]; then
   rm -rf "$APP_ROOT"
 fi
 
-# /opt/var/lib/mndw/ data dir, /opt/var/lib/mndw-secrets/ key dir, and
-# /opt/var/log/mndwd.log are preserved for reinstall. Key dir is intentionally
-# outside exportable daemon state and is never removed by this script.
+# /opt/var/lib/mndw/ data dir, /opt/var/lib/mndw-secrets/ key dir, and the
+# /opt/var/log/mndwd.crash.log crash trace are preserved for reinstall. The
+# bounded /tmp/mndwd.log is in RAM and disappears on reboot. Key dir is
+# intentionally outside exportable daemon state and is never removed here.
 
 exit 0

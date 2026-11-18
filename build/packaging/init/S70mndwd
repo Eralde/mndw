@@ -8,7 +8,7 @@ DATA_DIR="$MNDW_ROOT/var/lib/mndw"
 KEY_DIR="$MNDW_ROOT/var/lib/mndw-secrets"
 PLUGIN_RUNTIME_DIR="$MNDW_ROOT/tmp/mndw/plugin-runtime"
 CONFIG_FILE=${MNDW_CONFIG_FILE:-$MNDW_ROOT/etc/mndw.conf}
-LOG_FILE="$MNDW_ROOT/var/log/mndwd.log"
+CRASH_LOG_FILE="$MNDW_ROOT/var/log/mndwd.crash.log"
 DEVICE_PORT_HELPER=${MNDW_DEVICE_PORT_HELPER:-$MNDW_ROOT/share/www/mndw/bin/mndw-device-port.sh}
 
 if [ -f "$CONFIG_FILE" ]; then
@@ -90,6 +90,13 @@ start() {
     echo "mndw: ignoring stale pid file $PID_FILE (pid $raw_pid is not mndwd)" >&2
   fi
 
+  if [ -s "$CRASH_LOG_FILE" ]; then
+    mv -f "$CRASH_LOG_FILE" "$CRASH_LOG_FILE.1" || {
+      echo "mndw: unable to preserve previous crash log: $CRASH_LOG_FILE" >&2
+      return 1
+    }
+  fi
+
   FRONTEND_LISTEN_ARG=""
   if [ -n "$MNDW_FRONTEND_LISTEN" ]; then
     FRONTEND_LISTEN_ARG="--frontend-listen $MNDW_FRONTEND_LISTEN"
@@ -114,8 +121,10 @@ OLD_PORT_INODE="$(ls -id "$PORT_FILE" 2>/dev/null | awk '{print $1}')"
     --max-concurrent-exec-total "$MNDWD_MAX_CONCURRENT_EXEC_TOTAL" \
     --max-concurrent-exec-per-plugin "$MNDWD_MAX_CONCURRENT_EXEC_PER_PLUGIN" \
     --max-supervised-services "$MNDWD_MAX_SUPERVISED_SERVICES" \
+    --log-file /tmp/mndwd.log \
+    --diagnostics-crash-log-file "$CRASH_LOG_FILE" \
     --opkg exec \
-    >> "$LOG_FILE" 2>&1 &
+    > "$CRASH_LOG_FILE" 2>&1 &
   echo "$!" > "$PID_FILE"
 
   MNDWD_PID="$(cat "$PID_FILE")"
@@ -135,7 +144,7 @@ OLD_PORT_INODE="$(ls -id "$PORT_FILE" 2>/dev/null | awk '{print $1}')"
   if [ -n "$NEW_PORT" ]; then
     echo "mndw dashboard: http://$DEVICE_IP:$NEW_PORT/" >&2
   else
-    echo "mndw: dashboard port not reported (daemon may have failed to bind); check $LOG_FILE" >&2
+    echo "mndw: dashboard port not reported (daemon may have failed to bind); check $CRASH_LOG_FILE and /tmp/mndwd.log" >&2
     if ! kill -0 "$MNDWD_PID" 2>/dev/null; then
       rm -f "$PID_FILE"
     fi

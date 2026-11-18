@@ -3,6 +3,7 @@ package events
 import (
 	"cmp"
 	"context"
+	"errors"
 	"hash/fnv"
 	"log/slog"
 	"slices"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	contractEvents "mndw.local/contracts/events"
+	"mndwd/internal/rcisession/proxy"
 )
 
 type RawLogMessage struct {
@@ -44,23 +46,34 @@ type LogSource interface {
 }
 
 const LogPollInterval = 10 * time.Second
+const LogPollFallbackInterval = 5 * time.Minute
 
 type LogPollerConfig struct {
-	Source     LogSource
-	Parser     *LogParser
-	Publisher  Publisher
-	Ticker     <-chan time.Time
-	StopTicker func()
-	Logger     *slog.Logger
+	Source             LogSource
+	Parser             *LogParser
+	Publisher          Publisher
+	Ticker             <-chan time.Time
+	StopTicker         func()
+	FallbackTicker     <-chan time.Time
+	StopFallbackTicker func()
+	Wake               <-chan struct{}
+	SessionPresent     func() bool
+	OnSessionAvailable func(context.Context)
+	Logger             *slog.Logger
 }
 
 type LogPoller struct {
-	source     LogSource
-	parser     *LogParser
-	publisher  Publisher
-	ticker     <-chan time.Time
-	stopTicker func()
-	logger     *slog.Logger
+	source             LogSource
+	parser             *LogParser
+	publisher          Publisher
+	ticker             <-chan time.Time
+	stopTicker         func()
+	fallbackTicker     <-chan time.Time
+	stopFallbackTicker func()
+	wake               <-chan struct{}
+	sessionPresent     func() bool
+	onSessionAvailable func(context.Context)
+	logger             *slog.Logger
 }
 
 func NewLogPoller(cfg LogPollerConfig) *LogPoller {
@@ -69,12 +82,17 @@ func NewLogPoller(cfg LogPollerConfig) *LogPoller {
 	}
 
 	return &LogPoller{
-		source:     cfg.Source,
-		parser:     cfg.Parser,
-		publisher:  cfg.Publisher,
-		ticker:     cfg.Ticker,
-		stopTicker: cfg.StopTicker,
-		logger:     cfg.Logger,
+		source:             cfg.Source,
+		parser:             cfg.Parser,
+		publisher:          cfg.Publisher,
+		ticker:             cfg.Ticker,
+		stopTicker:         cfg.StopTicker,
+		fallbackTicker:     cfg.FallbackTicker,
+		stopFallbackTicker: cfg.StopFallbackTicker,
+		wake:               cfg.Wake,
+		sessionPresent:     cfg.SessionPresent,
+		onSessionAvailable: cfg.OnSessionAvailable,
+		logger:             cfg.Logger,
 	}
 }
 
@@ -114,11 +132,113 @@ func (p *LogPoller) Run(ctx context.Context) {
 		defer stopTicker()
 	}
 
-	if err := p.Poll(ctx, time.Now()); err != nil && ctx.Err() == nil {
-		p.logger.Warn("event log initial poll failed", "error", err)
+	fallbackTicker := p.fallbackTicker
+	stopFallbackTicker := p.stopFallbackTicker
+
+	if fallbackTicker == nil {
+		timer := time.NewTicker(LogPollFallbackInterval)
+		fallbackTicker = timer.C
+		stopFallbackTicker = timer.Stop
+	}
+
+	if stopFallbackTicker != nil {
+		defer stopFallbackTicker()
+	}
+
+	active := p.sessionPresent == nil
+	waiting := false
+	warned := false
+	setWaiting := func() {
+		active = false
+
+		if !waiting {
+			p.logger.Info("event log poller waiting for background router access")
+
+			waiting = true
+		}
+	}
+	poll := func(observedAt time.Time) {
+		starting := false
+
+		if p.sessionPresent != nil {
+			if !p.sessionPresent() {
+				setWaiting()
+
+				return
+			}
+
+			if !active {
+				if p.onSessionAvailable != nil {
+					p.onSessionAvailable(ctx)
+				}
+
+				starting = true
+			}
+		}
+
+		err := p.Poll(ctx, observedAt)
+		if errors.Is(err, proxy.ErrNoSession) && p.sessionPresent != nil {
+			setWaiting()
+
+			return
+		}
+
+		if starting {
+			active = true
+			waiting = false
+		}
+
+		if err != nil && ctx.Err() == nil {
+			if !warned {
+				p.logger.Warn("event log poll failed", "error", err)
+
+				warned = true
+			}
+
+			return
+		}
+
+		if err == nil && warned {
+			p.logger.Info("event log poll recovered")
+
+			warned = false
+		}
+	}
+
+	if p.sessionPresent != nil && !p.sessionPresent() {
+		setWaiting()
+	} else {
+		active = p.sessionPresent == nil
+
+		poll(time.Now())
 	}
 
 	for {
+		if !active {
+			select {
+			case <-ctx.Done():
+				return
+			case _, ok := <-p.wake:
+				if p.wake == nil {
+					continue
+				}
+
+				if !ok {
+					return
+				}
+
+				poll(time.Now())
+			case tick, ok := <-fallbackTicker:
+				if !ok {
+					return
+				}
+
+				poll(tick)
+			}
+
+			continue
+		}
+
 		select {
 		case <-ctx.Done():
 			return
@@ -127,9 +247,13 @@ func (p *LogPoller) Run(ctx context.Context) {
 				return
 			}
 
-			if err := p.Poll(ctx, tick); err != nil && ctx.Err() == nil {
-				p.logger.Warn("event log poll failed", "error", err)
+			poll(tick)
+		case _, ok := <-p.wake:
+			if p.wake != nil && !ok {
+				return
 			}
+
+			poll(time.Now())
 		}
 	}
 }
@@ -167,6 +291,12 @@ func NewLogParser(normalizer *Normalizer, location *time.Location, extractors []
 		location:   location,
 		extractors: extractors,
 		logger:     logger,
+	}
+}
+
+func (p *LogParser) SetLocation(location *time.Location) {
+	if location != nil {
+		p.location = location
 	}
 }
 

@@ -19,7 +19,8 @@ import (
 // maxUploadBytes caps an upload request body at 10 MB.
 const maxUploadBytes = 10 << 20
 
-const defaultDiagnosticsLogFile = "/opt/var/log/mndwd.log"
+const defaultDiagnosticsLogFile = "/tmp/mndwd.log"
+const defaultDiagnosticsCrashLogFile = "/opt/var/log/mndwd.crash.log"
 const defaultPluginRuntimeRoot = "/opt/tmp/mndw/plugin-runtime"
 const pluginRuntimeRootEnv = "MNDW_PLUGIN_RUNTIME_ROOT"
 const defaultSelfUpdateStateDir = "/opt/var/mndw"
@@ -47,16 +48,18 @@ type Config struct {
 	DeviceURL          string
 	ControllerURL      string
 	// DiagnosticsLogFile is a read-only path that diagnostics tails. mndwd's
-	// logger continues writing stdout; build/packaging/init/S70mndwd redirects it here.
-	DiagnosticsLogFile   string
-	SelfUpdateStateDir   string
-	SelfUpdateHelper     string
-	Dev                  bool
-	Opkg                 string
-	Service              string
-	LogLevel             string
-	RRDDir               string
-	TelemetryMaxUnsynced time.Duration
+	// logger continues writing the RAM log at LogFile unless overridden.
+	LogFile                 string
+	DiagnosticsLogFile      string
+	DiagnosticsCrashLogFile string
+	SelfUpdateStateDir      string
+	SelfUpdateHelper        string
+	Dev                     bool
+	Opkg                    string
+	Service                 string
+	LogLevel                string
+	RRDDir                  string
+	TelemetryMaxUnsynced    time.Duration
 
 	// Exec/service runtime limits and timeouts.
 	ExecTimeout                time.Duration
@@ -159,7 +162,11 @@ func (c Config) withDefaults() Config {
 	}
 
 	if c.DiagnosticsLogFile == "" {
-		c.DiagnosticsLogFile = defaultDiagnosticsLogFile
+		c.DiagnosticsLogFile = c.LogFile
+
+		if c.DiagnosticsLogFile == "" {
+			c.DiagnosticsLogFile = defaultDiagnosticsLogFile
+		}
 	}
 
 	if c.RRDDir == "" {
@@ -215,7 +222,9 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 
 	fs.StringVar(&cfg.DeviceURL, "device-url", defaultDeviceURL, "network device base URL for session auth and device proxying")
 	fs.StringVar(&cfg.ControllerURL, "controller-url", "", "controller base URL for persistent RCI requests")
-	fs.StringVar(&cfg.DiagnosticsLogFile, "diagnostics-log-file", defaultDiagnosticsLogFile, "read-only log path for diagnostics")
+	fs.StringVar(&cfg.LogFile, "log-file", "", "write logs to a bounded rotating file instead of stdout")
+	fs.StringVar(&cfg.DiagnosticsLogFile, "diagnostics-log-file", "", "read-only log path for diagnostics; defaults to --log-file or /tmp/mndwd.log")
+	fs.StringVar(&cfg.DiagnosticsCrashLogFile, "diagnostics-crash-log-file", defaultDiagnosticsCrashLogFile, "read-only stdout/stderr crash log path for diagnostics")
 	fs.BoolVar(&cfg.Dev, "dev", false, "dev mode: bypass session auth; logged loudly")
 	fs.StringVar(&cfg.Opkg, "opkg", "exec", "opkg mode: exec|stub")
 	fs.StringVar(&cfg.Service, "service", "", "service mode: exec|stub; defaults to --opkg")

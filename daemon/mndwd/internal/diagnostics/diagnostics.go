@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -65,6 +66,7 @@ type LiveDiagnostics struct {
 // Config controls diagnostics collection. LogFile is a read-only input.
 type Config struct {
 	LogFile             string
+	CrashLogFile        string
 	Plugins             func() []Plugin
 	MaxLogBytes         int64
 	MaxPluginBytes      int64
@@ -135,7 +137,7 @@ func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) collect(ctx context.Context) Response {
-	logTail, logError := readTail(h.config.LogFile, h.config.MaxLogBytes)
+	logTail, logError := readCombinedLogs(h.config.LogFile, h.config.CrashLogFile, h.config.MaxLogBytes)
 	configuredPlugins := []Plugin(nil)
 
 	if h.config.Plugins != nil {
@@ -177,6 +179,56 @@ func (h *Handler) collect(ctx context.Context) Response {
 		},
 		Plugins: plugins,
 	}
+}
+
+func readCombinedLogs(logFile, crashLogFile string, maxBytes int64) (string, string) {
+	current, currentErr := readTail(logFile, maxBytes)
+	parts := make([]string, 0, 3)
+	errors := make([]string, 0, 3)
+
+	if currentErr != "" {
+		errors = append(errors, currentErr)
+	}
+
+	if int64(len(current)) < maxBytes {
+		backup, backupErr := readOptionalTail(logFile+".1", maxBytes-int64(len(current)))
+
+		if backupErr != "" {
+			errors = append(errors, backupErr)
+		}
+
+		if backup != "" {
+			parts = append(parts, "[rotated log]\n"+backup)
+		}
+	}
+
+	if current != "" {
+		parts = append(parts, "[current log]\n"+current)
+	}
+
+	crash, crashErr := readOptionalTail(crashLogFile, maxBytes)
+
+	if crashErr != "" {
+		errors = append(errors, crashErr)
+	}
+
+	if crash != "" {
+		parts = append(parts, "[stdout/stderr crash log]\n"+crash)
+	}
+
+	return strings.Join(parts, "\n"), strings.Join(errors, "; ")
+}
+
+func readOptionalTail(path string, maxBytes int64) (string, string) {
+	if path == "" || maxBytes <= 0 {
+		return "", ""
+	}
+
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return "", ""
+	}
+
+	return readTail(path, maxBytes)
 }
 
 func (h *Handler) collectLive(ctx context.Context, live func(context.Context) ([]byte, error), result *PluginDiagnostics, totalBytes *int64) {

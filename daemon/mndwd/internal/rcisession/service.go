@@ -70,7 +70,7 @@ type Service struct {
 	enumerator       Enumerator
 	now              func() time.Time
 	proxy            *proxy.Proxy
-	onMutation       func()
+	onMutation       []*mutationObserver
 	mu               sync.RWMutex
 	controllerURL    string
 	allowInsecure    bool
@@ -81,6 +81,10 @@ type Service struct {
 	authModeSource   AuthModeSource
 	authModeNotified bool
 	logger           *slog.Logger
+}
+
+type mutationObserver struct {
+	callback func()
 }
 
 func NewService(cfg ServiceConfig) (*Service, error) {
@@ -326,12 +330,52 @@ func (s *Service) SessionManager() *sessionmanager.Manager {
 	return s.manager
 }
 
-func (s *Service) SubscribeMutations(observer func()) {
+// SubscribeMutations invokes observers synchronously, in subscription order,
+// after releasing the service lock. Observers must not block; record a flag or
+// use a non-blocking send. The returned function removes the observer.
+func (s *Service) SubscribeMutations(observer func()) func() {
+	if observer == nil {
+		return func() {}
+	}
+
+	subscriber := &mutationObserver{callback: observer}
+
 	s.mu.Lock()
 
-	s.onMutation = observer
+	s.onMutation = append(s.onMutation, subscriber)
 
 	s.mu.Unlock()
+
+	var once sync.Once
+
+	return func() {
+		once.Do(func() {
+			s.mu.Lock()
+
+			for index, current := range s.onMutation {
+				if current == subscriber {
+					copy(s.onMutation[index:], s.onMutation[index+1:])
+
+					s.onMutation[len(s.onMutation)-1] = nil
+					s.onMutation = s.onMutation[:len(s.onMutation)-1]
+
+					break
+				}
+			}
+
+			s.mu.Unlock()
+		})
+	}
+}
+
+func (s *Service) invokeMutationObserver(observer *mutationObserver) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			s.logger.Error("persistent RCI session mutation observer panicked", "error", recovered)
+		}
+	}()
+
+	observer.callback()
 }
 
 func (s *Service) Capability() (model.StoreState, model.Document) {
@@ -403,12 +447,12 @@ func (s *Service) notifyMutation(reason string) {
 
 	s.mu.RLock()
 
-	observer := s.onMutation
+	observers := append([]*mutationObserver(nil), s.onMutation...)
 
 	s.mu.RUnlock()
 
-	if observer != nil {
-		observer()
+	for _, observer := range observers {
+		s.invokeMutationObserver(observer)
 	}
 }
 

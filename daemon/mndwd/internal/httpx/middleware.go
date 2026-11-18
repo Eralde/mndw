@@ -78,11 +78,15 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 	return r.ResponseWriter.Write(b)
 }
 
-// LogMiddleware emits exactly one request line per API call at info level:
-// `method path status duration`. Body contents are never logged.
+// LogMiddleware emits one request line per API call. Healthy requests are debug;
+// server failures and requests slower than five seconds are warnings.
 func LogMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
+	return logMiddleware(logger, next, time.Now)
+}
+
+func logMiddleware(logger *slog.Logger, next http.Handler, now func() time.Time) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
+		start := now()
 		rec := &statusRecorder{ResponseWriter: w}
 
 		next.ServeHTTP(rec, r)
@@ -91,11 +95,18 @@ func LogMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
 			rec.status = http.StatusOK
 		}
 
-		logger.Info("request",
+		duration := now().Sub(start)
+		level := slog.LevelDebug
+
+		if rec.status >= http.StatusInternalServerError || duration > 5*time.Second {
+			level = slog.LevelWarn
+		}
+
+		logger.Log(r.Context(), level, "request",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rec.status,
-			"duration", time.Since(start).String(),
+			"duration", duration.String(),
 		)
 	})
 }

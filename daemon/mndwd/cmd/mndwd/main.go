@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -29,6 +30,7 @@ import (
 	"mndwd/internal/httpx"
 	"mndwd/internal/initd"
 	"mndwd/internal/listen"
+	daemonlogging "mndwd/internal/logging"
 	"mndwd/internal/mgmt"
 	"mndwd/internal/opkg"
 	"mndwd/internal/palette"
@@ -67,7 +69,35 @@ func main() {
 
 func run(cfg Config) (err error) {
 	level, _ := parseLevel(cfg.LogLevel)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
+	var fileLog *daemonlogging.RotatingFile
+	var writer io.Writer = os.Stdout
+
+	if cfg.LogFile != "" {
+		openedLog, logErr := daemonlogging.OpenRotatingFile(cfg.LogFile, daemonlogging.DefaultLogFileLimit)
+		fileLog = openedLog
+		writer = fileLog
+
+		if logErr != nil {
+			fmt.Fprintln(os.Stderr, "mndwd: log file unavailable; writes will resume when it is writable")
+		}
+	}
+
+	baseHandler := slog.NewTextHandler(writer, &slog.HandlerOptions{Level: level})
+	repeatHandler := daemonlogging.NewRepeatHandler(baseHandler, daemonlogging.RepeatHandlerConfig{})
+
+	logger := slog.New(repeatHandler)
+
+	defer func() {
+		if closeErr := repeatHandler.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("flush logs: %w", closeErr))
+		}
+
+		if fileLog != nil {
+			if closeErr := fileLog.Close(); closeErr != nil {
+				err = errors.Join(err, fmt.Errorf("close log file: %w", closeErr))
+			}
+		}
+	}()
 
 	if cfg.Dev {
 		logger.Warn("running in --dev mode: ALL session auth is bypassed — never use on a real device")
@@ -387,6 +417,7 @@ func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store
 		selfUpdate:         selfUpdateService,
 		selfUpdateStateDir: cfg.SelfUpdateStateDir,
 		rciClient:          eventRCIClient,
+		session:            access.session.service,
 		reg:                reg,
 		store:              store,
 		logger:             logger,
@@ -536,8 +567,9 @@ func registerAccess(mux *http.ServeMux, core daemonCore, intake *httpx.BodyIntak
 	accessMux := http.NewServeMux()
 
 	diagnostics.New(diagnostics.Config{
-		LogFile: core.cfg.DiagnosticsLogFile,
-		Plugins: func() []diagnostics.Plugin { return diagnosticsPlugins(core.reg, core.runtime) },
+		LogFile:      core.cfg.DiagnosticsLogFile,
+		CrashLogFile: core.cfg.DiagnosticsCrashLogFile,
+		Plugins:      func() []diagnostics.Plugin { return diagnosticsPlugins(core.reg, core.runtime) },
 	}).Register(accessMux)
 
 	session := assembleRCISession(core, accessMux, reconcileBackends(core))

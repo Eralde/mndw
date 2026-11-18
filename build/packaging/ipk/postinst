@@ -10,12 +10,16 @@ DATA_DIR="$MNDW_ROOT/var/lib/mndw"
 MNDWD_INIT=${MNDW_MNDWD_INIT:-$MNDW_ROOT/etc/init.d/S70mndwd}
 MNDW_FEED_CONF=${MNDW_FEED_CONF:-$MNDW_ROOT/etc/opkg/mndw-feed.conf}
 MNDW_CACHE_DIR=${MNDW_CACHE_DIR:-$MNDW_ROOT/var/mndw/opkg-cache}
+LEGACY_LOG_FILE="$MNDW_ROOT/var/log/mndwd.log"
 POLICY_FILE="$DATA_DIR/lighttpd-port-policy"
 RRD_DIR="$DATA_DIR/rrd"
 
 mkdir -p "$RRD_DIR"
 chmod 0755 "$RRD_DIR"
 chown 0:0 "$RRD_DIR"
+
+# The daemon now keeps its bounded operational log in RAM.
+rm -f "$LEGACY_LOG_FILE"
 
 if [ ! -e "$MNDW_FEED_CONF" ]; then
   mkdir -p "$(dirname "$MNDW_FEED_CONF")" "$MNDW_CACHE_DIR"

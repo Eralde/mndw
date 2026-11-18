@@ -4,11 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	contractEvents "mndw.local/contracts/events"
 	rci "mndw.local/rci"
+	"mndwd/internal/rcisession/proxy"
 )
 
 func TestLogPollerConfigConstructor(t *testing.T) {
@@ -445,6 +450,227 @@ func TestLogPollerRunContinuesAfterPollError(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("Run did not stop after recovery test cancellation")
+	}
+}
+
+type countingLogSource struct {
+	calls  atomic.Int32
+	errs   []error
+	called chan struct{}
+}
+
+type lockedLogBuffer struct {
+	mu      sync.Mutex
+	content strings.Builder
+	writes  chan string
+}
+
+func (b *lockedLogBuffer) Write(data []byte) (int, error) {
+	b.mu.Lock()
+
+	defer b.mu.Unlock()
+
+	n, err := b.content.Write(data)
+
+	if b.writes != nil {
+		select {
+		case b.writes <- string(data):
+		default:
+		}
+	}
+
+	return n, err
+}
+
+func (b *lockedLogBuffer) String() string {
+	b.mu.Lock()
+
+	defer b.mu.Unlock()
+
+	return b.content.String()
+}
+
+func (s *countingLogSource) ShowLog(context.Context) (map[string]RawLogRecord, error) {
+	index := int(s.calls.Add(1)) - 1
+
+	if s.called != nil {
+		select {
+		case s.called <- struct{}{}:
+		default:
+		}
+	}
+
+	if index < len(s.errs) {
+		return nil, s.errs[index]
+	}
+
+	return map[string]RawLogRecord{}, nil
+}
+
+func TestLogPollerWaitsForSessionMutationAndFallback(t *testing.T) {
+	output := &lockedLogBuffer{writes: make(chan string, 8)}
+	logger := slog.New(slog.NewTextHandler(output, nil))
+	source := &countingLogSource{errs: []error{proxy.ErrNoSession}, called: make(chan struct{}, 8)}
+	present := atomic.Bool{}
+
+	present.Store(true)
+
+	wake := make(chan struct{}, 1)
+	ticks := make(chan time.Time, 16)
+	fallback := make(chan time.Time, 1)
+	timezoneQueries := atomic.Int32{}
+	poller := NewLogPoller(LogPollerConfig{
+		Source:         source,
+		Parser:         NewLogParser(fixedNormalizer(), time.UTC, nil, eventsTestLogger()),
+		Ticker:         ticks,
+		FallbackTicker: fallback,
+		Wake:           wake,
+		SessionPresent: present.Load,
+		OnSessionAvailable: func(context.Context) {
+			timezoneQueries.Add(1)
+		},
+		Logger: logger,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+
+	go func() { poller.Run(ctx); close(done) }()
+
+	waitLogContaining(t, output.writes, "event log poller waiting for background router access")
+	waitSourceCall(t, source.called)
+
+	if got := source.calls.Load(); got != 1 {
+		t.Fatalf("poll calls after no-session response = %d, want 1", got)
+	}
+
+	// Interval ticks do not wake an idle poller; only a mutation or fallback does.
+	for range 10 {
+		ticks <- time.Now()
+	}
+
+	if got := source.calls.Load(); got != 1 {
+		t.Fatalf("poll calls while idle = %d, want 1", got)
+	}
+
+	for len(ticks) > 0 {
+		<-ticks
+	}
+
+	wake <- struct{}{}
+
+	waitSourceCall(t, source.called)
+
+	if got := timezoneQueries.Load(); got != 2 {
+		t.Fatalf("timezone queries after session mutation = %d, want 2", got)
+	}
+
+	present.Store(false)
+
+	ticks <- time.Now()
+
+	waitLogContaining(t, output.writes, "event log poller waiting for background router access")
+
+	present.Store(true)
+
+	fallback <- time.Now()
+
+	waitSourceCall(t, source.called)
+
+	if got := timezoneQueries.Load(); got != 3 {
+		t.Fatalf("timezone queries after fallback session check = %d, want 3", got)
+	}
+
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("poller did not stop")
+	}
+
+	if got := strings.Count(output.String(), "event log poller waiting for background router access"); got != 2 {
+		t.Fatalf("waiting info count = %d, want two idle periods: %s", got, output.String())
+	}
+
+	if strings.Contains(output.String(), "level=WARN") {
+		t.Fatalf("no-session response logged a warning: %s", output.String())
+	}
+}
+
+func TestLogPollerLogsOneWarningAndOneRecovery(t *testing.T) {
+	output := &lockedLogBuffer{}
+	logger := slog.New(slog.NewTextHandler(output, nil))
+	ticks := make(chan time.Time, 4)
+	source := &countingLogSource{errs: []error{errors.New("temporary"), errors.New("still temporary")}, called: make(chan struct{}, 4)}
+	poller := NewLogPoller(LogPollerConfig{
+		Source: source,
+		Parser: NewLogParser(fixedNormalizer(), time.UTC, nil, eventsTestLogger()),
+		Ticker: ticks,
+		Logger: logger,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+
+	go func() { poller.Run(ctx); close(done) }()
+
+	waitSourceCall(t, source.called)
+
+	ticks <- time.Now()
+
+	waitSourceCall(t, source.called)
+
+	ticks <- time.Now()
+
+	waitSourceCall(t, source.called)
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("poller did not stop")
+	}
+
+	logText := output.String()
+
+	if got := strings.Count(logText, "event log poll failed"); got != 1 {
+		t.Fatalf("poll warning count = %d, want one: %s", got, logText)
+	}
+
+	if got := strings.Count(logText, "event log poll recovered"); got != 1 {
+		t.Fatalf("poll recovery count = %d, want one: %s", got, logText)
+	}
+}
+
+func waitSourceCall(t *testing.T, calls <-chan struct{}) {
+	t.Helper()
+
+	timer := time.NewTimer(time.Second)
+
+	defer timer.Stop()
+
+	select {
+	case <-calls:
+	case <-timer.C:
+		t.Fatal("source call was not observed before timeout")
+	}
+}
+
+func waitLogContaining(t *testing.T, messages <-chan string, expected string) {
+	t.Helper()
+
+	timer := time.NewTimer(time.Second)
+
+	defer timer.Stop()
+
+	for {
+		select {
+		case message := <-messages:
+			if strings.Contains(message, expected) {
+				return
+			}
+		case <-timer.C:
+			t.Fatalf("log message %q was not observed before timeout", expected)
+		}
 	}
 }
 

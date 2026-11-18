@@ -76,6 +76,39 @@ func TestDiagnosticsCollectsSupervisorAndReadyLiveData(t *testing.T) {
 	}
 }
 
+func TestDiagnosticsIncludesRotatedTailWhenCurrentIsShortAndCrashLog(t *testing.T) {
+	root := t.TempDir()
+	logFile := filepath.Join(root, "mndwd.log")
+	crashFile := filepath.Join(root, "mndwd.crash.log")
+
+	if err := os.WriteFile(logFile, []byte("current marker\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(logFile+".1", []byte("rotated marker\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(crashFile, []byte("panic token=CRASH_SECRET\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	response := responseFor(t, New(Config{LogFile: logFile, CrashLogFile: crashFile}))
+	logTail := response.Mndwd.LogTail
+
+	if !strings.Contains(logTail, "rotated marker") || !strings.Contains(logTail, "current marker") || !strings.Contains(logTail, "panic") {
+		t.Fatalf("combined log tail omitted a source: %q", logTail)
+	}
+
+	if strings.Index(logTail, "rotated marker") > strings.Index(logTail, "current marker") {
+		t.Fatalf("rotated log should precede current log: %q", logTail)
+	}
+
+	if strings.Contains(logTail, "CRASH_SECRET") || !strings.Contains(logTail, "token=[REDACTED]") {
+		t.Fatalf("crash log was not redacted: %q", logTail)
+	}
+}
+
 func TestCollectReadsPluginListPerRequest(t *testing.T) {
 	plugins := []Plugin{{ID: "first"}}
 	handler := New(Config{Plugins: func() []Plugin { return plugins }})

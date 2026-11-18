@@ -274,6 +274,48 @@ describe('upgrade phase guards', () => {
   });
 });
 
+describe('postinst legacy log cleanup', () => {
+  const writeRestartStub = (root: string): string => {
+    const marker = path.join(root, 'mndwd-restart');
+
+    writeExecutable(
+      path.join(root, 'etc', 'init.d', 'S70mndwd'),
+      `#!/bin/sh\nprintf '%s\\n' "$1" > "${marker}"\n`,
+    );
+
+    return marker;
+  };
+
+  it('removes the legacy log during configure after upgrade', () => {
+    const root = makeRoot();
+    const legacyLog = path.join(root, 'var', 'log', 'mndwd.log');
+    const restartMarker = writeRestartStub(root);
+
+    fs.mkdirSync(path.dirname(legacyLog), {recursive: true});
+    fs.writeFileSync(legacyLog, 'unbounded old log\n');
+
+    const result = runScript('postinst', ['configure'], root);
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(fs.existsSync(legacyLog)).toBe(false);
+    expect(fs.readFileSync(restartMarker, 'utf8')).toBe('restart\n');
+  });
+
+  it('succeeds when the legacy log is already absent', () => {
+    const root = makeRoot();
+    const legacyLog = path.join(root, 'var', 'log', 'mndwd.log');
+    const restartMarker = writeRestartStub(root);
+
+    fs.mkdirSync(path.dirname(legacyLog), {recursive: true});
+
+    const result = runScript('postinst', ['configure'], root);
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(fs.existsSync(legacyLog)).toBe(false);
+    expect(fs.readFileSync(restartMarker, 'utf8')).toBe('restart\n');
+  });
+});
+
 describe('postinst front-door handoff', () => {
   const writeRestartStub = (root: string, status = 0): string => {
     const marker = path.join(root, 'mndwd-restart');
@@ -443,11 +485,16 @@ describe('final removal', () => {
     const lighttpdMarker = path.join(root, 'lighttpd-marker');
     const loader = path.join(root, 'etc', 'lighttpd', 'conf.d', '81-mndw.conf');
     const runtime = path.join(root, 'var', 'lib', 'mndw', 'lighttpd-runtime.conf');
+    const stateFile = path.join(root, 'var', 'lib', 'mndw', 'state.json');
+    const keyFile = path.join(root, 'var', 'lib', 'mndw-secrets', 'controller.key');
 
     fs.mkdirSync(path.dirname(loader), {recursive: true});
     fs.mkdirSync(path.dirname(runtime), {recursive: true});
+    fs.mkdirSync(path.dirname(keyFile), {recursive: true});
     fs.writeFileSync(loader, 'package-owned loader\n');
     fs.writeFileSync(runtime, 'generated runtime\n');
+    fs.writeFileSync(stateFile, '{"state":"keep"}\n');
+    fs.writeFileSync(keyFile, 'secret key\n');
     fs.writeFileSync(path.join(root, 'share', 'www', 'mndw', 'index.html'), 'host\n');
     fs.mkdirSync(path.join(root, 'var', 'run'), {recursive: true});
     fs.writeFileSync(path.join(root, 'var', 'run', 'mndwd.pid'), '123\n');
@@ -467,6 +514,8 @@ describe('final removal', () => {
     expect(fs.existsSync(lighttpdMarker)).toBe(false);
     expect(fs.existsSync(loader)).toBe(true);
     expect(fs.existsSync(runtime)).toBe(true);
+    expect(fs.readFileSync(stateFile, 'utf8')).toBe('{"state":"keep"}\n');
+    expect(fs.readFileSync(keyFile, 'utf8')).toBe('secret key\n');
     expect(fs.existsSync(path.join(root, 'var', 'run', 'mndwd.pid'))).toBe(false);
     expect(fs.existsSync(path.join(root, 'share', 'www', 'mndw'))).toBe(false);
   });

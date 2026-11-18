@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	rci "mndw.local/rci"
 	"mndwd/internal/rcisession/enumeration"
@@ -239,35 +241,194 @@ func TestServiceNeedsTokenAfterModeChange(t *testing.T) {
 
 func TestServiceDetectAuthModeNotifiesOnFirstKnownMode(t *testing.T) {
 	service := newTestService(t, ServiceConfig{Store: &testServiceStore{}, AuthModeSource: &sequenceAuthModeSource{modes: []AuthMode{AuthModeUnknown, AuthModeNone, AuthModeNone}}})
-	notifications := 0
+	notifications := make(chan struct{}, 1)
 
-	service.SubscribeMutations(func() { notifications++ })
+	service.SubscribeMutations(func() { notifications <- struct{}{} })
 
 	for range 3 {
 		service.DetectAuthMode(context.Background())
 	}
 
-	if notifications != 1 {
-		t.Fatalf("mutation notifications = %d, want 1", notifications)
-	}
+	waitMutationNotification(t, notifications)
 }
 
 func TestSubscribeMutationsReceivesNotify(t *testing.T) {
 	service := newTestService(t, ServiceConfig{Store: &testServiceStore{document: model.Document{Controller: &model.TokenRecord{Token: "controller", Support: model.SupportSupported}}}})
-	notifications := 0
+	notifications := make(chan struct{}, 1)
 
 	service.SubscribeMutations(func() {
 		_ = service.ControllerEpoch()
-		notifications++
+		notifications <- struct{}{}
 	})
 
 	if err := service.DeleteController(); err != nil {
 		t.Fatal(err)
 	}
 
-	if notifications != 1 {
-		t.Fatalf("mutation notifications = %d, want 1", notifications)
+	waitMutationNotification(t, notifications)
+}
+
+func TestSubscribeMutationsKeepsMultipleObservers(t *testing.T) {
+	service := newTestService(t, ServiceConfig{Store: &testServiceStore{document: model.Document{Controller: &model.TokenRecord{Token: "controller", Support: model.SupportSupported}}}})
+	coordinatorNotifications := make(chan struct{}, 1)
+	logPollerNotifications := make(chan struct{}, 1)
+
+	service.SubscribeMutations(func() { coordinatorNotifications <- struct{}{} })
+	service.SubscribeMutations(func() { logPollerNotifications <- struct{}{} })
+
+	if err := service.DeleteController(); err != nil {
+		t.Fatal(err)
 	}
+
+	waitMutationNotification(t, coordinatorNotifications)
+	waitMutationNotification(t, logPollerNotifications)
+}
+
+func TestSubscribeMutationsUnsubscribeRemovesObserver(t *testing.T) {
+	service := newTestService(t, ServiceConfig{Store: &testServiceStore{}})
+	notified := make(chan struct{}, 1)
+	unsubscribe := service.SubscribeMutations(func() { notified <- struct{}{} })
+
+	unsubscribe()
+	unsubscribe()
+	service.notifyMutation("after-unsubscribe")
+
+	select {
+	case <-notified:
+		t.Fatal("unsubscribed observer received a mutation")
+	default:
+	}
+}
+
+func TestSubscribeMutationsDeliversInOrderBeforeReturningAndKeepsPanickingObserver(t *testing.T) {
+	logOutput := &mutationLogOutput{writes: make(chan struct{}, 4)}
+	service := newTestService(t, ServiceConfig{
+		Store:  &testServiceStore{},
+		Logger: slog.New(slog.NewTextHandler(logOutput, nil)),
+	})
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseObserver := func() { releaseOnce.Do(func() { close(release) }) }
+
+	defer releaseObserver()
+
+	events := make(chan string, 6)
+	var firstGate sync.Once
+
+	service.SubscribeMutations(func() {
+		events <- "panicking"
+
+		panic("observer failed")
+	})
+	service.SubscribeMutations(func() { events <- "healthy" })
+	service.SubscribeMutations(func() {
+		events <- "gate"
+
+		firstGate.Do(func() {
+			close(started)
+			<-release
+		})
+	})
+
+	mutationDone := make(chan struct{})
+
+	go func() {
+		service.notifyMutation("test")
+		close(mutationDone)
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("mutation observer did not start")
+	}
+
+	select {
+	case <-mutationDone:
+		t.Fatal("notifyMutation returned before its observers completed")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	releaseObserver()
+
+	select {
+	case <-mutationDone:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("notifyMutation did not return after its observers completed")
+	}
+
+	for _, want := range []string{"panicking", "healthy", "gate"} {
+		if got := <-events; got != want {
+			t.Fatalf("first mutation observer = %q, want %q", got, want)
+		}
+	}
+
+	service.notifyMutation("second")
+
+	for index, want := range []string{"panicking", "healthy", "gate"} {
+		select {
+		case got := <-events:
+			if got != want {
+				t.Fatalf("second mutation observer %d = %q, want %q", index, got, want)
+			}
+		case <-time.After(250 * time.Millisecond):
+			t.Fatalf("second mutation observer %d not delivered; logs=%s", index, logOutput.String())
+		}
+	}
+
+	if got := strings.Count(logOutput.String(), "mutation observer panicked"); got != 2 {
+		t.Fatalf("panic log count = %d, want 2; output=%s", got, logOutput.String())
+	}
+}
+
+func waitMutationNotification(t *testing.T, notifications <-chan struct{}) {
+	t.Helper()
+
+	select {
+	case <-notifications:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for mutation observer")
+	}
+}
+
+func receiveMutationValue(t *testing.T, values <-chan bool) bool {
+	t.Helper()
+
+	select {
+	case value := <-values:
+		return value
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for mutation observer value")
+
+		return false
+	}
+}
+
+type mutationLogOutput struct {
+	mu     sync.Mutex
+	output bytes.Buffer
+	writes chan struct{}
+}
+
+func (w *mutationLogOutput) Write(data []byte) (int, error) {
+	w.mu.Lock()
+
+	n, err := w.output.Write(data)
+
+	w.mu.Unlock()
+
+	w.writes <- struct{}{}
+
+	return n, err
+}
+
+func (w *mutationLogOutput) String() string {
+	w.mu.Lock()
+
+	defer w.mu.Unlock()
+
+	return w.output.String()
 }
 
 func TestServiceAuthURLTokenlessOmitsHeader(t *testing.T) {
@@ -298,17 +459,18 @@ func TestServiceSaveAndDeleteControllerToggleEnabled(t *testing.T) {
 		t.Fatalf("DeleteController err=%v enabled=(%t,%t)", err, enabled.enabled, enabled.set)
 	}
 
-	notifiedEnabled := false
+	notifiedEnabled := make(chan bool, 1)
 
 	service.SubscribeMutations(func() {
-		notifiedEnabled, _ = enabled.PersistentRCIEnabled()
+		current, _ := enabled.PersistentRCIEnabled()
+		notifiedEnabled <- current
 	})
 
 	if _, err := service.SaveController(context.Background(), serviceTestControllerTester{}, "controller"); err != nil || !enabled.enabled {
 		t.Fatalf("SaveController err=%v enabled=(%t,%t)", err, enabled.enabled, enabled.set)
 	}
 
-	if !notifiedEnabled {
+	if !receiveMutationValue(t, notifiedEnabled) {
 		t.Fatal("SaveController notified before enabling the persistent session")
 	}
 
@@ -345,13 +507,15 @@ func TestServiceSaveControllerFlagWriteFailureFailsClosed(t *testing.T) {
 func TestServiceDeleteControllerTokenlessSkipsTokenStore(t *testing.T) {
 	enabled := &testEnabledStore{enabled: true, set: true}
 	service := newTestService(t, ServiceConfig{Store: panicServiceStore{t: t}, EnabledStore: enabled, AuthModeSource: testAuthModeSource{mode: AuthModeNone}})
-	notifications := 0
+	notifications := make(chan struct{}, 2)
 
-	service.SubscribeMutations(func() { notifications++ })
+	service.SubscribeMutations(func() { notifications <- struct{}{} })
 
-	if err := service.DeleteController(); err != nil || enabled.enabled || service.SessionPresent() || notifications != 1 {
-		t.Fatalf("err=%v enabled=%t present=%t notifications=%d", err, enabled.enabled, service.SessionPresent(), notifications)
+	if err := service.DeleteController(); err != nil || enabled.enabled || service.SessionPresent() {
+		t.Fatalf("err=%v enabled=%t present=%t", err, enabled.enabled, service.SessionPresent())
 	}
+
+	waitMutationNotification(t, notifications)
 }
 
 func TestServiceDeleteControllerTokenlessFlagWriteFailureRetry(t *testing.T) {
@@ -362,19 +526,21 @@ func TestServiceDeleteControllerTokenlessFlagWriteFailureRetry(t *testing.T) {
 
 	service := newTestService(t, ServiceConfig{Store: &testServiceStore{}, EnabledStore: enabled, AuthModeSource: testAuthModeSource{mode: AuthModeNone}, Manager: manager})
 	managerEpoch := manager.Epoch()
-	notifications := 0
+	notifications := make(chan struct{}, 1)
 
-	service.SubscribeMutations(func() { notifications++ })
+	service.SubscribeMutations(func() { notifications <- struct{}{} })
 
-	if err := service.DeleteController(); err == nil || !service.SessionPresent() || manager.Epoch() != managerEpoch || notifications != 0 {
-		t.Fatalf("first delete err=%v present=%t managerEpoch=%d notifications=%d", err, service.SessionPresent(), manager.Epoch(), notifications)
+	if err := service.DeleteController(); err == nil || !service.SessionPresent() || manager.Epoch() != managerEpoch {
+		t.Fatalf("first delete err=%v present=%t managerEpoch=%d", err, service.SessionPresent(), manager.Epoch())
 	}
 
 	enabled.setErr = nil
 
-	if err := service.DeleteController(); err != nil || service.SessionPresent() || manager.Epoch() != managerEpoch+1 || notifications != 1 {
-		t.Fatalf("retry delete err=%v present=%t managerEpoch=%d notifications=%d", err, service.SessionPresent(), manager.Epoch(), notifications)
+	if err := service.DeleteController(); err != nil || service.SessionPresent() || manager.Epoch() != managerEpoch+1 {
+		t.Fatalf("retry delete err=%v present=%t managerEpoch=%d", err, service.SessionPresent(), manager.Epoch())
 	}
+
+	waitMutationNotification(t, notifications)
 }
 
 func TestServiceDeleteControllerTokenFlagWriteFailureRetry(t *testing.T) {
@@ -397,19 +563,23 @@ func TestServiceDeleteControllerTokenDeleteFailureFailsClosed(t *testing.T) {
 	store := &testServiceStore{document: model.Document{Controller: &model.TokenRecord{Token: "controller", Support: model.SupportSupported}}, deleteErr: errors.New("token delete failed")}
 	enabled := &testEnabledStore{enabled: true, set: true}
 	service := newTestService(t, ServiceConfig{Store: store, EnabledStore: enabled, AuthModeSource: testAuthModeSource{mode: AuthModeToken}})
-	notifications := 0
+	notifications := make(chan struct{}, 2)
 
-	service.SubscribeMutations(func() { notifications++ })
+	service.SubscribeMutations(func() { notifications <- struct{}{} })
 
-	if err := service.DeleteController(); err == nil || enabled.enabled || service.SessionPresent() || notifications != 1 {
-		t.Fatalf("first delete err=%v enabled=%t present=%t notifications=%d", err, enabled.enabled, service.SessionPresent(), notifications)
+	if err := service.DeleteController(); err == nil || enabled.enabled || service.SessionPresent() {
+		t.Fatalf("first delete err=%v enabled=%t present=%t", err, enabled.enabled, service.SessionPresent())
 	}
+
+	waitMutationNotification(t, notifications)
 
 	store.deleteErr = nil
 
-	if err := service.DeleteController(); err != nil || store.document.Controller != nil || notifications != 2 {
-		t.Fatalf("retry delete err=%v record=%#v notifications=%d", err, store.document.Controller, notifications)
+	if err := service.DeleteController(); err != nil || store.document.Controller != nil {
+		t.Fatalf("retry delete err=%v record=%#v", err, store.document.Controller)
 	}
+
+	waitMutationNotification(t, notifications)
 }
 
 type testServiceStore struct {

@@ -38,7 +38,11 @@ const makeRoot = (): string => {
   writeExecutable(path.join(root, 'bin', 'device-port-helper'), '#!/bin/sh\nprintf \'80\\n\'\n');
   writeExecutable(
     path.join(root, 'sbin', 'mndwd'),
-    '#!/bin/sh\nprintf \'8080\\n\' > "$MNDW_PORT_FILE"\n'
+    '#!/bin/sh\nprintf \'8080\\n\' > "$MNDW_PORT_FILE.tmp"\n'
+      + 'mv "$MNDW_PORT_FILE.tmp" "$MNDW_PORT_FILE"\n'
+      + 'printf \'%s\\n\' "$*" > "$MNDW_ROOT/daemon-args"\n'
+      + 'printf \'daemon stdout\\n\'\n'
+      + 'printf \'daemon stderr\\n\' >&2\n'
       + 'printf \'started\\n\' >> "$MNDW_ROOT/started"\n'
       + 'exec sleep 30\n',
   );
@@ -306,6 +310,48 @@ describe('S70mndwd pid file', () => {
     expect(isAlive(foreign.pid)).toBe(true);
     expect(result.stderr).toContain('mndw dashboard:');
     expect(result.stderr).toContain('ignoring stale pid file');
+  });
+
+  it('uses the RAM log and keeps only the previous crash trace', async () => {
+    const root = makeRoot();
+    const crashLog = path.join(root, 'var', 'log', 'mndwd.crash.log');
+    const legacyLog = path.join(root, 'var', 'log', 'mndwd.log');
+    const initSource = fs.readFileSync(initScript, 'utf8');
+
+    fs.mkdirSync(path.dirname(crashLog), {recursive: true});
+    fs.writeFileSync(crashLog, 'stale crash output\n');
+    fs.writeFileSync(`${crashLog}.1`, 'older backup\n');
+
+    const firstStart = await runInit(root, 'start');
+
+    expect(firstStart.code, firstStart.stderr).toBe(0);
+    expect(fs.readFileSync(path.join(root, 'daemon-args'), 'utf8')).toContain('--log-file /tmp/mndwd.log');
+    expect(fs.readFileSync(crashLog, 'utf8')).toContain('daemon stdout\n');
+    expect(fs.readFileSync(crashLog, 'utf8')).toContain('daemon stderr\n');
+    expect(fs.readFileSync(crashLog, 'utf8')).not.toContain('stale crash output');
+    expect(fs.readFileSync(`${crashLog}.1`, 'utf8')).toBe('stale crash output\n');
+    expect(fs.existsSync(legacyLog)).toBe(false);
+    expect(initSource).toContain('> "$CRASH_LOG_FILE" 2>&1 &');
+    expect(initSource).not.toContain('>> "$CRASH_LOG_FILE" 2>&1 &');
+
+    const firstPid = Number(fs.readFileSync(pidFile(root), 'utf8').trim());
+
+    await stopProcess(firstPid);
+    fs.rmSync(pidFile(root), {force: true});
+    fs.writeFileSync(crashLog, 'stale crash output from previous start\n');
+
+    const secondStart = await runInit(root, 'start');
+
+    expect(secondStart.code, secondStart.stderr).toBe(0);
+    expect(fs.readFileSync(crashLog, 'utf8')).toContain('daemon stdout\n');
+    expect(fs.readFileSync(crashLog, 'utf8')).toContain('daemon stderr\n');
+    expect(fs.readFileSync(crashLog, 'utf8')).not.toContain('stale crash output');
+    expect(fs.readFileSync(`${crashLog}.1`, 'utf8')).toBe('stale crash output from previous start\n');
+
+    const secondPid = Number(fs.readFileSync(pidFile(root), 'utf8').trim());
+
+    await stopProcess(secondPid);
+    fs.rmSync(pidFile(root), {force: true});
   });
 
   it('start leaves a running daemon alone', async () => {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"log/slog"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -12,6 +13,68 @@ import (
 	"mndwd/internal/rcisession"
 	"mndwd/internal/telemetry/system"
 )
+
+func TestRunKeepsCappedLogWhenLogFileCannotOpen(t *testing.T) {
+	root := t.TempDir()
+	blockingPath := filepath.Join(root, "not-a-directory")
+
+	if err := os.WriteFile(blockingPath, []byte("file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	logPath := filepath.Join(root, "log-directory")
+
+	if err := os.Mkdir(logPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, err := os.CreateTemp(root, "stdout-")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stderr, err := os.CreateTemp(root, "stderr-")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	oldStdout, oldStderr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = stdout, stderr
+
+	defer func() {
+		os.Stdout, os.Stderr = oldStdout, oldStderr
+		_ = stdout.Close()
+		_ = stderr.Close()
+	}()
+
+	cfg := Config{
+		DataDir: filepath.Join(blockingPath, "state"),
+		LogFile: logPath,
+		Dev:     true,
+	}
+
+	if err := run(cfg); err == nil || !strings.Contains(err.Error(), "open state") {
+		t.Fatalf("run error = %v, want startup to continue through log fallback", err)
+	}
+
+	stdoutBytes, err := os.ReadFile(stdout.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stderrBytes, err := os.ReadFile(stderr.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := string(stdoutBytes); got != "" {
+		t.Fatalf("stdout grew after log open failure: %q", got)
+	}
+
+	if got := string(stderrBytes); strings.Count(got, "log file unavailable; writes will resume when it is writable") != 1 || strings.Count(got, "\n") != 1 {
+		t.Fatalf("fallback diagnostic = %q, want one stderr line", got)
+	}
+}
 
 func TestParseFlagsLimitDefaultsMatchBackend(t *testing.T) {
 	cfg, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw"})
@@ -242,8 +305,23 @@ func TestParseDefaultsDiagnosticsLogFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if cfg.DiagnosticsLogFile != "/opt/var/log/mndwd.log" {
+	if cfg.DiagnosticsLogFile != "/tmp/mndwd.log" {
 		t.Fatalf("diagnostics log file = %q, want production default", cfg.DiagnosticsLogFile)
+	}
+
+	if cfg.DiagnosticsCrashLogFile != defaultDiagnosticsCrashLogFile {
+		t.Fatalf("diagnostics crash log file = %q, want flag default %q", cfg.DiagnosticsCrashLogFile, defaultDiagnosticsCrashLogFile)
+	}
+}
+
+func TestParseAcceptsLogFile(t *testing.T) {
+	cfg, _, err := parseFlags([]string{"--log-file", "/tmp/custom-mndwd.log"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.LogFile != "/tmp/custom-mndwd.log" {
+		t.Fatalf("log file = %q, want override", cfg.LogFile)
 	}
 }
 

@@ -85,10 +85,7 @@ func New(deviceURL string, logger *slog.Logger) (http.Handler, error) {
 
 			return nil
 		},
-		ErrorHandler: func(writer http.ResponseWriter, request *http.Request, proxyErr error) {
-			logger.Warn("device proxy error", "path", request.URL.Path, "error", proxyErr)
-			writer.WriteHeader(http.StatusBadGateway)
-		},
+		ErrorHandler: proxyErrorHandler(logger),
 	}
 
 	proxy.Transport = &http.Transport{
@@ -101,6 +98,16 @@ func New(deviceURL string, logger *slog.Logger) (http.Handler, error) {
 	}
 
 	return proxy, nil
+}
+
+func proxyErrorHandler(logger *slog.Logger) func(http.ResponseWriter, *http.Request, error) {
+	return func(writer http.ResponseWriter, request *http.Request, proxyErr error) {
+		if !errors.Is(request.Context().Err(), context.Canceled) {
+			logger.Warn("device proxy error", "path", request.URL.Path, "error", proxyErr)
+		}
+
+		writer.WriteHeader(http.StatusBadGateway)
+	}
 }
 
 // deviceOrigin serializes the device URL as a browser would send it in Origin:

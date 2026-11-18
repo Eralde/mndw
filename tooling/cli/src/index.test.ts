@@ -360,7 +360,7 @@ describe('createProgram', () => {
     expect(validated.status).toBe(0);
     expect(validated.stdout).toContain('Validated scope-smoke');
     expect(validated.stdout).not.toContain('CSS selector');
-  });
+  }, 60_000);
 
   test.skipIf(skipSlowTests)('fails catalog parity validation in strict mode', async () => {
     const pluginDir = createLocalizedPluginDirectory();

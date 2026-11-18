@@ -154,17 +154,18 @@ const isUiSvelteModule = (url: URL): boolean => {
 };
 
 export async function fetchUiSvelteImportGraph(
-  appUrl: string,
-  appSource: string,
+  probeUrl: string,
+  probeSource: string,
   fetchModule: (url: string) => Promise<FetchResponse>,
 ): Promise<ImportedModule[]> {
-  const base = new URL(appUrl);
-  const entryUrls = importSpecifiers(appSource)
+  const base = new URL(probeUrl);
+  const probePath = base.pathname;
+  const entryUrls = importSpecifiers(probeSource)
     .map((specifier) => new URL(specifier, base))
     .filter((url) => url.origin === base.origin && isViteServedModule(url) && isUiSvelteModule(url));
 
   if (entryUrls.length === 0) {
-    throw new Error('Transformed /src/App.svelte did not import an installed @mndw/ui-svelte module');
+    throw new Error(`Transformed ${probePath} did not import an installed @mndw/ui-svelte module`);
   }
 
   const queue = [...entryUrls];
@@ -201,7 +202,9 @@ export async function fetchUiSvelteImportGraph(
   if (modules.some(({body}) => containsUncompiledSvelteRuneCall(body))) {
     const offender = modules.find(({body}) => containsUncompiledSvelteRuneCall(body));
 
-    throw new Error(`The installed @mndw/ui-svelte module still contains an uncompiled Svelte rune: ${offender?.url}`);
+    throw new Error(
+      `The installed @mndw/ui-svelte module reached from ${probePath} still contains an uncompiled Svelte rune: ${offender?.url}`,
+    );
   }
 
   return modules;
@@ -441,6 +444,12 @@ const startAndCheckDev = async (
   pluginDir: string,
   addr: string | undefined,
 ): Promise<string> => {
+  // Add the package probe only after generated-project tests and packaging have run.
+  await writeFile(
+    join(projectRoot, pluginDir, 'src/ui-svelte-probe.ts'),
+    'import {svelteCell} from \'@mndw/ui-svelte\';\nvoid svelteCell;\n',
+  );
+
   const uiPort = await getFreePort();
   let daemonPort = await getFreePort();
 
@@ -482,9 +491,9 @@ const startAndCheckDev = async (
       await waitForHttp200(new URL(catalog, `${origin}/`).href);
     }
 
-    const appUrl = `${origin}/src/App.svelte`;
-    const appSource = await waitForHttp200(appUrl);
-    const modules = await fetchUiSvelteImportGraph(appUrl, appSource, async (url) => {
+    const probeUrl = `${origin}/src/ui-svelte-probe.ts`;
+    const probeSource = await waitForHttp200(probeUrl);
+    const modules = await fetchUiSvelteImportGraph(probeUrl, probeSource, async (url) => {
       const response = await fetch(url, {signal: AbortSignal.timeout(10_000)});
 
       return {status: response.status, text: () => response.text()};

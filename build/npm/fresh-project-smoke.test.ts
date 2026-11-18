@@ -110,10 +110,20 @@ describe('localeCatalogPaths', () => {
   });
 });
 
+describe('fetchUiSvelteImportGraph probe errors', () => {
+  it('names the probe when it does not import the installed wrapper', async () => {
+    await expect(fetchUiSvelteImportGraph(
+      'http://127.0.0.1:5173/src/ui-svelte-probe.ts',
+      'export const probe = true;',
+      () => Promise.resolve({status: 200, text: () => Promise.resolve('')}),
+    )).rejects.toThrow('Transformed /src/ui-svelte-probe.ts did not import an installed @mndw/ui-svelte module');
+  });
+});
+
 describe('fetchUiSvelteImportGraph', () => {
   it('follows the optimized Vite dependency entry to its actual chunk', async () => {
     const origin = 'http://127.0.0.1:5173';
-    const appUrl = `${origin}/src/App.svelte`;
+    const probeUrl = `${origin}/src/ui-svelte-probe.ts`;
     const modules = new Map([
       [`${origin}/node_modules/.vite/deps/@mndw_ui-svelte.js?v=1`, 'export {MndwCell} from "./chunk-ABC.js?v=1";'],
       [`${origin}/node_modules/.vite/deps/chunk-ABC.js?v=1`, 'export const MndwCell = () => "compiled";'],
@@ -121,7 +131,7 @@ describe('fetchUiSvelteImportGraph', () => {
     const requested: string[] = [];
 
     const graph = await fetchUiSvelteImportGraph(
-      appUrl,
+      probeUrl,
       'import {MndwCell} from "/node_modules/.vite/deps/@mndw_ui-svelte.js?v=1"; export {MndwCell};',
       (url) => {
         requested.push(url);
@@ -139,7 +149,7 @@ describe('fetchUiSvelteImportGraph', () => {
 
   it('rejects a failed request to the imported wrapper module', async () => {
     await expect(fetchUiSvelteImportGraph(
-      'http://127.0.0.1:5173/src/App.svelte',
+      'http://127.0.0.1:5173/src/ui-svelte-probe.ts',
       'import {MndwCell} from "/node_modules/.vite/deps/@mndw_ui-svelte.js?v=1";',
       () => Promise.resolve({status: 504, text: () => Promise.resolve('Outdated Optimize Dep')}),
     )).rejects.toThrow('504');
@@ -155,7 +165,7 @@ describe('fetchUiSvelteImportGraph', () => {
     ]);
 
     await expect(fetchUiSvelteImportGraph(
-      `${origin}/src/App.svelte`,
+      `${origin}/src/ui-svelte-probe.ts`,
       'import {svelteCell} from "/node_modules/.vite/deps/@mndw_ui-svelte.js?v=1";',
       (url) => {
         const body = modules.get(url);
@@ -167,7 +177,7 @@ describe('fetchUiSvelteImportGraph', () => {
 
   it.each(['$state', '$derived', '$effect', '$props'])('rejects an executable uncompiled `%s` call', async (rune) => {
     await expect(fetchUiSvelteImportGraph(
-      'http://127.0.0.1:5173/src/App.svelte',
+      'http://127.0.0.1:5173/src/ui-svelte-probe.ts',
       'import {svelteCell} from "/node_modules/.vite/deps/@mndw_ui-svelte.js?v=1";',
       (url) => {
         const body = url.includes('@mndw_ui-svelte')
@@ -176,6 +186,8 @@ describe('fetchUiSvelteImportGraph', () => {
 
         return Promise.resolve({status: 200, text: () => Promise.resolve(body)});
       },
-    )).rejects.toThrow('uncompiled Svelte rune');
+    )).rejects.toThrow(
+      'The installed @mndw/ui-svelte module reached from /src/ui-svelte-probe.ts still contains an uncompiled Svelte rune',
+    );
   });
 });

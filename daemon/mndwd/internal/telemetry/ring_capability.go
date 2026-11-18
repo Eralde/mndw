@@ -79,7 +79,7 @@ func NewCapability(config CapabilityConfig) (*Capability, error) {
 	}
 
 	if config.Logger == nil {
-		config.Logger = slog.Default()
+		config.Logger = slog.New(slog.DiscardHandler)
 	}
 
 	if config.Wait == nil {

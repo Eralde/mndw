@@ -182,9 +182,7 @@ func (h *Handler) executeUpdate(
 			return cause
 		}
 
-		if h.logger != nil {
-			h.logger.Error("update rollback failed", "plugin", name, "updateError", cause, "rollbackError", rollbackErr)
-		}
+		h.logger.Error("update rollback failed", "plugin", name, "updateError", cause, "rollbackError", rollbackErr)
 
 		if persistErr := h.persistStoppedAfterRollbackFailure(name, previous); persistErr != nil {
 			rollbackErr = fmt.Errorf("%v; persist stopped state: %w", rollbackErr, persistErr)
@@ -280,7 +278,7 @@ func (h *Handler) executeUpdate(
 		return fail(err)
 	}
 
-	if err := h.removePluginFiles(name, backupDir); err != nil && h.logger != nil {
+	if err := h.removePluginFiles(name, backupDir); err != nil {
 		h.logger.Warn("failed to remove previous plugin backup", "plugin", name, "path", backupDir, "error", err)
 	}
 

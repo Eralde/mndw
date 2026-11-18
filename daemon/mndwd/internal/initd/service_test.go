@@ -790,7 +790,7 @@ func TestSetEnabledRejectsUnknownName(t *testing.T) {
 }
 
 func TestStubSeedsPinnedService(t *testing.T) {
-	m := newStub(nil)
+	m := newStub(serviceDiscard())
 	entries, err := m.List(context.Background())
 	if err != nil {
 		t.Fatal(err)

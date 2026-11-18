@@ -3,6 +3,7 @@ package deviceproxy
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -30,7 +31,7 @@ func New(deviceURL string, logger *slog.Logger) (http.Handler, error) {
 	}
 
 	if logger == nil {
-		logger = slog.Default()
+		return nil, errors.New("deviceproxy: logger is required")
 	}
 
 	targetOrigin := deviceOrigin(target)

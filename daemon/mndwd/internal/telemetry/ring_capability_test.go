@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -83,6 +84,10 @@ func (s *capabilityStepper) step(t *testing.T, bootMs int64) {
 
 func newCapabilityForTest(t *testing.T, config CapabilityConfig) *Capability {
 	t.Helper()
+
+	if config.Logger == nil {
+		config.Logger = slog.New(slog.DiscardHandler)
+	}
 
 	capability, err := NewCapability(config)
 	if err != nil {

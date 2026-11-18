@@ -57,9 +57,13 @@ type Registry struct {
 	logger     *slog.Logger
 }
 
-// NewWithLogger constructs a Registry with an optional logger for builtin
+// NewWithLogger constructs a Registry with a logger for builtin
 // manifest validation warnings.
 func NewWithLogger(store *state.Store, userDir, builtinDir string, logger *slog.Logger) *Registry {
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
+
 	return &Registry{store: store, userDir: userDir, builtinDir: builtinDir, logger: logger}
 }
 
@@ -170,9 +174,7 @@ func (r *Registry) ListBuiltins() ([]*Plugin, error) {
 		m, verr := manifest.Validate(data)
 
 		if verr != nil {
-			if r.logger != nil {
-				r.logger.Warn("builtin plugin has invalid manifest, skipping", "plugin", name, "error", verr)
-			}
+			r.logger.Warn("builtin plugin has invalid manifest, skipping", "plugin", name, "error", verr)
 
 			continue
 		}

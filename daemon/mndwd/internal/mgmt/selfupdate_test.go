@@ -1,8 +1,10 @@
 package mgmt
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -81,6 +83,20 @@ func TestSelfUpdateRejectsNonEmptyAndTrailingBodies(t *testing.T) {
 
 	if service.checkCalls != 0 {
 		t.Fatalf("check calls = %d after invalid bodies", service.checkCalls)
+	}
+}
+
+func TestSelfUpdateInvalidBodyUsesHandlerLogger(t *testing.T) {
+	var logs bytes.Buffer
+	h := newSelfUpdateHandler(t, &fakeSelfUpdateService{})
+	h.logger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/mgmt/self-update/check", strings.NewReader(`null`))
+
+	h.handleSelfUpdateCheck(recorder, request)
+
+	if !strings.Contains(logs.String(), "code=BAD_REQUEST") {
+		t.Fatalf("handler logger did not record invalid body response: %s", logs.String())
 	}
 }
 

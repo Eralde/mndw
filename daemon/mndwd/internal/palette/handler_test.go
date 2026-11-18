@@ -3,6 +3,7 @@ package palette
 import (
 	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,7 +19,7 @@ func server(t *testing.T) (*httptest.Server, *Store) {
 	}
 
 	mux := http.NewServeMux()
-	handler := NewHandler(store, nil)
+	handler := NewHandler(store, paletteTestLogger())
 
 	handler.RegisterPublic(mux)
 	handler.RegisterProtected(mux)
@@ -28,6 +29,10 @@ func server(t *testing.T) (*httptest.Server, *Store) {
 	t.Cleanup(srv.Close)
 
 	return srv, store
+}
+
+func paletteTestLogger() *slog.Logger {
+	return slog.New(slog.DiscardHandler)
 }
 
 func do(t *testing.T, srv *httptest.Server, method, body string) *http.Response {
@@ -193,7 +198,7 @@ func TestPersistenceFailureIsInternal(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPut, "/api/mgmt/palette", strings.NewReader(wireBody(t)))
 	res := httptest.NewRecorder()
 
-	NewHandler(store, nil).handlePut(res, req)
+	NewHandler(store, paletteTestLogger()).handlePut(res, req)
 
 	if res.Code != http.StatusInternalServerError {
 		t.Fatalf("PUT status = %d, want 500", res.Code)

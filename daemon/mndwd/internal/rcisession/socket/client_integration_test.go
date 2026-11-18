@@ -28,6 +28,7 @@ func TestSharedClientAndServerInteroperate(t *testing.T) {
 		serverDone <- ServeConnection(context.Background(), serverConnection, Config{
 			PluginID: "mws-page",
 			Grants:   Grants{CanRead: true, CanWrite: true},
+			Logger:   socketTestLogger(),
 		}, handler)
 	}()
 
@@ -89,6 +90,7 @@ func TestDirectionTypedRequestRejectsResponseKeys(t *testing.T) {
 		serverDone <- ServeConnection(context.Background(), serverConnection, Config{
 			PluginID: "mws-page",
 			Grants:   Grants{CanRead: true, CanWrite: true},
+			Logger:   socketTestLogger(),
 		}, &integrationHandler{})
 	}()
 

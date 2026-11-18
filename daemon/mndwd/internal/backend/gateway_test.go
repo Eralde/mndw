@@ -67,7 +67,7 @@ func TestNoCORSResponseWriterRemovesInternalHeaders(t *testing.T) {
 
 func TestGatewayMaintenanceGateUsesRuntimeBlockAndPlatformScope(t *testing.T) {
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
-	gateway := NewGateway(GatewayConfig{}, nil, nil, runtime, nil)
+	gateway := NewGateway(GatewayConfig{}, nil, nil, runtime, backendTestLogger())
 
 	if gateway.isMaintenance("demo") {
 		t.Fatal("fresh gateway is in maintenance")
@@ -141,7 +141,7 @@ func TestGatewayDevValidationAllowsSymlinkedBuiltinRoot(t *testing.T) {
 	}
 
 	plugin := &registry.Plugin{Dir: symlinkedPlugin, Source: state.SourceBuiltin}
-	dev := NewGateway(GatewayConfig{AllowSymlinkedBuiltinRoot: true}, nil, nil, nil, nil)
+	dev := NewGateway(GatewayConfig{AllowSymlinkedBuiltinRoot: true}, nil, nil, nil, backendTestLogger())
 
 	if _, err := dev.validateCommand(plugin, "backend/command.sh"); err != nil {
 		t.Fatalf("dev exec validation rejected a symlinked builtin root: %v", err)

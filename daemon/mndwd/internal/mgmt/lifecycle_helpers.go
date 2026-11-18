@@ -56,21 +56,15 @@ func (h *Handler) removePluginFiles(name, path string) error {
 
 	select {
 	case err := <-done:
-		if h.logger != nil {
-			h.logger.Info("files removed", "plugin", name, "elapsed", time.Since(started))
-		}
+		h.logger.Info("files removed", "plugin", name, "elapsed", time.Since(started))
 
 		return err
 	case <-h.newTimer(h.removalWatchdog):
-		if h.logger != nil {
-			h.logger.Warn("removal phase exceeded watchdog", "plugin", name, "elapsed", time.Since(started))
-		}
+		h.logger.Warn("removal phase exceeded watchdog", "plugin", name, "elapsed", time.Since(started))
 
 		err := <-done
 
-		if h.logger != nil {
-			h.logger.Info("files removed", "plugin", name, "elapsed", time.Since(started))
-		}
+		h.logger.Info("files removed", "plugin", name, "elapsed", time.Since(started))
 
 		return err
 	}
@@ -79,7 +73,7 @@ func (h *Handler) removePluginFiles(name, path string) error {
 func (h *Handler) removePluginBackups(name string) {
 	entries, err := os.ReadDir(h.cfg.UserPluginsDir)
 	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) && h.logger != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
 			h.logger.Warn("failed to list plugin backups", "plugin", name, "path", h.cfg.UserPluginsDir, "error", err)
 		}
 
@@ -95,7 +89,7 @@ func (h *Handler) removePluginBackups(name string) {
 
 		path := filepath.Join(h.cfg.UserPluginsDir, entry.Name())
 
-		if err := h.removePluginFiles(name, path); err != nil && h.logger != nil {
+		if err := h.removePluginFiles(name, path); err != nil {
 			h.logger.Warn("failed to remove plugin backup", "plugin", name, "path", path, "error", err)
 		}
 	}

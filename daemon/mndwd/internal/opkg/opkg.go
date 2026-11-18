@@ -107,7 +107,7 @@ type Manager interface {
 // NewStub returns an in-memory manager for development and tests.
 func NewStub(logger *slog.Logger) SelfUpdateManager {
 	if logger == nil {
-		logger = slog.Default()
+		logger = slog.New(slog.DiscardHandler)
 	}
 
 	return newStub(logger)
@@ -116,7 +116,7 @@ func NewStub(logger *slog.Logger) SelfUpdateManager {
 // NewExecWithPaths returns a manager backed by the device's opkg executable.
 func NewExecWithPaths(logger *slog.Logger, paths Paths) SelfUpdateManager {
 	if logger == nil {
-		logger = slog.Default()
+		logger = slog.New(slog.DiscardHandler)
 	}
 
 	return &execManager{

@@ -77,7 +77,7 @@ func New(config Config, manager PackageManager) Service {
 	}
 
 	if config.Logger == nil {
-		config.Logger = slog.Default()
+		config.Logger = slog.New(slog.DiscardHandler)
 	}
 
 	return &service{

@@ -13,7 +13,7 @@ import (
 
 func TestLogPollerConfigConstructor(t *testing.T) {
 	normalizer := fixedNormalizer()
-	parser := NewLogParser(normalizer, time.UTC, nil, nil)
+	parser := NewLogParser(normalizer, time.UTC, nil, eventsTestLogger())
 	publisher := &hookEventPublisher{}
 	tick := make(chan time.Time, 1)
 
@@ -22,6 +22,7 @@ func TestLogPollerConfigConstructor(t *testing.T) {
 		Parser:    parser,
 		Publisher: publisher,
 		Ticker:    tick,
+		Logger:    eventsTestLogger(),
 	})
 
 	if poller == nil {
@@ -58,7 +59,7 @@ func (s *fakeLogSource) ShowLog(ctx context.Context) (map[string]RawLogRecord, e
 }
 
 func TestLogParserSeedsFirstPollWithoutEmittingEvents(t *testing.T) {
-	parser := NewLogParser(fixedNormalizer(), time.UTC, nil, nil)
+	parser := NewLogParser(fixedNormalizer(), time.UTC, nil, eventsTestLogger())
 	observed := time.Date(2026, time.September, 5, 10, 0, 0, 0, time.UTC)
 	initial := map[string]RawLogRecord{
 		"10": {Timestamp: "Sep  5 10:00:00", Ident: "ndm", Message: RawLogMessage{Message: `Core::Security::Authority: authentication failed for user "admin" from 192.0.2.10`}},
@@ -90,7 +91,7 @@ func TestLogParserSeedsFirstPollWithoutEmittingEvents(t *testing.T) {
 }
 
 func TestLogParserResetsOnNumericIDRegression(t *testing.T) {
-	parser := NewLogParser(fixedNormalizer(), time.UTC, nil, nil)
+	parser := NewLogParser(fixedNormalizer(), time.UTC, nil, eventsTestLogger())
 	seed := map[string]RawLogRecord{
 		"20": {Timestamp: "Sep  5 10:00:00", Ident: "ndm", Message: RawLogMessage{Message: `Core::Security::Authority: authentication failed for user "admin" from 192.0.2.10`}},
 	}
@@ -123,7 +124,7 @@ func TestLogParserResetsOnNumericIDRegression(t *testing.T) {
 }
 
 func TestLogParserResetsOnOverlappingSentinel(t *testing.T) {
-	parser := NewLogParser(fixedNormalizer(), time.UTC, nil, nil)
+	parser := NewLogParser(fixedNormalizer(), time.UTC, nil, eventsTestLogger())
 	observed := time.Date(2026, time.September, 5, 10, 0, 0, 0, time.UTC)
 
 	seed := map[string]RawLogRecord{
@@ -162,7 +163,7 @@ func TestLogParserResetsOnOverlappingSentinel(t *testing.T) {
 }
 
 func TestLogParserSkipsEmptyResponseAndRetainsCursor(t *testing.T) {
-	parser := NewLogParser(fixedNormalizer(), time.UTC, nil, nil)
+	parser := NewLogParser(fixedNormalizer(), time.UTC, nil, eventsTestLogger())
 	observed := time.Date(2026, time.September, 5, 10, 0, 0, 0, time.UTC)
 
 	seed := map[string]RawLogRecord{
@@ -197,7 +198,7 @@ func TestLogParserUsesObjectKeyAsCursorID(t *testing.T) {
 				Payload: contractEvents.AuthLoginPayload{User: "admin", IP: "192.0.2.10", Success: false},
 			}
 		},
-	}, nil)
+	}, eventsTestLogger())
 	observed := time.Date(2026, time.September, 5, 10, 0, 0, 0, time.UTC)
 
 	// Seed with a different record so cursor is established.
@@ -319,8 +320,9 @@ func TestLogPollerEndToEndDecodesAndPublishes(t *testing.T) {
 
 	poller := NewLogPoller(LogPollerConfig{
 		Source:    NewRCILogSource(client),
-		Parser:    NewLogParser(fixedNormalizer(), time.UTC, nil, nil),
+		Parser:    NewLogParser(fixedNormalizer(), time.UTC, nil, eventsTestLogger()),
 		Publisher: bus,
+		Logger:    eventsTestLogger(),
 	})
 
 	if err := poller.Poll(context.Background(), now); err != nil {
@@ -353,7 +355,12 @@ func TestLogPollerEndToEndDecodesAndPublishes(t *testing.T) {
 
 func TestLogPollerRunStopsOnCancellation(t *testing.T) {
 	ticks := make(chan time.Time)
-	poller := NewLogPoller(LogPollerConfig{Source: &fakeLogSource{}, Parser: NewLogParser(fixedNormalizer(), time.UTC, nil, nil), Ticker: ticks})
+	poller := NewLogPoller(LogPollerConfig{
+		Source: &fakeLogSource{},
+		Parser: NewLogParser(fixedNormalizer(), time.UTC, nil, eventsTestLogger()),
+		Ticker: ticks,
+		Logger: eventsTestLogger(),
+	})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 
@@ -403,9 +410,10 @@ func TestLogPollerRunContinuesAfterPollError(t *testing.T) {
 
 	poller := NewLogPoller(LogPollerConfig{
 		Source:    NewRCILogSource(client),
-		Parser:    NewLogParser(fixedNormalizer(), time.UTC, nil, nil),
+		Parser:    NewLogParser(fixedNormalizer(), time.UTC, nil, eventsTestLogger()),
 		Publisher: bus,
 		Ticker:    ticks,
+		Logger:    eventsTestLogger(),
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

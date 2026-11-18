@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 
 	"mndwd/internal/httpx"
@@ -30,7 +31,7 @@ func (h *Handler) handleSelfUpdateStatus(w http.ResponseWriter, _ *http.Request)
 }
 
 func (h *Handler) handleSelfUpdateCheck(w http.ResponseWriter, r *http.Request) {
-	if !decodeSelfUpdateEmptyObject(w, r) {
+	if !decodeSelfUpdateEmptyObject(w, r, h.logger) {
 		return
 	}
 
@@ -55,7 +56,7 @@ func (h *Handler) handleSelfUpdateCheck(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) handleSelfUpdateApply(w http.ResponseWriter, r *http.Request) {
-	if !decodeSelfUpdateEmptyObject(w, r) {
+	if !decodeSelfUpdateEmptyObject(w, r, h.logger) {
 		return
 	}
 
@@ -73,7 +74,7 @@ func (h *Handler) handleSelfUpdateApply(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) handleSelfUpdateRevert(w http.ResponseWriter, r *http.Request) {
-	if !decodeSelfUpdateEmptyObject(w, r) {
+	if !decodeSelfUpdateEmptyObject(w, r, h.logger) {
 		return
 	}
 
@@ -101,7 +102,7 @@ func (h *Handler) handleSelfUpdateAction(w http.ResponseWriter, ctx context.Cont
 	httpx.WriteJSON(w, h.logger, http.StatusAccepted, accepted)
 }
 
-func decodeSelfUpdateEmptyObject(w http.ResponseWriter, r *http.Request) bool {
+func decodeSelfUpdateEmptyObject(w http.ResponseWriter, r *http.Request, logger *slog.Logger) bool {
 	var object map[string]json.RawMessage
 
 	defer r.Body.Close()
@@ -109,19 +110,19 @@ func decodeSelfUpdateEmptyObject(w http.ResponseWriter, r *http.Request) bool {
 	decoder := json.NewDecoder(r.Body)
 
 	if err := decoder.Decode(&object); err != nil {
-		httpx.WriteError(w, nil, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body must be an empty JSON object"))
+		httpx.WriteError(w, logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body must be an empty JSON object"))
 
 		return false
 	}
 
 	if object == nil {
-		httpx.WriteError(w, nil, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body must be an empty JSON object"))
+		httpx.WriteError(w, logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body must be an empty JSON object"))
 
 		return false
 	}
 
 	if len(object) != 0 {
-		httpx.WriteError(w, nil, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body must be an empty JSON object"))
+		httpx.WriteError(w, logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body must be an empty JSON object"))
 
 		return false
 	}
@@ -129,7 +130,7 @@ func decodeSelfUpdateEmptyObject(w http.ResponseWriter, r *http.Request) bool {
 	var extra any
 
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		httpx.WriteError(w, nil, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body must be one empty JSON object"))
+		httpx.WriteError(w, logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body must be one empty JSON object"))
 
 		return false
 	}

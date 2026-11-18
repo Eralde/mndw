@@ -83,6 +83,10 @@ func (cfg GatewayConfig) withDefaults() GatewayConfig {
 func NewGateway(cfg GatewayConfig, registry *registry.Registry, auth Authenticator, runtime *RuntimeImpl, logger *slog.Logger) *Gateway {
 	cfg = cfg.withDefaults()
 
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
+
 	traffic := NewTrafficGate()
 
 	if runtime != nil {
@@ -399,9 +403,7 @@ func (g *Gateway) serveService(writer http.ResponseWriter, request *http.Request
 				return
 			}
 
-			if g.logger != nil {
-				g.logger.Error("service proxy response aborted", "plugin", plugin.Name, "route", route.ID)
-			}
+			g.logger.Error("service proxy response aborted", "plugin", plugin.Name, "route", route.ID)
 
 			panic(http.ErrAbortHandler)
 		}

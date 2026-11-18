@@ -116,6 +116,10 @@ func New(cfg Config, store StateStore, opkgMgr opkg.Manager, serviceMgr initd.Ma
 		cfg.ServiceActionTimeout = serviceActionTimeout
 	}
 
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
+
 	return &Handler{
 		cfg:                  cfg,
 		store:                store,
@@ -176,9 +180,7 @@ func (h *Handler) publishTelemetryGatheringChanged(enabled bool) {
 }
 
 func (h *Handler) logPublishError(topic string, err error) {
-	if h.logger != nil {
-		h.logger.Warn("internal event publish failed", "topic", topic, "error", err)
-	}
+	h.logger.Warn("internal event publish failed", "topic", topic, "error", err)
 }
 
 // Register wires the management routes onto mux. Method-qualified patterns give a

@@ -28,6 +28,8 @@ type Reconciler struct {
 }
 
 func NewReconciler(config Config, handler Handler) *Reconciler {
+	config = config.withDefaults()
+
 	return &Reconciler{config: config, handler: handler, servers: make(map[string]*Server)}
 }
 
@@ -90,13 +92,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, bindings []Binding, sessionP
 			continue
 		}
 
-		if err := server.Close(); err != nil && r.config.Logger != nil {
+		if err := server.Close(); err != nil {
 			r.config.Logger.Warn("persistent RCI socket close failed", "plugin", pluginID, "reason", "reconcile")
 		}
 
-		if r.config.Logger != nil {
-			r.config.Logger.Info("persistent RCI socket binding removed", "plugin", pluginID, "reason", "reconcile")
-		}
+		r.config.Logger.Info("persistent RCI socket binding removed", "plugin", pluginID, "reason", "reconcile")
 
 		r.mu.Lock()
 		delete(r.servers, pluginID)
@@ -122,9 +122,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, bindings []Binding, sessionP
 		if err := server.Start(ctx); err != nil {
 			report.StartErrors[pluginID] = err
 
-			if r.config.Logger != nil {
-				r.config.Logger.Error("persistent RCI socket start failed", "plugin", pluginID, "reason", "listen-failed")
-			}
+			r.config.Logger.Error("persistent RCI socket start failed", "plugin", pluginID, "reason", "listen-failed")
 
 			continue
 		}

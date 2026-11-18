@@ -257,8 +257,8 @@ func TestPermissionChangedReportsOnlyFocusedStartFailure(t *testing.T) {
 		Controller: &model.TokenRecord{Token: "controller-token", Support: model.SupportSupported},
 	}}
 	service := newCoordinatorService(t, rcisession.ServiceConfig{Store: sessionStore})
-	reconciler := socket.NewReconciler(socket.Config{DrainTimeout: 100 * time.Millisecond}, service)
-	pluginRegistry := registry.NewWithLogger(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"), nil)
+	reconciler := socket.NewReconciler(socket.Config{DrainTimeout: 100 * time.Millisecond, Logger: coordinatorTestLogger()}, service)
+	pluginRegistry := registry.NewWithLogger(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"), coordinatorTestLogger())
 
 	if plugins := pluginRegistry.AllBackendPlugins(); len(plugins) != 2 {
 		t.Fatalf("backend plugins = %d, want 2", len(plugins))
@@ -274,6 +274,7 @@ func TestPermissionChangedReportsOnlyFocusedStartFailure(t *testing.T) {
 		runtimeRoot: runtimeRoot,
 		service:     service,
 		reconciler:  reconciler,
+		logger:      coordinatorTestLogger(),
 	}
 
 	defer assembly.Close()
@@ -509,7 +510,7 @@ func TestStartPublishesInitialSnapshotWithoutPoke(t *testing.T) {
 
 func TestCloseCancelsOwnContextNotParent(t *testing.T) {
 	parent := context.Background()
-	assembly := New(Config{Parent: parent})
+	assembly := New(Config{Parent: parent, Logger: coordinatorTestLogger()})
 
 	assembly.Start()
 	assembly.Close()
@@ -521,7 +522,7 @@ func TestCloseCancelsOwnContextNotParent(t *testing.T) {
 
 func TestParentCancelStopsLoop(t *testing.T) {
 	parent, cancel := context.WithCancel(context.Background())
-	assembly := New(Config{Parent: parent})
+	assembly := New(Config{Parent: parent, Logger: coordinatorTestLogger()})
 
 	assembly.Start()
 	cancel()
@@ -568,14 +569,15 @@ func newStartedCoordinator(t *testing.T, poke func()) (*Coordinator, *rcisession
 
 	sessionStore := &assemblySessionStore{document: model.Document{Controller: &model.TokenRecord{Token: "controller-token", Support: model.SupportSupported}}}
 	service := newCoordinatorService(t, rcisession.ServiceConfig{Store: sessionStore, Enumerator: &activationEnumerator{}})
-	reconciler := socket.NewReconciler(socket.Config{DrainTimeout: 100 * time.Millisecond}, service)
+	reconciler := socket.NewReconciler(socket.Config{DrainTimeout: 100 * time.Millisecond, Logger: coordinatorTestLogger()}, service)
 	assembly := New(Config{
-		Registry:       registry.NewWithLogger(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"), nil),
+		Registry:       registry.NewWithLogger(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"), coordinatorTestLogger()),
 		Store:          store,
 		RuntimeRoot:    filepath.Join(root, "runtime"),
 		Service:        service,
 		Reconciler:     reconciler,
 		ActivationPoke: poke,
+		Logger:         coordinatorTestLogger(),
 	})
 
 	assembly.Start()
@@ -608,7 +610,7 @@ func newActivationSnapshotAssembly(t *testing.T, grants map[string]bool) *Coordi
 		t.Fatalf("seed state: %v", err)
 	}
 
-	pluginRegistry := registry.NewWithLogger(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"), nil)
+	pluginRegistry := registry.NewWithLogger(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"), coordinatorTestLogger())
 	service := newCoordinatorService(t, rcisession.ServiceConfig{Store: &assemblySessionStore{}, Enumerator: &activationEnumerator{}})
 
 	return &Coordinator{registry: pluginRegistry, store: store, service: service}
@@ -616,6 +618,10 @@ func newActivationSnapshotAssembly(t *testing.T, grants map[string]bool) *Coordi
 
 func newCoordinatorService(t *testing.T, cfg rcisession.ServiceConfig) *rcisession.Service {
 	t.Helper()
+
+	if cfg.Logger == nil {
+		cfg.Logger = coordinatorTestLogger()
+	}
 
 	service, err := rcisession.NewService(cfg)
 	if err != nil {
@@ -666,15 +672,16 @@ func newSocketAssemblyWithServiceConfig(t *testing.T, serviceConfig rcisession.S
 	}
 
 	service := newCoordinatorService(t, serviceConfig)
-	reconciler := socket.NewReconciler(socket.Config{DrainTimeout: 100 * time.Millisecond}, service)
+	reconciler := socket.NewReconciler(socket.Config{DrainTimeout: 100 * time.Millisecond, Logger: coordinatorTestLogger()}, service)
 	assembly := &Coordinator{
-		registry:    registry.NewWithLogger(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"), nil),
+		registry:    registry.NewWithLogger(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"), coordinatorTestLogger()),
 		store:       store,
 		runtimeRoot: filepath.Join(root, "runtime"),
 		service:     service,
 		manager:     service.SessionManager(),
 		enumerator:  service.Enumerator(),
 		reconciler:  reconciler,
+		logger:      coordinatorTestLogger(),
 	}
 
 	service.SubscribeMutations(assembly.ReconcileSockets)
@@ -726,7 +733,7 @@ func (s *assemblySessionStore) DeleteController() error {
 
 func TestCloseWithoutStartReturns(t *testing.T) {
 	parent := context.Background()
-	coordinator := New(Config{Parent: parent})
+	coordinator := New(Config{Parent: parent, Logger: coordinatorTestLogger()})
 
 	done := make(chan struct{})
 
@@ -745,6 +752,10 @@ func TestCloseWithoutStartReturns(t *testing.T) {
 func TestNewDefaultsHeartbeatInterval(t *testing.T) {
 	coordinator := New(Config{})
 
+	if coordinator.logger == nil {
+		t.Fatal("New(Config{}).logger = nil, want discard logger")
+	}
+
 	if got := coordinator.heartbeatEvery; got != DefaultHeartbeatInterval {
 		t.Fatalf("heartbeatEvery = %s, want %s", got, DefaultHeartbeatInterval)
 	}
@@ -761,6 +772,7 @@ func TestStartThenCloseWithOmittedLifetimeReturns(t *testing.T) {
 			Store:      &assemblySessionStore{},
 			Enumerator: enumeration.NewCache(enumeration.HTTPSource{}, time.Minute, time.Now),
 		}),
+		Logger: coordinatorTestLogger(),
 	})
 
 	coordinator.Start()

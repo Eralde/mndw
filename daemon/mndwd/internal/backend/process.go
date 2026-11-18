@@ -94,7 +94,7 @@ func (s *Supervisor) prepareStart(paths RuntimePaths, spec ServiceSpec) (Validat
 		return ValidatedCommand{}, err
 	}
 
-	if err := recoverStaleRuntime(paths, s.cfg.FinalReapTimeout); err != nil && s.cfg.Logger != nil {
+	if err := recoverStaleRuntime(paths, s.cfg.FinalReapTimeout); err != nil {
 		s.cfg.Logger.Warn("stale service recovery failed", "plugin", spec.PluginID, "error", err)
 	}
 

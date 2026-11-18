@@ -22,7 +22,7 @@ import (
 )
 
 func TestAssembleTelemetryWithoutCapabilityReturnsNilController(t *testing.T) {
-	service, err := rcisession.NewService(rcisession.ServiceConfig{Store: rcisessionstore.Disabled()})
+	service, err := rcisession.NewService(rcisession.ServiceConfig{Store: rcisessionstore.Disabled(), Logger: slog.New(slog.DiscardHandler)})
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestAssembleTelemetryWithoutCapabilityReturnsNilController(t *testing.T) {
 }
 
 func TestAssembleTelemetryUsesCapability(t *testing.T) {
-	service, err := rcisession.NewService(rcisession.ServiceConfig{Store: rcisessionstore.Disabled()})
+	service, err := rcisession.NewService(rcisession.ServiceConfig{Store: rcisessionstore.Disabled(), Logger: slog.New(slog.DiscardHandler)})
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}

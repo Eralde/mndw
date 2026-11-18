@@ -87,9 +87,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	s.mu.Unlock()
 
-	if s.config.Logger != nil {
-		s.config.Logger.Info("persistent RCI socket started", "plugin", s.config.PluginID)
-	}
+	s.config.Logger.Info("persistent RCI socket started", "plugin", s.config.PluginID)
 
 	s.wait.Add(1)
 
@@ -147,14 +145,10 @@ func (s *Server) Close() error {
 	case <-time.After(s.config.DrainTimeout):
 		drainErr = ErrDrainTimeout
 
-		if s.config.Logger != nil {
-			s.config.Logger.Warn("persistent RCI socket drain timed out", "plugin", s.config.PluginID)
-		}
+		s.config.Logger.Warn("persistent RCI socket drain timed out", "plugin", s.config.PluginID)
 	}
 
-	if s.config.Logger != nil {
-		s.config.Logger.Info("persistent RCI socket stopped", "plugin", s.config.PluginID)
-	}
+	s.config.Logger.Info("persistent RCI socket stopped", "plugin", s.config.PluginID)
 
 	return errors.Join(drainErr, removeErr)
 }
@@ -208,9 +202,7 @@ func (s *Server) acceptLoop(ctx context.Context, listener net.Listener) {
 
 		s.mu.Unlock()
 
-		if s.config.Logger != nil {
-			s.config.Logger.Debug("persistent RCI socket connection accepted", "plugin", s.config.PluginID)
-		}
+		s.config.Logger.Debug("persistent RCI socket connection accepted", "plugin", s.config.PluginID)
 
 		s.wait.Add(1)
 
@@ -226,10 +218,6 @@ func (s *Server) acceptLoop(ctx context.Context, listener net.Listener) {
 			}()
 
 			err := serveConnection(ctx, connection, s.config, s.handler)
-
-			if s.config.Logger == nil {
-				return
-			}
 
 			if ctx.Err() != nil {
 				s.config.Logger.Debug("persistent RCI socket connection ended", "plugin", s.config.PluginID, "reason", "server-shutdown")

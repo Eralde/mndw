@@ -208,11 +208,8 @@ func (s *Service) SaveController(ctx context.Context, tester ControllerTester, t
 }
 
 func (s *Service) logControllerTesterFailure(operation string, verdict ControllerVerdict, err error) {
-	if s.logger == nil {
-		return
-	}
-
 	host := ""
+
 	if controllerURL, parseErr := url.Parse(s.controllerURL); parseErr == nil {
 		host = controllerURL.Host
 	}

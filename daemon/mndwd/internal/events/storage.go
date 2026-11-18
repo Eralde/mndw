@@ -40,7 +40,7 @@ func NewStorageMonitor(path string, stat StorageStatFunc, publisher *InternalPub
 	}
 
 	if logger == nil {
-		logger = slog.Default()
+		logger = slog.New(slog.DiscardHandler)
 	}
 
 	return &StorageMonitor{

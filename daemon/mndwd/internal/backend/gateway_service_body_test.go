@@ -65,7 +65,7 @@ func TestGatewayServiceBodyTimeoutAndBodyEOFDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reg := registry.NewWithLogger(store, userDir, "", nil)
+	reg := registry.NewWithLogger(store, userDir, "", backendTestLogger())
 	plugin, ok := reg.Resolve("service")
 
 	if !ok {
@@ -92,7 +92,7 @@ func TestGatewayServiceBodyTimeoutAndBodyEOFDeadline(t *testing.T) {
 
 	mux := http.NewServeMux()
 
-	NewGateway(GatewayConfig{BodyReadTimeout: 80 * time.Millisecond, ServiceHTTPTimeout: 2 * time.Second}, reg, nil, runtime, nil).Register(mux)
+	NewGateway(GatewayConfig{BodyReadTimeout: 80 * time.Millisecond, ServiceHTTPTimeout: 2 * time.Second}, reg, nil, runtime, backendTestLogger()).Register(mux)
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {

@@ -25,6 +25,7 @@ func (s *telemetryControllerStub) IsEnabled() bool {
 
 func (s *telemetryControllerStub) SetEnabled(_ context.Context, enabled bool) error {
 	s.calls = append(s.calls, enabled)
+
 	if s.err != nil {
 		return s.err
 	}
@@ -84,7 +85,7 @@ func TestTelemetrySettingsRequiresCSRFAndPersistsAfterRuntimeTransition(t *testi
 		store:          store,
 		telemetry:      controller,
 		eventPublisher: events,
-		logger:         nil,
+		logger:         discardLogger(),
 	}
 	mux := http.NewServeMux()
 
@@ -123,6 +124,7 @@ func TestTelemetrySettingsRequiresCSRFAndPersistsAfterRuntimeTransition(t *testi
 	if response.Code != http.StatusNoContent || !store.state.Settings.BackgroundTelemetry || len(controller.calls) != 1 || !controller.calls[0] {
 		t.Fatalf("PUT status=%d state=%v calls=%v", response.Code, store.state.Settings.BackgroundTelemetry, controller.calls)
 	}
+
 	if len(events.events) != 1 || events.events[0].Enabled != true {
 		t.Fatalf("published events = %#v, want one event with enabled=true", events.events)
 	}
@@ -192,10 +194,15 @@ func putTelemetry(t *testing.T, handler *Handler, enabled bool) *httptest.Respon
 	t.Helper()
 
 	mux := http.NewServeMux()
+
 	handler.Register(mux)
+
 	request := httptest.NewRequest(http.MethodPut, "/api/mgmt/telemetry", strings.NewReader(`{"enabled":`+map[bool]string{true: "true", false: "false"}[enabled]+`}`))
+
 	request.Header.Set("X-Mndw-Csrf", "1")
+
 	response := httptest.NewRecorder()
+
 	mux.ServeHTTP(response, request)
 
 	return response

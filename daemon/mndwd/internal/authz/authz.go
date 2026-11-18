@@ -78,6 +78,10 @@ type Options struct {
 
 // New constructs a Verifier. In dev mode the device is never contacted.
 func New(deviceURL string, dev bool, logger *slog.Logger, opts Options) *Verifier {
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
+
 	maxEntries := opts.MaxEntries
 
 	if maxEntries <= 0 {

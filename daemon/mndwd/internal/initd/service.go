@@ -102,7 +102,7 @@ type execManager struct {
 
 func New(mode string, logger *slog.Logger) Manager {
 	if logger == nil {
-		logger = slog.Default()
+		logger = slog.New(slog.DiscardHandler)
 	}
 
 	if mode == "stub" {
@@ -125,10 +125,6 @@ func (m *execManager) defaults() {
 	m.defaultsMu.Lock()
 
 	defer m.defaultsMu.Unlock()
-
-	if m.logger == nil {
-		m.logger = slog.Default()
-	}
 
 	if m.runner == nil {
 		m.runner = execRun
@@ -402,9 +398,7 @@ func (m *execManager) SetEnabled(ctx context.Context, name string, enable bool) 
 		return entry, &ActionFailedError{Action: "set-enabled", Expected: newName, Actual: renameErr.Error()}
 	}
 
-	if m.logger != nil {
-		m.logger.Info("service autostart changed", "event", "service_autostart_changed", "service", name, "renamed_to", newName, "enabled", enable, "at", m.clock())
-	}
+	m.logger.Info("service autostart changed", "event", "service_autostart_changed", "service", name, "renamed_to", newName, "enabled", enable, "at", m.clock())
 
 	return makeEntryEnabled(newName, entry.State, enable), nil
 }
@@ -468,7 +462,7 @@ func (m *execManager) mutate(ctx context.Context, name, action, expected string)
 		return entry, &ActionFailedError{Action: action, Expected: expected, Actual: entry.State}
 	}
 
-	if meaningful(previous) && meaningful(entry.State) && previous != entry.State && m.logger != nil {
+	if meaningful(previous) && meaningful(entry.State) && previous != entry.State {
 		m.logger.Info("service state changed", "event", "service_state_changed", "service", name, "previous", previous, "current", entry.State, "at", m.clock())
 	}
 
@@ -804,7 +798,7 @@ func (m *stubManager) mutate(ctx context.Context, name, action, state string) (S
 	entry.State = state
 	m.services[name] = entry
 
-	if m.logger != nil && meaningful(previous) && meaningful(state) && previous != state {
+	if meaningful(previous) && meaningful(state) && previous != state {
 		m.logger.Info("service state changed (stub)", "event", "service_state_changed", "service", name)
 	}
 

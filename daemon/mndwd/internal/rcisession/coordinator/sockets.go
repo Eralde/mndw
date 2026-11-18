@@ -114,11 +114,7 @@ func (c *Coordinator) reconcileSocketsLocked() (rcisessionsocket.ReconcileReport
 }
 
 func (c *Coordinator) serviceLogger() *slog.Logger {
-	if c.logger != nil {
-		return c.logger
-	}
-
-	return slog.Default()
+	return c.logger
 }
 
 func isService(m *manifest.Manifest) bool {

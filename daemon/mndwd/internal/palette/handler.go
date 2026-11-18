@@ -18,6 +18,10 @@ type Handler struct {
 }
 
 func NewHandler(store *Store, logger *slog.Logger) *Handler {
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
+
 	return &Handler{store: store, logger: logger}
 }
 

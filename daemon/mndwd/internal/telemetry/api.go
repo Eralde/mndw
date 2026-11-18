@@ -16,7 +16,7 @@ type Handler struct {
 
 func NewHandler(cache *SnapshotCache, gatheringEnabled func() bool, logger *slog.Logger) *Handler {
 	if logger == nil {
-		logger = slog.Default()
+		logger = slog.New(slog.DiscardHandler)
 	}
 
 	return &Handler{cache: cache, gatheringEnabled: gatheringEnabled, logger: logger}

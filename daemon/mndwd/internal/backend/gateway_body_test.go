@@ -32,7 +32,7 @@ func TestGatewayBodyReadTimeoutDefault(t *testing.T) {
 }
 
 func TestGatewayExecWithoutRunnerReturnsInternal(t *testing.T) {
-	gateway := NewGateway(GatewayConfig{}, nil, nil, &RuntimeImpl{}, nil)
+	gateway := NewGateway(GatewayConfig{}, nil, nil, &RuntimeImpl{}, backendTestLogger())
 	request := httptest.NewRequest(http.MethodPost, "/", nil)
 	recorder := httptest.NewRecorder()
 
@@ -330,7 +330,7 @@ func newExecBodyTestHandler(t *testing.T, gatewayConfig GatewayConfig, limits Li
 		t.Fatal(err)
 	}
 
-	reg := registry.NewWithLogger(store, userDir, "", nil)
+	reg := registry.NewWithLogger(store, userDir, "", backendTestLogger())
 	runtime := NewRuntime(RuntimeConfig{
 		RuntimeRoot: t.TempDir(),
 		Limits:      limits,
@@ -345,7 +345,7 @@ func newExecBodyTestHandler(t *testing.T, gatewayConfig GatewayConfig, limits Li
 
 	mux := http.NewServeMux()
 
-	NewGateway(gatewayConfig, reg, nil, runtime, nil).Register(mux)
+	NewGateway(gatewayConfig, reg, nil, runtime, backendTestLogger()).Register(mux)
 
 	return mux, pluginDir, runtime
 }

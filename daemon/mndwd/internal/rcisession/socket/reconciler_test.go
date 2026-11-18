@@ -17,7 +17,7 @@ func TestReconcilerCreatesSocketOnlyForPresentSession(t *testing.T) {
 
 	defer os.RemoveAll(root)
 
-	reconciler := NewReconciler(Config{MaxInflight: 8}, &fakeHandler{})
+	reconciler := NewReconciler(Config{MaxInflight: 8, Logger: socketTestLogger()}, &fakeHandler{})
 	bindings := []Binding{{PluginID: "builtin", Path: filepath.Join(root, "rci.sock"), Grants: Grants{CanRead: true, CanWrite: true}}}
 
 	report, err := reconciler.Reconcile(context.Background(), bindings[:1], false)
@@ -77,7 +77,7 @@ func TestReconcilerReportsEveryPluginStartFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reconciler := NewReconciler(Config{}, &fakeHandler{})
+	reconciler := NewReconciler(Config{Logger: socketTestLogger()}, &fakeHandler{})
 	goodPath := filepath.Join(root, "good.sock")
 	badPath := filepath.Join(blockedParent, "bad.sock")
 
@@ -111,7 +111,7 @@ func TestReconcilerReportsEveryPluginStartFailure(t *testing.T) {
 
 func TestReconcilerRejectsDuplicateAndEmptyPluginIDsBeforeMutation(t *testing.T) {
 	root := t.TempDir()
-	reconciler := NewReconciler(Config{}, &fakeHandler{})
+	reconciler := NewReconciler(Config{Logger: socketTestLogger()}, &fakeHandler{})
 	path := filepath.Join(root, "socket.sock")
 
 	if _, err := reconciler.Reconcile(context.Background(), []Binding{

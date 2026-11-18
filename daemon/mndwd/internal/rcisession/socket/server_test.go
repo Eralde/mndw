@@ -30,7 +30,7 @@ func TestConnectionRequiresHelloFirst(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-page", Grants: Grants{CanRead: true, CanWrite: true}}, handler)
+		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-page", Grants: Grants{CanRead: true, CanWrite: true}, Logger: socketTestLogger()}, handler)
 	}()
 
 	writeJSON(t, client, map[string]any{"id": 1, "target": "node-1", "method": "GET", "path": "rci/show/version"})
@@ -50,6 +50,10 @@ func TestConnectionRequiresHelloFirst(t *testing.T) {
 
 func TestSocketConfigAppliesDefaults(t *testing.T) {
 	config := (Config{}).withDefaults()
+
+	if config.Logger == nil {
+		t.Fatal("Logger = nil, want discard logger")
+	}
 
 	if got, want := config.MaxInflight, DefaultMaxInflight; got != want {
 		t.Errorf("MaxInflight = %d, want %d", got, want)
@@ -75,6 +79,7 @@ func TestConnectionTimesOutBeforeHello(t *testing.T) {
 		done <- ServeConnection(context.Background(), server, Config{
 			PluginID:    "mws-page",
 			Grants:      Grants{CanRead: true, CanWrite: true},
+			Logger:      socketTestLogger(),
 			IdleTimeout: 25 * time.Millisecond,
 		}, &fakeHandler{})
 	}()
@@ -105,7 +110,7 @@ func TestConnectionHelloTargetsAndRequest(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-page", Grants: Grants{CanRead: true, CanWrite: true}}, handler)
+		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-page", Grants: Grants{CanRead: true, CanWrite: true}, Logger: socketTestLogger()}, handler)
 	}()
 
 	writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "mws-page", "proto": 1}})
@@ -165,7 +170,7 @@ func TestTargetsShareMaxInflightAdmission(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		done <- ServeConnection(context.Background(), server, Config{PluginID: "plugin", Grants: Grants{CanRead: true, CanWrite: true}, MaxInflight: 1}, handler)
+		done <- ServeConnection(context.Background(), server, Config{PluginID: "plugin", Grants: Grants{CanRead: true, CanWrite: true}, MaxInflight: 1, Logger: socketTestLogger()}, handler)
 	}()
 
 	writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "plugin", "proto": 1}})
@@ -241,7 +246,7 @@ func TestClientEOFcancelsInflightHandlers(t *testing.T) {
 			done := make(chan error, 1)
 
 			go func() {
-				done <- ServeConnection(ctx, server, Config{PluginID: "plugin", Grants: Grants{CanRead: true, CanWrite: true}}, handler)
+				done <- ServeConnection(ctx, server, Config{PluginID: "plugin", Grants: Grants{CanRead: true, CanWrite: true}, Logger: socketTestLogger()}, handler)
 			}()
 
 			writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "plugin", "proto": 1}})
@@ -296,6 +301,7 @@ func TestConnectionReadGrantRejectsWriteFrame(t *testing.T) {
 		done <- ServeConnection(context.Background(), server, Config{
 			PluginID: "mws-page",
 			Grants:   Grants{CanRead: true},
+			Logger:   socketTestLogger(),
 		}, &fakeHandler{response: proxy.Response{Status: 200, Body: []byte(`{"ok":true}`)}})
 	}()
 
@@ -375,7 +381,7 @@ func TestConnectionRejectsPermissionAndOversizeFrame(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-page", Grants: Grants{}}, &fakeHandler{})
+		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-page", Grants: Grants{}, Logger: socketTestLogger()}, &fakeHandler{})
 	}()
 
 	writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "mws-page", "proto": 1}})
@@ -401,7 +407,7 @@ func TestConnectionRejectsPermissionAndOversizeFrame(t *testing.T) {
 	done = make(chan error, 1)
 
 	go func() {
-		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-page", Grants: Grants{CanRead: true, CanWrite: true}}, &fakeHandler{})
+		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-page", Grants: Grants{CanRead: true, CanWrite: true}, Logger: socketTestLogger()}, &fakeHandler{})
 	}()
 
 	client.Write([]byte(`{"hello":{"pluginId":"mws-page","proto":1}}` + "\n"))
@@ -435,7 +441,7 @@ func TestErrorResponsesPreserveIDPresence(t *testing.T) {
 		done := make(chan error, 1)
 
 		go func() {
-			done <- ServeConnection(context.Background(), server, Config{PluginID: "plugin", Grants: Grants{CanRead: true, CanWrite: true}}, &fakeHandler{})
+			done <- ServeConnection(context.Background(), server, Config{PluginID: "plugin", Grants: Grants{CanRead: true, CanWrite: true}, Logger: socketTestLogger()}, &fakeHandler{})
 		}()
 
 		if _, err := client.Write([]byte(`{"op":"targets"}` + "\n")); err != nil {
@@ -468,7 +474,7 @@ func TestErrorResponsesPreserveIDPresence(t *testing.T) {
 		done := make(chan error, 1)
 
 		go func() {
-			done <- ServeConnection(context.Background(), server, Config{PluginID: "plugin", Grants: Grants{}}, &fakeHandler{})
+			done <- ServeConnection(context.Background(), server, Config{PluginID: "plugin", Grants: Grants{}, Logger: socketTestLogger()}, &fakeHandler{})
 		}()
 
 		writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "plugin", "proto": 1}})
@@ -499,7 +505,7 @@ func TestErrorResponsesPreserveIDPresence(t *testing.T) {
 		done := make(chan error, 1)
 
 		go func() {
-			done <- ServeConnection(context.Background(), server, Config{PluginID: "plugin", Grants: Grants{CanRead: true, CanWrite: true}}, &fakeHandler{})
+			done <- ServeConnection(context.Background(), server, Config{PluginID: "plugin", Grants: Grants{CanRead: true, CanWrite: true}, Logger: socketTestLogger()}, &fakeHandler{})
 		}()
 
 		writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "plugin", "proto": 1}})
@@ -535,7 +541,7 @@ func TestEmptyTargetsResponsePreservesArray(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		done <- ServeConnection(context.Background(), server, Config{PluginID: "plugin", Grants: Grants{CanRead: true, CanWrite: true}}, &fakeHandler{targets: []rcisock.Target{}})
+		done <- ServeConnection(context.Background(), server, Config{PluginID: "plugin", Grants: Grants{CanRead: true, CanWrite: true}, Logger: socketTestLogger()}, &fakeHandler{targets: []rcisock.Target{}})
 	}()
 
 	writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "plugin", "proto": 1}})
@@ -580,6 +586,7 @@ func TestStalledWriterHonorsWriteDeadline(t *testing.T) {
 		done <- ServeConnection(context.Background(), connection, Config{
 			PluginID:    "plugin",
 			Grants:      Grants{CanRead: true, CanWrite: true},
+			Logger:      socketTestLogger(),
 			IdleTimeout: 20 * time.Millisecond,
 		}, &fakeHandler{response: proxy.Response{Status: 200, Body: []byte(`{"ok":true}`)}})
 	}()

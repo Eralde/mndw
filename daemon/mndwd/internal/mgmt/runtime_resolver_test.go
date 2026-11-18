@@ -103,7 +103,7 @@ func TestRuntimeResolverAbsentUsesStoreFallback(t *testing.T) {
 func TestRestartUsesExplicitRuntimeResolver(t *testing.T) {
 	resolver := &testRuntimeResolver{ok: true}
 	handler, store := newRuntimeResolverTestHandler(t, resolver)
-	resolved, ok := registry.NewWithLogger(store, "/user/plugins", "", nil).Resolve("svc")
+	resolved, ok := registry.NewWithLogger(store, "/user/plugins", "", discardLogger()).Resolve("svc")
 
 	if !ok {
 		t.Fatal("registry did not resolve seeded service")

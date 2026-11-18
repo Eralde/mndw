@@ -94,6 +94,10 @@ func (r *ExecRunner) Serve(ctx context.Context, request ExecRequest, writer http
 func ownProcessID() int { return os.Getpid() }
 
 func NewSupervisor(cfg SupervisorConfig) *Supervisor {
+	if cfg.Logger == nil {
+		cfg.Logger = backendTestLogger()
+	}
+
 	cfg = cfg.withDefaults()
 
 	return newSupervisor(cfg, NewAdmission(cfg.Limits))

@@ -261,6 +261,7 @@ func testSupervisorConfig(t *testing.T) SupervisorConfig {
 		RuntimeRoot:        t.TempDir(),
 		SupportedProtocols: []int{1},
 		Limits:             Limits{MaxSupervisedServices: 4},
+		Logger:             backendTestLogger(),
 	}).withDefaults()
 }
 
@@ -281,6 +282,10 @@ func containsID(ids []string, want string) bool {
 func TestSupervisorConfigAppliesDefaults(t *testing.T) {
 	now := func() time.Time { return time.Unix(123, 0) }
 	cfg := (SupervisorConfig{Now: now}).withDefaults()
+
+	if cfg.Logger == nil {
+		t.Fatal("Logger = nil, want discard logger")
+	}
 
 	if cfg.Limits.MaxSupervisedServices != 8 {
 		t.Fatalf("MaxSupervisedServices = %d, want 8", cfg.Limits.MaxSupervisedServices)
@@ -525,7 +530,7 @@ func TestRecordFailureDelaysAndCutoff(t *testing.T) {
 func TestTransitionFailureLockedBackoffProgression(t *testing.T) {
 	base := time.Unix(1_000, 0)
 	supervisor := newSupervisor(
-		(SupervisorConfig{Now: func() time.Time { return base }}).withDefaults(),
+		(SupervisorConfig{Now: func() time.Time { return base }, Logger: backendTestLogger()}).withDefaults(),
 		NewAdmission(Limits{MaxSupervisedServices: 1}),
 	)
 	record := setSupervisorServiceRecordForTest(supervisor, "svc", &serviceRecord{status: RuntimeStatus{State: StateStarting}})
@@ -579,7 +584,7 @@ func TestTransitionFailureLockedBackoffProgression(t *testing.T) {
 
 func TestTransitionFailureLockedRecordsExitAndError(t *testing.T) {
 	supervisor := newSupervisor(
-		(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }}).withDefaults(),
+		(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }, Logger: backendTestLogger()}).withDefaults(),
 		NewAdmission(Limits{MaxSupervisedServices: 1}),
 	)
 	record := setSupervisorServiceRecordForTest(supervisor, "svc", &serviceRecord{status: RuntimeStatus{State: StateReady, ConsecutiveFailures: 0}})
@@ -601,7 +606,7 @@ func TestTransitionFailureLockedRecordsExitAndError(t *testing.T) {
 
 func TestPlanStartIncompatibleWithoutRuntimeIsNoop(t *testing.T) {
 	supervisor := newSupervisor(
-		(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }, SupportedProtocols: []int{1}}).withDefaults(),
+		(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }, SupportedProtocols: []int{1}, Logger: backendTestLogger()}).withDefaults(),
 		NewAdmission(Limits{MaxSupervisedServices: 1}),
 	)
 	paths, err := NewRuntimePaths(t.TempDir(), "svc")
@@ -628,7 +633,7 @@ func TestPlanStartIncompatibleWithoutRuntimeIsNoop(t *testing.T) {
 
 func TestPlanStartCapacityBlocked(t *testing.T) {
 	supervisor := newSupervisor(
-		(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }, SupportedProtocols: []int{1}, Limits: Limits{MaxSupervisedServices: 1}}).withDefaults(),
+		(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }, SupportedProtocols: []int{1}, Limits: Limits{MaxSupervisedServices: 1}, Logger: backendTestLogger()}).withDefaults(),
 		NewAdmission(Limits{MaxSupervisedServices: 1}),
 	)
 
@@ -696,7 +701,7 @@ func TestRecentStderrSurvivesExit(t *testing.T) {
 
 func TestPlanStartProceedReservesAndMarksStarting(t *testing.T) {
 	supervisor := newSupervisor(
-		(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }, SupportedProtocols: []int{1}, Limits: Limits{MaxSupervisedServices: 2}}).withDefaults(),
+		(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }, SupportedProtocols: []int{1}, Limits: Limits{MaxSupervisedServices: 2}, Logger: backendTestLogger()}).withDefaults(),
 		NewAdmission(Limits{MaxSupervisedServices: 2}),
 	)
 	paths, err := NewRuntimePaths(t.TempDir(), "svc")
@@ -718,7 +723,7 @@ func TestPlanStartProceedReservesAndMarksStarting(t *testing.T) {
 func TestPlanStartBackoffNotElapsedIsNoop(t *testing.T) {
 	now := time.Unix(1_000, 0)
 	supervisor := newSupervisor(
-		(SupervisorConfig{Now: func() time.Time { return now }, SupportedProtocols: []int{1}, Limits: Limits{MaxSupervisedServices: 1}}).withDefaults(),
+		(SupervisorConfig{Now: func() time.Time { return now }, SupportedProtocols: []int{1}, Limits: Limits{MaxSupervisedServices: 1}, Logger: backendTestLogger()}).withDefaults(),
 		NewAdmission(Limits{MaxSupervisedServices: 1}),
 	)
 	future := now.Add(5 * time.Second)

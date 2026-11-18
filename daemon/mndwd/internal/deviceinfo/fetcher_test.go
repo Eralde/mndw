@@ -26,6 +26,16 @@ func newIPv4Server(handler http.Handler) *httptest.Server {
 	return server
 }
 
+func discardLogger() *slog.Logger {
+	return slog.New(slog.DiscardHandler)
+}
+
+func TestNewHTTPFetcherRequiresLogger(t *testing.T) {
+	if _, err := NewHTTPFetcher("http://device", nil, FetcherOptions{}); err == nil {
+		t.Fatal("NewHTTPFetcher accepted nil logger")
+	}
+}
+
 func TestHTTPFetcherGetsConstantsAndNormalizesResponse(t *testing.T) {
 	server := newIPv4Server(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodGet || request.URL.Path != "/device/ndmConstants.json" {
@@ -37,7 +47,7 @@ func TestHTTPFetcherGetsConstantsAndNormalizesResponse(t *testing.T) {
 
 	defer server.Close()
 
-	fetcher, err := NewHTTPFetcher(server.URL+"/device/", nil, FetcherOptions{Client: server.Client()})
+	fetcher, err := NewHTTPFetcher(server.URL+"/device/", discardLogger(), FetcherOptions{Client: server.Client()})
 	if err != nil {
 		t.Fatalf("NewHTTPFetcher: %v", err)
 	}
@@ -94,7 +104,7 @@ func TestHTTPFetcherRejectsBodyLargerThanLimit(t *testing.T) {
 
 	defer server.Close()
 
-	fetcher, err := NewHTTPFetcher(server.URL, nil, FetcherOptions{Client: server.Client()})
+	fetcher, err := NewHTTPFetcher(server.URL, discardLogger(), FetcherOptions{Client: server.Client()})
 	if err != nil {
 		t.Fatalf("NewHTTPFetcher: %v", err)
 	}
@@ -115,7 +125,7 @@ func TestHTTPFetcherUsesClientTimeout(t *testing.T) {
 
 	client := server.Client()
 	client.Timeout = 10 * time.Millisecond
-	fetcher, err := NewHTTPFetcher(server.URL, nil, FetcherOptions{Client: client})
+	fetcher, err := NewHTTPFetcher(server.URL, discardLogger(), FetcherOptions{Client: client})
 	if err != nil {
 		t.Fatalf("NewHTTPFetcher: %v", err)
 	}

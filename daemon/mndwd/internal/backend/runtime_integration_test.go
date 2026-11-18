@@ -65,7 +65,7 @@ func TestLinuxRealBackendLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reg := registry.NewWithLogger(store, userDir, "", nil)
+	reg := registry.NewWithLogger(store, userDir, "", backendTestLogger())
 	servicePlugin, ok := reg.Resolve("service")
 
 	if !ok {
@@ -98,7 +98,7 @@ func TestLinuxRealBackendLifecycle(t *testing.T) {
 	waitForServiceState(t, runtime, "service", StateReady, 5*time.Second)
 
 	mux := http.NewServeMux()
-	gateway := NewGateway(GatewayConfig{MaxRequestBytes: 1024, ServiceHTTPTimeout: 2 * time.Second}, reg, nil, runtime, nil)
+	gateway := NewGateway(GatewayConfig{MaxRequestBytes: 1024, ServiceHTTPTimeout: 2 * time.Second}, reg, nil, runtime, backendTestLogger())
 
 	gateway.Register(mux)
 

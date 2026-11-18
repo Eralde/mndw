@@ -38,6 +38,10 @@ const (
 )
 
 func (c Config) withDefaults() Config {
+	if c.Logger == nil {
+		c.Logger = slog.New(slog.DiscardHandler)
+	}
+
 	if c.MaxLineBytes <= 0 {
 		c.MaxLineBytes = 64 * 1024
 	}
@@ -135,9 +139,7 @@ func serveConnection(ctx context.Context, connection net.Conn, config Config, ha
 		return err
 	}
 
-	if config.Logger != nil {
-		config.Logger.Debug("persistent RCI socket hello accepted", "plugin", config.PluginID)
-	}
+	config.Logger.Debug("persistent RCI socket hello accepted", "plugin", config.PluginID)
 
 	semaphore := make(chan struct{}, config.MaxInflight)
 	var workers sync.WaitGroup
@@ -190,9 +192,7 @@ func serveConnection(ctx context.Context, connection net.Conn, config Config, ha
 					return
 				}
 
-				if config.Logger != nil {
-					config.Logger.Debug("persistent RCI targets enumerated", "plugin", config.PluginID, "count", len(targets))
-				}
+				config.Logger.Debug("persistent RCI targets enumerated", "plugin", config.PluginID, "count", len(targets))
 
 				id := frame.ID
 				_ = write(rcisock.ResponseFrame{ID: &id, Targets: targets})
@@ -233,9 +233,7 @@ func serveConnection(ctx context.Context, connection net.Conn, config Config, ha
 				return
 			}
 
-			if config.Logger != nil {
-				config.Logger.Debug("persistent RCI request completed", "plugin", config.PluginID, "target", frame.Target, "method", frame.Method, "path", frame.Path, "status", response.Status)
-			}
+			config.Logger.Debug("persistent RCI request completed", "plugin", config.PluginID, "target", frame.Target, "method", frame.Method, "path", frame.Path, "status", response.Status)
 
 			body := json.RawMessage(response.Body)
 
@@ -302,10 +300,6 @@ func protocolErrorCode(err error) string {
 }
 
 func logRequestError(logger *slog.Logger, message, plugin, code string, attributes ...any) {
-	if logger == nil {
-		return
-	}
-
 	level := slog.LevelWarn
 
 	if code == "no-session-for-target" || code == "unsupported-firmware" {

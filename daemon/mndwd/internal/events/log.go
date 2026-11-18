@@ -65,7 +65,7 @@ type LogPoller struct {
 
 func NewLogPoller(cfg LogPollerConfig) *LogPoller {
 	if cfg.Logger == nil {
-		cfg.Logger = slog.Default()
+		cfg.Logger = slog.New(slog.DiscardHandler)
 	}
 
 	return &LogPoller{
@@ -150,6 +150,10 @@ type logCursor struct {
 }
 
 func NewLogParser(normalizer *Normalizer, location *time.Location, extractors []Extractor, logger *slog.Logger) *LogParser {
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
+
 	if location == nil {
 		location = time.Local
 	}
@@ -177,9 +181,7 @@ func (p *LogParser) Parse(records map[string]RawLogRecord, observedAt time.Time)
 	for rawID, record := range records {
 		id, err := strconv.Atoi(rawID)
 		if err != nil || id < 0 {
-			if p.logger != nil {
-				p.logger.Warn("discarding non-numeric device log id", "id", rawID)
-			}
+			p.logger.Warn("discarding non-numeric device log id", "id", rawID)
 
 			continue
 		}
@@ -268,7 +270,7 @@ func (p *LogParser) Parse(records map[string]RawLogRecord, observedAt time.Time)
 	p.seeded = true
 	p.cursor = logCursor{highID: maxID, sentinelID: sentinelID, sentinelSum: sentinelSum}
 
-	if reset && p.logger != nil {
+	if reset {
 		p.logger.Warn("device log cursor reset", "reason", "generation changed")
 	}
 

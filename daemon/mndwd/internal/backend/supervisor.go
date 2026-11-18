@@ -133,6 +133,10 @@ type pluginRecord struct {
 func (cfg SupervisorConfig) withDefaults() SupervisorConfig {
 	defaults := DefaultLimits()
 
+	if cfg.Logger == nil {
+		cfg.Logger = slog.New(slog.DiscardHandler)
+	}
+
 	if cfg.Limits.MaxConcurrentExecTotal <= 0 {
 		cfg.Limits.MaxConcurrentExecTotal = defaults.MaxConcurrentExecTotal
 	}
@@ -173,6 +177,8 @@ func (cfg SupervisorConfig) withDefaults() SupervisorConfig {
 }
 
 func newSupervisor(cfg SupervisorConfig, admission *Admission) *Supervisor {
+	cfg = cfg.withDefaults()
+
 	supervisor := &Supervisor{
 		cfg:         cfg,
 		admission:   admission,
@@ -700,9 +706,7 @@ func (s *Supervisor) runLifecycleWork(
 			stack := debug.Stack()
 			err = fmt.Errorf("%w: %v", errWorkPanic, recovered)
 
-			if s.cfg.Logger != nil {
-				s.cfg.Logger.Error("lifecycle work panicked", "plugin", run.name, "operation", run.op, "panic", recovered, "stack", string(stack))
-			}
+			s.cfg.Logger.Error("lifecycle work panicked", "plugin", run.name, "operation", run.op, "panic", recovered, "stack", string(stack))
 		}
 	}()
 
@@ -1636,7 +1640,7 @@ func (s *Supervisor) registerServiceProcess(
 		return false
 	}
 
-	if err := writeProcessLease(paths.ServiceLease, process.command.Process.Pid); err != nil && s.cfg.Logger != nil {
+	if err := writeProcessLease(paths.ServiceLease, process.command.Process.Pid); err != nil {
 		s.cfg.Logger.Warn("service lease unavailable", "plugin", pluginID, "error", err)
 	}
 
@@ -2230,7 +2234,7 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseRe
 			if !reaped {
 				stopErr = errors.Join(stopErr, fmt.Errorf("service %q did not exit after kill", pluginID))
 
-				if s.cfg.Logger != nil && process.command != nil && process.command.Process != nil {
+				if process.command != nil && process.command.Process != nil {
 					s.cfg.Logger.Warn("service did not exit after kill", "plugin", pluginID, "pid", process.command.Process.Pid)
 				}
 			}

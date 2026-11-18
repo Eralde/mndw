@@ -33,6 +33,10 @@ type HTTPFetcher struct {
 }
 
 func NewHTTPFetcher(deviceURL string, logger *slog.Logger, options FetcherOptions) (*HTTPFetcher, error) {
+	if logger == nil {
+		return nil, fmt.Errorf("deviceinfo: logger is required")
+	}
+
 	parsed, err := url.Parse(strings.TrimSpace(deviceURL))
 	if err != nil {
 		return nil, fmt.Errorf("parse device URL: %w", err)
@@ -114,7 +118,5 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, cookie string) (Snapshot, error
 }
 
 func (f *HTTPFetcher) logFailure(message string, err error) {
-	if f.logger != nil {
-		f.logger.Warn(message, "error", err)
-	}
+	f.logger.Warn(message, "error", err)
 }

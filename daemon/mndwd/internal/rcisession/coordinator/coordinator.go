@@ -89,6 +89,10 @@ func New(cfg Config) *Coordinator {
 		parent = context.Background()
 	}
 
+	if cfg.Logger == nil {
+		cfg.Logger = slog.New(slog.DiscardHandler)
+	}
+
 	lifetime, cancel := context.WithCancel(parent)
 
 	var enumerator rcisession.Enumerator

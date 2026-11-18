@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"log/slog"
 	"math"
@@ -112,7 +111,7 @@ func NewEngine(cfg Config) *Engine {
 	}
 
 	if cfg.Logger == nil {
-		cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+		cfg.Logger = slog.New(slog.DiscardHandler)
 	}
 
 	return &Engine{cfg: cfg}

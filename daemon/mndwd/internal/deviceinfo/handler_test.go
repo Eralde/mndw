@@ -13,7 +13,7 @@ func TestHandlerReturnsHardwareOnGet(t *testing.T) {
 	store := NewStore(&fakeFetcher{snapshot: Snapshot{Switchports: Switchports{List: []Switchport{{ID: "WAN"}}}, USBPortCount: 1}}, StoreOptions{})
 	mux := http.NewServeMux()
 
-	NewHandler(store, nil).RegisterProtected(mux)
+	NewHandler(store, discardLogger()).RegisterProtected(mux)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/mgmt/device-hardware", nil)
@@ -44,7 +44,7 @@ func TestHandlerReturnsBadGatewayEnvelopeOnStoreFailure(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/mgmt/device-hardware", nil)
 
-	NewHandler(store, nil).handleGet(recorder, request)
+	NewHandler(store, discardLogger()).handleGet(recorder, request)
 
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502", recorder.Code)
@@ -73,7 +73,7 @@ func TestHandlerDoesNotServeNonGetRequests(t *testing.T) {
 	store := NewStore(&fakeFetcher{snapshot: emptySnapshot()}, StoreOptions{})
 	mux := http.NewServeMux()
 
-	NewHandler(store, nil).RegisterProtected(mux)
+	NewHandler(store, discardLogger()).RegisterProtected(mux)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/mgmt/device-hardware", nil)

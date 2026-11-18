@@ -25,6 +25,12 @@ func newIPv4Server(handler http.Handler) *httptest.Server {
 	return server
 }
 
+func TestNewRequiresLogger(t *testing.T) {
+	if _, err := New("http://device", nil); err == nil {
+		t.Fatal("New accepted nil logger")
+	}
+}
+
 func TestProxyRewritesHostAndPreservesPath(t *testing.T) {
 	var gotHost, gotPath string
 	device := newIPv4Server(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

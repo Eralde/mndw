@@ -245,7 +245,7 @@ func TestStatusHandlerAuthenticatesBeforeResolutionAndSanitizesResponse(t *testi
 	statusTestStoreBackendless(t, store, "backendless")
 
 	auth := &statusTestAuthenticator{err: httpx.NewError(http.StatusUnauthorized, httpx.CodeUnauthorized, "unauthorized")}
-	gateway := NewGateway(GatewayConfig{}, registry, auth, nil, nil)
+	gateway := NewGateway(GatewayConfig{}, registry, auth, nil, backendTestLogger())
 	mux := http.NewServeMux()
 
 	gateway.Register(mux)
@@ -304,7 +304,7 @@ func statusTestRegistry(t *testing.T) (*registry.Registry, *state.Store) {
 		t.Fatalf("open status registry: %v", err)
 	}
 
-	return registry.NewWithLogger(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"), nil), store
+	return registry.NewWithLogger(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"), backendTestLogger()), store
 }
 
 func statusTestStorePlugin(t *testing.T, store *state.Store, plugin *registry.Plugin) {

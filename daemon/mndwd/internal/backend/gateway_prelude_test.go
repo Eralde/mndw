@@ -96,14 +96,14 @@ func newPreludeGatewayWithConfig(t *testing.T, auth Authenticator, cfg GatewayCo
 		t.Fatalf("seed plugin: %v", err)
 	}
 
-	reg := registry.NewWithLogger(store, userDir, builtinDir, nil)
+	reg := registry.NewWithLogger(store, userDir, builtinDir, backendTestLogger())
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 
 	if len(runtimes) > 0 {
 		runtime = runtimes[0]
 	}
 
-	return NewGateway(cfg, reg, auth, runtime, nil)
+	return NewGateway(cfg, reg, auth, runtime, backendTestLogger())
 }
 
 // gateRequest builds a request with the path values the ServeMux would set.

@@ -248,7 +248,7 @@ func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIn
 		}
 	}
 
-	reg := registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, nil)
+	reg := registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, slog.New(slog.DiscardHandler))
 	activationGates := backend.NewActivationGateRegistry()
 	runtime := backend.NewRuntime(backend.RuntimeConfig{
 		RuntimeRoot:               cfg.PluginRuntimeRoot,

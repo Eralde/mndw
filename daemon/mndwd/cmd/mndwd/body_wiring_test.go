@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -123,7 +124,7 @@ func TestDeviceProxyForwardsBufferedBodyWithContentLength(t *testing.T) {
 
 	t.Cleanup(upstream.Close)
 
-	proxy, err := deviceproxy.New(upstream.URL, nil)
+	proxy, err := deviceproxy.New(upstream.URL, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +193,7 @@ func TestDeviceProxyRejectsOversizedBodiesByPrefix(t *testing.T) {
 
 	t.Cleanup(upstream.Close)
 
-	proxy, err := deviceproxy.New(upstream.URL, nil)
+	proxy, err := deviceproxy.New(upstream.URL, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +246,7 @@ func TestDeviceProxyTimesOutSlowBodyAndClosesConnection(t *testing.T) {
 
 	t.Cleanup(upstream.Close)
 
-	proxy, err := deviceproxy.New(upstream.URL, nil)
+	proxy, err := deviceproxy.New(upstream.URL, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}

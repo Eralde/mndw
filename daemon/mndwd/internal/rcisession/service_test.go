@@ -532,6 +532,10 @@ func (f testRoundTripper) RoundTrip(request *http.Request) (*http.Response, erro
 func newTestService(t *testing.T, cfg ServiceConfig) *Service {
 	t.Helper()
 
+	if cfg.Logger == nil {
+		cfg.Logger = serviceTestLogger()
+	}
+
 	service, err := NewService(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -541,7 +545,7 @@ func newTestService(t *testing.T, cfg ServiceConfig) *Service {
 }
 
 func TestNewServiceRequiresStore(t *testing.T) {
-	if _, err := NewService(ServiceConfig{}); err == nil {
+	if _, err := NewService(ServiceConfig{Logger: serviceTestLogger()}); err == nil {
 		t.Fatal("NewService without store returned no error")
 	}
 }
@@ -549,7 +553,7 @@ func TestNewServiceRequiresStore(t *testing.T) {
 func TestNewServiceRejectsInvalidControllerURL(t *testing.T) {
 	for _, controllerURL := range []string{"ftp://192.0.2.1", "http://192.0.2.1/path"} {
 		t.Run(controllerURL, func(t *testing.T) {
-			if _, err := NewService(ServiceConfig{Store: &testServiceStore{}, ControllerURL: controllerURL}); err == nil {
+			if _, err := NewService(ServiceConfig{Store: &testServiceStore{}, ControllerURL: controllerURL, Logger: serviceTestLogger()}); err == nil {
 				t.Fatalf("NewService accepted controller URL %q", controllerURL)
 			}
 		})

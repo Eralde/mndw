@@ -181,7 +181,7 @@ func (r *RuntimeImpl) executeDesiredStartup(spec ServiceSpec) {
 			return r.supervisor.startDesiredService(outcome.token, spec)
 		}, outcome)
 
-	if err != nil && !errors.Is(err, errSuperseded) && !errors.Is(err, ErrLifecycleConflict) && r.logger != nil {
+	if err != nil && !errors.Is(err, errSuperseded) && !errors.Is(err, ErrLifecycleConflict) {
 		r.logger.Warn("service retry deferred", "plugin", spec.PluginID, "error", err)
 	}
 }
@@ -198,7 +198,7 @@ func (r *RuntimeImpl) executeReconcileStop(pluginID string, remove bool) {
 	err := r.ExecuteLifecycle(pluginID, op, intent,
 		func(_ context.Context, control LifecycleControl) error { return control.StopService() })
 
-	if err != nil && !errors.Is(err, errSuperseded) && !errors.Is(err, ErrLifecycleConflict) && r.logger != nil {
+	if err != nil && !errors.Is(err, errSuperseded) && !errors.Is(err, ErrLifecycleConflict) {
 		r.logger.Warn("service stop deferred", "plugin", pluginID, "error", err)
 	}
 }

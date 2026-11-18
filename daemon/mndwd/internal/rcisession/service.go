@@ -88,6 +88,10 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		return nil, errors.New("rcisession: Store is required")
 	}
 
+	if cfg.Logger == nil {
+		cfg.Logger = slog.New(slog.DiscardHandler)
+	}
+
 	controllerURL := cfg.ControllerURL
 
 	if controllerURL == "" {
@@ -395,9 +399,7 @@ func (s *Service) Targets(ctx context.Context) ([]rcisock.Target, error) {
 }
 
 func (s *Service) notifyMutation(reason string) {
-	if logger := s.logger; logger != nil {
-		logger.Info("persistent RCI session mutation", "reason", reason)
-	}
+	s.logger.Info("persistent RCI session mutation", "reason", reason)
 
 	s.mu.RLock()
 

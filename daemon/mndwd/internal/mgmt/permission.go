@@ -111,7 +111,7 @@ func (h *Handler) reconcilePermission(plugin, reason string) {
 		return
 	}
 
-	if err := h.permissionController.PermissionChanged(plugin); err != nil && h.logger != nil {
+	if err := h.permissionController.PermissionChanged(plugin); err != nil {
 		h.logger.Warn("persistent RCI socket reconciliation failed", "plugin", plugin, "reason", reason)
 	}
 }

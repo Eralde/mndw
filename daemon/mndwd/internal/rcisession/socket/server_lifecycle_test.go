@@ -19,7 +19,7 @@ import (
 
 func TestServerCreatesAndRemovesSocket(t *testing.T) {
 	path := shortSocketPath(t)
-	server := NewServer(path, Config{PluginID: "mws-page", Grants: Grants{CanRead: true, CanWrite: true}}, &fakeHandler{})
+	server := NewServer(path, Config{PluginID: "mws-page", Grants: Grants{CanRead: true, CanWrite: true}, Logger: socketTestLogger()}, &fakeHandler{})
 
 	if err := server.Start(context.Background()); err != nil {
 		skipSocketEnvironment(t, err)
@@ -49,7 +49,7 @@ func TestServerRefusesLiveListener(t *testing.T) {
 
 	defer listener.Close()
 
-	server := NewServer(path, Config{PluginID: "mws-page", Grants: Grants{CanRead: true, CanWrite: true}}, &fakeHandler{})
+	server := NewServer(path, Config{PluginID: "mws-page", Grants: Grants{CanRead: true, CanWrite: true}, Logger: socketTestLogger()}, &fakeHandler{})
 
 	if err := server.Start(context.Background()); err == nil {
 		t.Fatal("Start stole live Unix listener")
@@ -66,7 +66,7 @@ func TestServerRecoversRefusedStaleSocket(t *testing.T) {
 
 	listener.Close()
 
-	server := NewServer(path, Config{PluginID: "mws-page", Grants: Grants{CanRead: true, CanWrite: true}}, &fakeHandler{})
+	server := NewServer(path, Config{PluginID: "mws-page", Grants: Grants{CanRead: true, CanWrite: true}, Logger: socketTestLogger()}, &fakeHandler{})
 
 	if err := server.Start(context.Background()); err != nil {
 		skipSocketEnvironment(t, err)
@@ -83,7 +83,7 @@ func TestServerRecoversRefusedStaleSocket(t *testing.T) {
 func TestServerClosesConnectionAcceptedDuringShutdown(t *testing.T) {
 	path := shortSocketPath(t)
 	listener := newLateAcceptListener()
-	server := NewServer(path, Config{PluginID: "mws-page", Grants: Grants{CanRead: true, CanWrite: true}}, &fakeHandler{})
+	server := NewServer(path, Config{PluginID: "mws-page", Grants: Grants{CanRead: true, CanWrite: true}, Logger: socketTestLogger()}, &fakeHandler{})
 	ctx, cancel := context.WithCancel(context.Background())
 
 	defer cancel()
@@ -147,7 +147,7 @@ func TestAcceptLoopBackoffGrowsCapsAndResetsAfterAccept(t *testing.T) {
 		acceptResult{err: net.ErrClosed},
 	)
 	listener := &scriptedListener{results: results}
-	server := NewServer("", Config{PluginID: "test", Grants: Grants{CanRead: true, CanWrite: true}}, &fakeHandler{})
+	server := NewServer("", Config{PluginID: "test", Grants: Grants{CanRead: true, CanWrite: true}, Logger: socketTestLogger()}, &fakeHandler{})
 	delays := make([]time.Duration, 0, 11)
 	server.waitForRetry = func(_ context.Context, delay time.Duration) bool {
 		delays = append(delays, delay)
@@ -171,7 +171,7 @@ func TestAcceptLoopBackoffGrowsCapsAndResetsAfterAccept(t *testing.T) {
 }
 
 func TestAcceptLoopStopsOnClosedListenerWithoutRetry(t *testing.T) {
-	server := NewServer("", Config{PluginID: "test", Grants: Grants{CanRead: true, CanWrite: true}}, &fakeHandler{})
+	server := NewServer("", Config{PluginID: "test", Grants: Grants{CanRead: true, CanWrite: true}, Logger: socketTestLogger()}, &fakeHandler{})
 	retried := false
 	server.waitForRetry = func(context.Context, time.Duration) bool {
 		retried = true
@@ -189,7 +189,7 @@ func TestAcceptLoopStopsOnClosedListenerWithoutRetry(t *testing.T) {
 }
 
 func TestAcceptLoopRetryWaitStopsOnContextCancellation(t *testing.T) {
-	server := NewServer("", Config{PluginID: "test", Grants: Grants{CanRead: true, CanWrite: true}}, &fakeHandler{})
+	server := NewServer("", Config{PluginID: "test", Grants: Grants{CanRead: true, CanWrite: true}, Logger: socketTestLogger()}, &fakeHandler{})
 	retryStarted := make(chan struct{})
 	var retrySignal sync.Once
 	server.waitForRetry = func(ctx context.Context, _ time.Duration) bool {
@@ -256,6 +256,7 @@ func TestServerCloseUnlinksBeforeBoundedDrain(t *testing.T) {
 	server := NewServer(path, Config{
 		PluginID:     "mws-page",
 		Grants:       Grants{CanRead: true, CanWrite: true},
+		Logger:       socketTestLogger(),
 		DrainTimeout: 25 * time.Millisecond,
 	}, handler)
 

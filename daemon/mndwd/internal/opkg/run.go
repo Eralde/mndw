@@ -48,10 +48,6 @@ func (m *execManager) defaults() {
 
 	defer m.defaultsMu.Unlock()
 
-	if m.logger == nil {
-		m.logger = slog.Default()
-	}
-
 	if m.listsDir == "" {
 		m.listsDir = "/opt/var/opkg-lists/"
 	}

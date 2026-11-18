@@ -25,7 +25,7 @@ func TestStorageMonitorThresholdTransitions(t *testing.T) {
 
 	available := StorageLowThreshold - 1
 	normalizer := NewNormalizer(func() time.Time { return time.UnixMilli(1) }, func(time.Time) string { return "01J5KZ00000000000000000000" })
-	monitor := NewStorageMonitor("/opt", func(string) (uint64, error) { return available, nil }, NewInternalPublisher(bus, normalizer), nil)
+	monitor := NewStorageMonitor("/opt", func(string) (uint64, error) { return available, nil }, NewInternalPublisher(bus, normalizer), eventsTestLogger())
 
 	monitor.Check()
 	monitor.Check()
@@ -77,7 +77,7 @@ func TestStorageMonitorIgnoresFailedChecks(t *testing.T) {
 
 	defer subscription.Cancel()
 
-	monitor := NewStorageMonitor("/opt", func(string) (uint64, error) { return 0, errors.New("stat failed") }, nil, nil)
+	monitor := NewStorageMonitor("/opt", func(string) (uint64, error) { return 0, errors.New("stat failed") }, nil, eventsTestLogger())
 
 	monitor.Check()
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"io/fs"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
@@ -134,6 +135,7 @@ func testConfig(fsys *ringtest.MemFS, clock *fakeClock, source *fakeNTP, publish
 		Publish: publisher.publish,
 		Keeper:  timekeeper.DefaultConfig(),
 		Delay:   10 * time.Second,
+		Logger:  slog.New(slog.DiscardHandler),
 	}
 }
 

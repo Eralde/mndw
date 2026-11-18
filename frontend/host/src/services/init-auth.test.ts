@@ -110,9 +110,17 @@ describe('initAuthenticated', () => {
       registry: expect.anything(),
     }));
     expect(setupSandboxHmr).toHaveBeenCalledTimes(1);
+
+    const hmrRunGuard = vi.mocked(setupSandboxHmr).mock.calls[0]?.[3];
+
+    expect(hmrRunGuard?.()).toBe(true);
     expect(loadPlugins).not.toHaveBeenCalled();
     expect(createAppRouter).toHaveBeenCalledTimes(1);
     expect(appState.ready).toBe(true);
+
+    await initAuthenticated(testHostServices());
+
+    expect(hmrRunGuard?.()).toBe(false);
   });
 
   it('loads URL sandbox modules and wires URL HMR in the prebuilt dev host', async () => {
@@ -181,9 +189,11 @@ describe('initAuthenticated', () => {
     const newerHostInfo = {locale: 'ru', theme: 'light' as const};
 
     vi.mocked(fetchHostInfo)
-      .mockImplementationOnce(() => new Promise((resolve) => {
-        finishFirstHostInfo = resolve;
-      }))
+      .mockImplementationOnce(() =>
+        new Promise((resolve) => {
+          finishFirstHostInfo = resolve;
+        })
+      )
       .mockResolvedValueOnce(newerHostInfo);
 
     const services = testHostServices();
@@ -232,8 +242,10 @@ describe('initAuthenticated', () => {
 
   it('still creates the router when the loader records a list failure', async () => {
     // loadPlugins captures list failures internally and resolves; startup must proceed.
-    vi.mocked(loadPlugins).mockImplementation(async () => {
+    vi.mocked(loadPlugins).mockImplementation(() => {
       appState.pluginLoadError = 'list';
+
+      return Promise.resolve();
     });
 
     await initAuthenticated(testHostServices());

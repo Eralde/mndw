@@ -5,9 +5,10 @@ vi.mock('./sandbox-loader.js', () => ({
   reloadSandboxPlugin: vi.fn(() => Promise.resolve('reloaded')),
 }));
 
-import {type SandboxImports, reloadSandboxPlugin} from './sandbox-loader.js';
+import {type SandboxImports, type SandboxLoaderDeps, reloadSandboxPlugin} from './sandbox-loader.js';
 import {setupSandboxHmr} from './sandbox-virtual.js';
 import {createHostServices} from '../host-services.js';
+import {beginAuthRun, getAuthRunGeneration, resetToLogin} from '../state/app.svelte.js';
 
 interface FakeHot {
   callbacks: Record<string, (module: unknown) => void>;
@@ -33,6 +34,15 @@ function baseImports(previousPlugin: unknown, previousManifest: {default?: unkno
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
+}
+
+function deferred<T>(): {promise: Promise<T>; resolve: (value: T) => void} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+
+  return {promise, resolve};
 }
 
 afterEach(() => {
@@ -109,5 +119,49 @@ describe('setupSandboxHmr', () => {
 
     await expect(imports.importPluginModule()).resolves.toBe(freshPlugin);
     await expect(imports.importManifestModule()).resolves.toBe(previousManifest);
+  });
+
+  it('keeps HMR guarded by its auth run across logout and re-login', async () => {
+    const hot = fakeHot();
+    const services = createHostServices();
+    const oldRun = beginAuthRun();
+    const isOldRunCurrent = (): boolean => oldRun === getAuthRunGeneration();
+    const pluginImport = deferred<unknown>();
+    const importStarted = deferred<void>();
+    const reloadStarted = deferred<SandboxLoaderDeps>();
+    const reloadFinished = deferred<void>();
+    let staleCommit = false;
+    const imports: SandboxImports = {
+      importPluginModule: () => {
+        importStarted.resolve();
+
+        return pluginImport.promise;
+      },
+      importManifestModule: () => Promise.resolve({default: {name: 'fresh'}}),
+    };
+
+    vi.mocked(reloadSandboxPlugin).mockImplementation(async (deps) => {
+      reloadStarted.resolve(deps);
+      await deps.importPluginModule();
+      staleCommit = deps.isCurrent?.() !== false;
+      reloadFinished.resolve();
+
+      return 'reloaded';
+    });
+
+    setupSandboxHmr(services, hot as never, imports, isOldRunCurrent);
+    hot.callbacks['virtual:sandbox-manifest']?.({default: {name: 'fresh'}});
+
+    const reloadDeps = await reloadStarted.promise;
+
+    await importStarted.promise;
+
+    resetToLogin();
+    beginAuthRun();
+    pluginImport.resolve({createInstance: vi.fn()});
+    await reloadFinished.promise;
+
+    expect(reloadDeps.isCurrent?.()).toBe(false);
+    expect(staleCommit).toBe(false);
   });
 });

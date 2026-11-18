@@ -1,9 +1,18 @@
 import type {MndwPlugin} from '@mndw/sdk';
 import {type PluginManifest, validateManifest} from '@mndw/sdk-internal';
 import {type PluginCatalogService, createPluginCatalogSource} from '../services/plugin-catalog.service.js';
+import {appState} from '../state/app.svelte.js';
+import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import type {LoadedPlugin} from './plugin-registry.js';
 import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
 import type {PluginContextServices} from './plugin-context.js';
+import {
+  applyPluginListSnapshot,
+  getPluginLoadState,
+  replacePluginLoadStates,
+  setPluginLoadListOutcome,
+  setPluginLoadState,
+} from './plugin-load-state.svelte.js';
 
 /** Window event the sandbox HMR transaction dispatches so the active page host remounts. */
 export const SANDBOX_RELOAD_EVENT = 'mndw:sandbox-reloaded';
@@ -27,6 +36,7 @@ export interface SandboxRegistry {
   register(plugin: LoadedPlugin): void;
   replace(plugin: LoadedPlugin): LoadedPlugin;
   get(name: string): LoadedPlugin | undefined;
+  clear(): void;
 }
 
 /**
@@ -121,23 +131,29 @@ export function manifestToListEntry(manifest: PluginManifest, catalogBaseUrl?: s
   return {...base, type: 'page', route: manifest.route};
 }
 
-async function buildLoadedPlugin(deps: SandboxLoaderDeps): Promise<LoadedPlugin> {
-  const module = validateModule(await deps.importPluginModule());
-  const manifestModule = await deps.importManifestModule();
+async function buildLoadedPlugin(deps: SandboxLoaderDeps, knownEntry?: PluginListEntry): Promise<LoadedPlugin> {
+  let entry = knownEntry;
 
-  if (manifestModule.default === undefined || manifestModule.default === null) {
-    throw new Error('Sandbox manifest module has no default export');
+  if (entry === undefined) {
+    const manifestModule = await deps.importManifestModule();
+
+    if (manifestModule.default === undefined || manifestModule.default === null) {
+      throw new Error('Sandbox manifest module has no default export');
+    }
+
+    const manifest = validateManifest(manifestModule.default);
+    const catalogBaseUrl = deps.catalogBaseUrl ?? manifestModule.__catalogBaseUrl;
+
+    entry = manifestToListEntry(manifest, catalogBaseUrl);
   }
 
-  const manifest = validateManifest(manifestModule.default);
-  const catalogBaseUrl = deps.catalogBaseUrl ?? manifestModule.__catalogBaseUrl;
-  const entry = manifestToListEntry(manifest, catalogBaseUrl);
+  const module = validateModule(await deps.importPluginModule());
   const catalogService = deps.catalogService;
   const localeOf = deps.getLocale;
   const source = createPluginCatalogSource(
     entry.name,
     entry.version,
-    catalogBaseUrl ?? `/plugins/${entry.name}`,
+    entry.catalogBaseUrl ?? `/plugins/${entry.name}`,
     entry.i18n,
   );
   const catalog = source === undefined ? undefined : catalogService.createPluginCatalogCell(source, localeOf());
@@ -149,27 +165,165 @@ async function buildLoadedPlugin(deps: SandboxLoaderDeps): Promise<LoadedPlugin>
   return {entry, module, ...(catalog === undefined ? {} : {catalog})};
 }
 
+interface ActiveSandboxRun {
+  deps: SandboxLoaderDeps;
+  entry: PluginListEntry;
+  isCurrent: () => boolean;
+}
+
+let activeSandboxRun: ActiveSandboxRun | undefined;
+let sandboxOperationToken = 0;
+const sandboxRetryPromises = new Map<string, Promise<boolean>>();
+
+function claimSandboxOperation(): number {
+  sandboxOperationToken += 1;
+
+  return sandboxOperationToken;
+}
+
+function ownsSandboxOperation(token: number, isCurrent: () => boolean): boolean {
+  return token === sandboxOperationToken && isCurrent();
+}
+
 /**
- * Sandbox-mode counterpart to {@link loadPlugins}: imports the single plugin under
- * development through the Vite virtual modules, validates its module and manifest, and
- * registers it. A missing/invalid module or manifest is logged and nothing is registered —
- * never a placeholder plugin masking the authoring error.
+ * Sandbox-mode counterpart to {@link loadPlugins}: its list is the single validated
+ * manifest. Publish that list before importing plugin code so a code failure is represented
+ * by per-plugin load state and remains addable/removable from the dashboard.
  */
 export async function loadSandboxPlugin(deps: SandboxLoaderDeps): Promise<void> {
   const registry = deps.registry;
+  const isCurrent = (): boolean => deps.isCurrent === undefined || deps.isCurrent();
+
+  if (!isCurrent()) {
+    return;
+  }
+
+  const operation = claimSandboxOperation();
+  const ownsOperation = (): boolean => ownsSandboxOperation(operation, isCurrent);
+
+  if (!ownsOperation()) {
+    return;
+  }
+
+  activeSandboxRun = undefined;
+  sandboxRetryPromises.clear();
+  setPluginLoadListOutcome('pending');
+  replacePluginLoadStates([]);
+  replaceDepsStatuses([]);
+  registry.clear();
+
+  let entry: PluginListEntry | undefined;
 
   try {
-    const plugin = await buildLoadedPlugin(deps);
+    const manifestModule = await deps.importManifestModule();
 
-    if (deps.isCurrent !== undefined && !deps.isCurrent()) {
+    if (manifestModule.default === undefined || manifestModule.default === null) {
+      throw new Error('Sandbox manifest module has no default export');
+    }
+
+    const manifest = validateManifest(manifestModule.default);
+
+    entry = manifestToListEntry(manifest, deps.catalogBaseUrl ?? manifestModule.__catalogBaseUrl);
+
+    if (!ownsOperation()) {
+      return;
+    }
+
+    replaceDepsStatuses([entry]);
+    applyPluginListSnapshot([entry]);
+    setPluginLoadListOutcome('ok');
+    appState.pluginLoadError = null;
+
+    const runDeps = {...deps, isCurrent};
+
+    activeSandboxRun = {deps: runDeps, entry, isCurrent};
+
+    const plugin = await buildLoadedPlugin(deps, entry);
+
+    if (!ownsOperation()) {
       return;
     }
 
     registry.register(plugin);
+    setPluginLoadState(entry.name, 'loaded');
     console.log(`[mndw] Sandbox plugin loaded: ${plugin.entry.name}`);
   } catch (err) {
+    if (!ownsOperation()) {
+      return;
+    }
+
+    if (entry === undefined) {
+      appState.pluginLoadError = 'list';
+      setPluginLoadListOutcome('failed');
+    } else {
+      setPluginLoadState(entry.name, 'failed', 'error');
+    }
+
     console.error('[mndw] Failed to load sandbox plugin:', err);
   }
+}
+
+/** Retries a failed sandbox plugin while keeping the already successful manifest list. */
+export async function retrySandboxPlugin(name: string): Promise<boolean> {
+  const run = activeSandboxRun;
+  const state = getPluginLoadState(name);
+
+  if (
+    run?.entry.name !== name
+    || state?.runnable !== true
+    || state.status !== 'failed'
+    || !run.isCurrent()
+  ) {
+    return false;
+  }
+
+  const existing = sandboxRetryPromises.get(name);
+
+  if (existing !== undefined) {
+    return existing;
+  }
+
+  const operation = claimSandboxOperation();
+  const ownsOperation = (): boolean => activeSandboxRun === run && ownsSandboxOperation(operation, run.isCurrent);
+
+  if (!ownsOperation()) {
+    return false;
+  }
+
+  setPluginLoadState(name, 'loading');
+
+  const retry = (async (): Promise<boolean> => {
+    try {
+      const plugin = await buildLoadedPlugin(run.deps, run.entry);
+
+      if (!ownsOperation()) {
+        return false;
+      }
+
+      if (run.deps.registry.get(name) === undefined) {
+        run.deps.registry.register(plugin);
+      }
+
+      setPluginLoadState(name, 'loaded');
+
+      return true;
+    } catch (err) {
+      if (ownsOperation()) {
+        setPluginLoadState(name, 'failed', 'error');
+        console.error('[mndw] Failed to retry sandbox plugin:', err);
+      }
+
+      return false;
+    }
+  })().finally(() => {
+    if (sandboxRetryPromises.get(name) === retry) {
+      sandboxRetryPromises.delete(name);
+    }
+  });
+
+  sandboxRetryPromises.set(name, retry);
+
+  return retry;
 }
 
 /**
@@ -184,14 +338,28 @@ export async function reloadSandboxPlugin(deps: SandboxLoaderDeps): Promise<Sand
   const remountWidgets = deps.remountWidgets ?? defaultRemountWidgets;
   const reloadPage = deps.reloadPage ?? defaultReloadPage;
   const pluginContextServices = deps.pluginContextServices;
+  const isCurrent = deps.isCurrent ?? activeSandboxRun?.isCurrent ?? (() => true);
+  const reloadDeps = deps.isCurrent === undefined ? {...deps, isCurrent} : deps;
+
+  if (!isCurrent()) {
+    return 'failed';
+  }
 
   let candidate: LoadedPlugin;
 
   try {
-    candidate = await buildLoadedPlugin(deps);
+    candidate = await buildLoadedPlugin(reloadDeps);
   } catch (err) {
+    if (!isCurrent()) {
+      return 'failed';
+    }
+
     console.error('[mndw] Sandbox reload rejected (invalid update kept previous plugin):', err);
 
+    return 'failed';
+  }
+
+  if (!isCurrent()) {
     return 'failed';
   }
 
@@ -200,11 +368,32 @@ export async function reloadSandboxPlugin(deps: SandboxLoaderDeps): Promise<Sand
 
   if (prior === undefined) {
     // Never loaded (e.g. the first load failed): treat the update as a fresh load.
+    const operation = claimSandboxOperation();
+    const ownsOperation = (): boolean => ownsSandboxOperation(operation, isCurrent);
+
+    if (!ownsOperation()) {
+      return 'failed';
+    }
+
     registry.register(candidate);
+    replaceDepsStatuses([candidate.entry]);
+    applyPluginListSnapshot([candidate.entry]);
+    setPluginLoadListOutcome('ok');
+    setPluginLoadState(name, 'loaded');
+    appState.pluginLoadError = null;
+    activeSandboxRun = {deps: reloadDeps, entry: candidate.entry, isCurrent};
 
     return 'reloaded';
   }
 
+  const operation = claimSandboxOperation();
+  const ownsOperation = (): boolean => ownsSandboxOperation(operation, isCurrent);
+
+  if (!ownsOperation()) {
+    return 'failed';
+  }
+
+  const priorRun = activeSandboxRun;
   let restored: LoadedPlugin;
 
   try {
@@ -215,19 +404,37 @@ export async function reloadSandboxPlugin(deps: SandboxLoaderDeps): Promise<Sand
     return 'restart-required';
   }
 
+  activeSandboxRun = {deps: reloadDeps, entry: candidate.entry, isCurrent};
+
   try {
     const widgetsOk = await remountWidgets(name, candidate, prior, registry, pluginContextServices);
+
+    if (!ownsOperation()) {
+      return 'failed';
+    }
+
     const pageOk = await reloadPage(name, candidate, prior);
+
+    if (!ownsOperation()) {
+      return 'failed';
+    }
 
     if (!widgetsOk || !pageOk) {
       throw new Error('a widget or page remount reported failure');
     }
 
+    setPluginLoadState(name, 'loaded');
+
     console.log(`[mndw] Sandbox plugin reloaded: ${name}`);
 
     return 'reloaded';
   } catch (err) {
+    if (!ownsOperation()) {
+      return 'failed';
+    }
+
     registry.replace(restored);
+    activeSandboxRun = priorRun;
     console.error(`[mndw] Sandbox reload failed, kept previous plugin "${name}":`, err);
 
     return 'failed';

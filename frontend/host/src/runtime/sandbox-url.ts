@@ -22,8 +22,12 @@ export function sandboxUrlImports(importer: SandboxUrlImporter = defaultImporter
   };
 }
 
-export function setupSandboxUrlHmr(services: HostServices, target: EventTarget = window): void {
-  const updates = scheduleSandboxReload(services, sandboxUrlImports());
+export function setupSandboxUrlHmr(
+  services: HostServices,
+  target: EventTarget = window,
+  isCurrent: () => boolean = () => true,
+): void {
+  const updates = scheduleSandboxReload(services, sandboxUrlImports(), isCurrent);
 
   target.addEventListener(DEV_PLUGIN_UPDATE_EVENT, (event) => {
     updates.plugin((event as CustomEvent<unknown>).detail);

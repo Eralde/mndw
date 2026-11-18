@@ -116,7 +116,7 @@ vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
 import {addWidgetTile, resizeWidgetTile} from './grid-dashboard-setup.js';
 import {destroyAllTiles, ensureTileController, removeTileController} from './tile-controller.js';
 import {loadDashboardLayout, parseWidgetTileId, saveDashboardLayout} from './grid-layout-persistence.js';
-import {pluginRegistry} from '../runtime/plugin-registry.js';
+import {PluginRegistry, pluginRegistry} from '../runtime/plugin-registry.js';
 import {appState} from '../state/app.svelte.js';
 import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {raiseInstanceCounter} from './widget-counter.js';
@@ -136,6 +136,7 @@ import {defaultOverlayRuntime} from '../services/overlay/overlay-manager.svelte.
 import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
 import {toast} from '../services/toast/toast.svelte.js';
+import {loadSandboxPlugin} from '../runtime/sandbox-loader.js';
 
 const overlayHosts: ReturnType<typeof mount>[] = [];
 
@@ -907,6 +908,72 @@ describe('DashboardPage', () => {
           target.querySelector('.mndw-dashboard__toolbar mndw-button'),
         );
       });
+    } finally {
+      await unmount(component);
+      target.remove();
+    }
+  });
+
+  it('adds a sandbox widget after sandbox loading reports a successful list', async () => {
+    vi.stubGlobal('__MNDW_SANDBOX__', 'virtual');
+    setPluginLoadListOutcome('pending');
+
+    const sandboxRegistry = new PluginRegistry();
+    const services = createHostServices();
+
+    await loadSandboxPlugin({
+      importPluginModule: () => Promise.resolve({createInstance: vi.fn()}),
+      importManifestModule: () =>
+        Promise.resolve({default: {
+          manifestVersion: 1,
+          name: 'traffic',
+          version: '0.0.0',
+          type: 'widget',
+          label: 'Traffic',
+          entry: 'index.js',
+          size: {w: 4, h: 3, minW: 2, minH: 2},
+        }}),
+      registry: sandboxRegistry,
+      catalogService: services.catalog,
+      getLocale: () => services.locale.getLocale(),
+      pluginContextServices: {} as never,
+    });
+
+    vi.mocked(pluginRegistry).get.mockImplementation((name: string) => sandboxRegistry.get(name));
+    vi.mocked(pluginRegistry).getWidgets.mockImplementation(() => sandboxRegistry.getWidgets());
+    vi.mocked(addWidgetTile).mockImplementation(() => {
+      gridHandlers.get('added')?.(new Event('added'));
+
+      return 'widget-traffic:1';
+    });
+
+    const {component, target} = mountPage();
+
+    try {
+      expect(getPluginLoadListOutcome()).toBe('ok');
+
+      const addButton = [...target.querySelectorAll('mndw-button')].find(
+        (button) => button.textContent?.includes('Add widget'),
+      );
+
+      addButton?.click();
+      flushSync();
+
+      const pickerButton = [...document.querySelectorAll('.mndw-floating-panel mndw-button')].find(
+        (button) => button.textContent?.trim() === 'Traffic',
+      ) as HTMLButtonElement | undefined;
+
+      pickerButton?.click();
+      flushSync();
+
+      expect(addWidgetTile).toHaveBeenCalledWith(
+        expect.anything(),
+        pluginRegistry,
+        fakeGrid,
+        'traffic',
+        expect.any(Function),
+      );
+      expect(saveDashboardLayout).toHaveBeenCalled();
     } finally {
       await unmount(component);
       target.remove();

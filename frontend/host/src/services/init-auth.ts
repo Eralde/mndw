@@ -18,7 +18,7 @@ export interface InitAuthDeps {
   preservePluginLoadError?: boolean;
   loadPlugins?: (deps: LoaderDeps) => Promise<void>;
   loadSandboxPlugin?: (deps: SandboxLoaderDeps) => Promise<void>;
-  setupHmr?: (services: HostServices) => void;
+  setupHmr?: (services: HostServices, isCurrent: () => boolean) => void;
   createRouter?: (registry: Pick<PluginRegistry, 'getPages'>) => void;
 }
 
@@ -81,7 +81,8 @@ export async function initAuthenticated(
 
     if (isSandboxMode()) {
       let sandboxImports = sandboxVirtualImports;
-      let setupHmr: (services: HostServices) => void = deps.setupHmr ?? setupSandboxHmr;
+      let setupHmr: (services: HostServices, isCurrent: () => boolean) => void = deps.setupHmr
+        ?? ((hostServices, isRunCurrent) => setupSandboxHmr(hostServices, undefined, undefined, isRunCurrent));
 
       if (__MNDW_SANDBOX__ === 'url') {
         const sandboxUrl = await import('../runtime/sandbox-url.js');
@@ -91,7 +92,8 @@ export async function initAuthenticated(
         }
 
         sandboxImports = sandboxUrl.sandboxUrlImports();
-        setupHmr = deps.setupHmr ?? sandboxUrl.setupSandboxUrlHmr;
+        setupHmr = deps.setupHmr
+          ?? ((hostServices, isRunCurrent) => sandboxUrl.setupSandboxUrlHmr(hostServices, undefined, isRunCurrent));
       }
 
       await loadSandboxPluginFn({
@@ -114,7 +116,7 @@ export async function initAuthenticated(
         return;
       }
 
-      setupHmr(services);
+      setupHmr(services, isCurrent);
     } else {
       await loadPluginsFn({
         registry: services.registry,

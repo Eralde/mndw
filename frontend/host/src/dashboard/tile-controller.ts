@@ -4,6 +4,7 @@ import type {OverlayTeardownReason} from '../runtime/plugin-lifecycle.js';
 import {type LoadedPlugin, type PluginRegistry} from '../runtime/plugin-registry.js';
 import {getPluginLoadState} from '../runtime/plugin-load-state.svelte.js';
 import {retryPluginLoad} from '../runtime/plugin-loader.js';
+import {retrySandboxPlugin} from '../runtime/sandbox-loader.js';
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus} from '../state/deps-status.svelte.js';
 import {hostT} from '../services/locale.service.js';
@@ -132,7 +133,14 @@ async function retryFailedPlugin(controller: TileController): Promise<void> {
   controller.retrying = true;
 
   try {
-    await retryPluginLoad(controller.pluginName);
+    if (
+      typeof __MNDW_SANDBOX__ !== 'undefined'
+      && (__MNDW_SANDBOX__ === 'virtual' || __MNDW_SANDBOX__ === 'url')
+    ) {
+      await retrySandboxPlugin(controller.pluginName);
+    } else {
+      await retryPluginLoad(controller.pluginName);
+    }
   } finally {
     controller.retrying = false;
   }

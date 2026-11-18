@@ -34,7 +34,11 @@ export interface SandboxReloadScheduler {
 }
 
 /** Batches plugin and manifest updates into the existing transactional reload path. */
-export function scheduleSandboxReload(services: HostServices, imports: SandboxImports): SandboxReloadScheduler {
+export function scheduleSandboxReload(
+  services: HostServices,
+  imports: SandboxImports,
+  isCurrent: () => boolean = () => true,
+): SandboxReloadScheduler {
   let pendingPlugin = pendingModule();
   let pendingManifest = pendingModule();
   let reloadScheduled = false;
@@ -71,6 +75,7 @@ export function scheduleSandboxReload(services: HostServices, imports: SandboxIm
             registry: services.registry,
             catalogService: services.catalog,
             getLocale: () => services.locale.getLocale(),
+            isCurrent,
             pluginContextServices: {
               locale: services.locale,
               palette: services.palette,
@@ -104,12 +109,13 @@ export function setupSandboxHmr(
   services: HostServices,
   hot: NonNullable<ImportMeta['hot']> | undefined = import.meta.hot,
   imports: SandboxImports = sandboxVirtualImports,
+  isCurrent: () => boolean = () => true,
 ): void {
   if (hot === undefined) {
     return;
   }
 
-  const updates = scheduleSandboxReload(services, imports);
+  const updates = scheduleSandboxReload(services, imports, isCurrent);
 
   hot.accept('virtual:sandbox-plugin', (module) => {
     updates.plugin(module);

@@ -1,9 +1,23 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {type LoadedPlugin, PluginRegistry} from './plugin-registry.js';
-import {type SandboxLoaderDeps, loadSandboxPlugin, manifestToListEntry, reloadSandboxPlugin} from './sandbox-loader.js';
+import {
+  type SandboxLoaderDeps,
+  loadSandboxPlugin,
+  manifestToListEntry,
+  reloadSandboxPlugin,
+  retrySandboxPlugin,
+} from './sandbox-loader.js';
 import {createPluginCatalogService} from '../services/plugin-catalog.service.js';
 import {createHostServices} from '../host-services.js';
+import {getDepsStatus, replaceDepsStatuses} from '../state/deps-status.svelte.js';
+import {
+  applyPluginListSnapshot,
+  getPluginLoadListOutcome,
+  getPluginLoadState,
+  replacePluginLoadStates,
+  setPluginLoadListOutcome,
+} from './plugin-load-state.svelte.js';
 
 const widgetManifest = {
   manifestVersion: 1,
@@ -66,9 +80,15 @@ let errorSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'log').mockImplementation(() => {});
+  replacePluginLoadStates([]);
+  setPluginLoadListOutcome('pending');
+  replaceDepsStatuses([]);
 });
 
 afterEach(() => {
+  replacePluginLoadStates([]);
+  setPluginLoadListOutcome('pending');
+  replaceDepsStatuses([]);
   vi.restoreAllMocks();
 });
 
@@ -115,6 +135,112 @@ describe('manifestToListEntry', () => {
 
     expect(entry.i18n).toEqual({defaultLocale: 'en', locales: {en: 'i18n/en.json'}});
     expect(entry.catalogBaseUrl).toBe('/@fs/repo/plugins/demo');
+  });
+});
+
+describe('loadSandboxPlugin dashboard state', () => {
+  it('publishes a successful single-plugin list and loaded state', async () => {
+    const registry = new PluginRegistry();
+
+    await loadSandboxPlugin(deps({registry}));
+
+    expect(getPluginLoadListOutcome()).toBe('ok');
+    expect(getPluginLoadState('sandbox-widget')).toMatchObject({
+      runnable: true,
+      status: 'loaded',
+      type: 'widget',
+      label: 'Sandbox Widget',
+      size: {w: 4, h: 3, minW: 2, minH: 2},
+    });
+    expect(getDepsStatus('sandbox-widget')).toBe('ready');
+  });
+
+  it('keeps list outcome successful when a valid sandbox plugin module fails to load', async () => {
+    const registry = new PluginRegistry();
+    let module: unknown = {};
+
+    await loadSandboxPlugin(deps({
+      registry,
+      importPluginModule: () => Promise.resolve(module),
+    }));
+
+    expect(getPluginLoadListOutcome()).toBe('ok');
+    expect(getPluginLoadState('sandbox-widget')).toMatchObject({
+      runnable: true,
+      status: 'failed',
+      type: 'widget',
+      label: 'Sandbox Widget',
+    });
+    expect(registry.getAll()).toHaveLength(0);
+
+    module = sandboxModule;
+
+    await expect(retrySandboxPlugin('sandbox-widget')).resolves.toBe(true);
+
+    expect(getPluginLoadState('sandbox-widget')?.status).toBe('loaded');
+    expect(registry.get('sandbox-widget')?.module).toBe(sandboxModule);
+  });
+
+  it('does not let an older retry overwrite a successful HMR commit', async () => {
+    const registry = new PluginRegistry();
+    let rejectRetry: ((error: Error) => void) | undefined;
+    let retryImportStarted!: () => void;
+    const retryStarted = new Promise<void>((resolve) => {
+      retryImportStarted = resolve;
+    });
+    let importCount = 0;
+    const run = deps({
+      registry,
+      importPluginModule: () => {
+        importCount += 1;
+
+        if (importCount === 1) {
+          return Promise.resolve({});
+        }
+
+        return new Promise((_resolve, reject) => {
+          rejectRetry = reject;
+          retryImportStarted();
+        });
+      },
+    });
+
+    await loadSandboxPlugin(run);
+
+    const retry = retrySandboxPlugin('sandbox-widget');
+
+    await retryStarted;
+
+    const hotModule = {createInstance: () => ({unmount: () => {}})};
+    const reload = await reloadSandboxPlugin(deps({
+      registry,
+      importPluginModule: () => Promise.resolve(hotModule),
+    }));
+
+    expect(reload).toBe('reloaded');
+    expect(getPluginLoadState('sandbox-widget')?.status).toBe('loaded');
+
+    rejectRetry?.(new Error('stale retry failed'));
+    await expect(retry).resolves.toBe(false);
+
+    expect(registry.get('sandbox-widget')?.module).toBe(hotModule);
+    expect(getPluginLoadState('sandbox-widget')?.status).toBe('loaded');
+  });
+
+  it('does not reset or publish plugin state for a superseded sandbox run', async () => {
+    const registry = new PluginRegistry();
+
+    applyPluginListSnapshot([manifestToListEntry(widgetManifest as never)]);
+    setPluginLoadListOutcome('failed');
+
+    await loadSandboxPlugin(deps({
+      registry,
+      isCurrent: () => false,
+    }));
+
+    expect(getPluginLoadListOutcome()).toBe('failed');
+    expect(getPluginLoadState('sandbox-widget')).toBeDefined();
+    expect(registry.getAll()).toHaveLength(0);
   });
 });
 
@@ -173,6 +299,8 @@ describe('loadSandboxPlugin', () => {
     }));
 
     expect(registry.getAll()).toHaveLength(0);
+    expect(getPluginLoadListOutcome()).toBe('failed');
+    expect(getPluginLoadState('sandbox-widget')).toBeUndefined();
     expect(errorSpy).toHaveBeenCalled();
   });
 

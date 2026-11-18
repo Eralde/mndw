@@ -4,6 +4,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 const mountWidgetTile = vi.hoisted(() => vi.fn());
 const retryPluginLoad = vi.hoisted(() => vi.fn());
+const retrySandboxPlugin = vi.hoisted(() => vi.fn());
 
 vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('../runtime/plugin-registry.js')>(),
@@ -33,6 +34,7 @@ vi.mock('./widget-context.js', () => ({
 
 vi.mock('./widget-mount.js', () => ({mountWidgetTile}));
 vi.mock('../runtime/plugin-loader.js', () => ({retryPluginLoad}));
+vi.mock('../runtime/sandbox-loader.js', () => ({retrySandboxPlugin}));
 
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
 import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
@@ -156,6 +158,7 @@ describe('tile controller', () => {
     replacePluginLoadStates([]);
     setPluginLoadListOutcome('pending');
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
     document.body.innerHTML = '';
   });
 
@@ -314,6 +317,29 @@ describe('tile controller', () => {
     removeTileController('widget-retry:1');
 
     expect(mountedHandle.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses sandbox retry for failed plugin placeholders in sandbox mode', async () => {
+    vi.stubGlobal('__MNDW_SANDBOX__', 'virtual');
+    replacePluginLoadStates([widgetPlugin('sandbox-retry', noop).entry]);
+    setPluginLoadState('sandbox-retry', 'failed');
+    vi.mocked(pluginRegistry).get.mockReturnValue(undefined);
+
+    const controller = ensureTileController(
+      pluginContextServices,
+      pluginRegistry,
+      'sandbox-retry',
+      'sandbox-retry:1',
+      vi.fn(),
+    );
+    const retryButton = controller?.body.querySelector<HTMLButtonElement>('.mndw-grid-tile__retry');
+
+    retryButton?.click();
+    await Promise.resolve();
+
+    expect(retrySandboxPlugin).toHaveBeenCalledWith('sandbox-retry');
+    expect(retryPluginLoad).not.toHaveBeenCalled();
+    removeTileController('widget-sandbox-retry:1');
   });
 
   it('hydrates concurrent retries once per tile and disposes each mounted handle once', async () => {

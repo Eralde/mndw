@@ -22,7 +22,7 @@ type LifecycleControl interface {
 }
 
 type lifecycleControl struct {
-	runtime *RuntimeImpl
+	runtime *Runtime
 	token   *lifecycleToken
 }
 
@@ -57,7 +57,7 @@ func (c *lifecycleControl) markServiceReady(record *pluginRecord) bool {
 }
 
 // ExecuteLifecycle admits, executes, and terminalizes one plugin lifecycle run.
-func (r *RuntimeImpl) ExecuteLifecycle(
+func (r *Runtime) ExecuteLifecycle(
 	name string,
 	op Operation,
 	intent Intent,
@@ -72,7 +72,7 @@ func (r *RuntimeImpl) ExecuteLifecycle(
 	return r.executeLifecycleOutcome(name, op, work, outcome)
 }
 
-func (r *RuntimeImpl) executeLifecycleOutcome(
+func (r *Runtime) executeLifecycleOutcome(
 	name string,
 	op Operation,
 	work func(context.Context, LifecycleControl) error,
@@ -118,6 +118,6 @@ func (r *RuntimeImpl) executeLifecycleOutcome(
 }
 
 // BlocksTraffic reports whether plugin traffic must remain gated.
-func (r *RuntimeImpl) BlocksTraffic(pluginID string) bool {
+func (r *Runtime) BlocksTraffic(pluginID string) bool {
 	return r.supervisor.blocksTraffic(pluginID)
 }

@@ -361,7 +361,7 @@ func TestBlocksTrafficDoesNotGatePluginsWithoutLifecycleRecord(t *testing.T) {
 	}
 }
 
-func waitForOperation(t *testing.T, runtime *RuntimeImpl, pluginID string, operation Operation) {
+func waitForOperation(t *testing.T, runtime *Runtime, pluginID string, operation Operation) {
 	t.Helper()
 
 	deadline := time.After(time.Second)

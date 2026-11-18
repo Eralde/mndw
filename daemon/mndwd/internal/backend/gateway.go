@@ -54,7 +54,7 @@ type Gateway struct {
 	cfg             GatewayConfig
 	registry        *registry.Registry
 	auth            Authenticator
-	runtime         *RuntimeImpl
+	runtime         *Runtime
 	traffic         *TrafficGate
 	activationGates *ActivationGateRegistry
 	logger          *slog.Logger
@@ -80,7 +80,7 @@ func (cfg GatewayConfig) withDefaults() GatewayConfig {
 	return cfg
 }
 
-func NewGateway(cfg GatewayConfig, registry *registry.Registry, auth Authenticator, runtime *RuntimeImpl, logger *slog.Logger) *Gateway {
+func NewGateway(cfg GatewayConfig, registry *registry.Registry, auth Authenticator, runtime *Runtime, logger *slog.Logger) *Gateway {
 	cfg = cfg.withDefaults()
 
 	if logger == nil {

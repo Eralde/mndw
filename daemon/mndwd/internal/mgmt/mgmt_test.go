@@ -32,6 +32,8 @@ func (emptyBuiltinSource) ListBuiltins() ([]*registry.Plugin, error) {
 
 type passthroughRuntime struct{}
 
+var _ PluginRuntime = (*backend.Runtime)(nil)
+
 type passthroughControl struct{}
 
 func (passthroughControl) StartPlugin(*registry.Plugin) error { return nil }
@@ -39,8 +41,6 @@ func (passthroughControl) StartPlugin(*registry.Plugin) error { return nil }
 func (passthroughControl) StopService() error { return nil }
 
 func (passthroughControl) IsCurrent() bool { return true }
-
-func (passthroughRuntime) Reconcile(context.Context, []*registry.Plugin) {}
 
 func (passthroughRuntime) ExecuteLifecycle(
 	_ string,
@@ -58,10 +58,6 @@ func (passthroughRuntime) Status(string) backend.RuntimeStatus { return backend.
 func (passthroughRuntime) Limits() backend.RuntimeLimitsSnapshot {
 	return backend.RuntimeLimitsSnapshot{SupportedServiceProtocols: []int{}}
 }
-
-func (passthroughRuntime) BeginPlatformMaintenance(context.Context) error { return nil }
-
-func (passthroughRuntime) Shutdown(context.Context) error { return nil }
 
 func TestNewPanicsWithoutRuntime(t *testing.T) {
 	defer func() {
@@ -173,8 +169,6 @@ func (r *lifecycleTestRuntime) ExecuteLifecycle(
 	return err
 }
 
-func (r *lifecycleTestRuntime) Reconcile(context.Context, []*registry.Plugin) {}
-
 func (r *lifecycleTestRuntime) Status(string) backend.RuntimeStatus { return backend.RuntimeStatus{} }
 
 func (r *lifecycleTestRuntime) BlocksTraffic(string) bool { return r.blocked }
@@ -182,10 +176,6 @@ func (r *lifecycleTestRuntime) BlocksTraffic(string) bool { return r.blocked }
 func (r *lifecycleTestRuntime) Limits() backend.RuntimeLimitsSnapshot {
 	return backend.RuntimeLimitsSnapshot{}
 }
-
-func (r *lifecycleTestRuntime) BeginPlatformMaintenance(context.Context) error { return nil }
-
-func (r *lifecycleTestRuntime) Shutdown(context.Context) error { return nil }
 
 func (c *permissionTestController) ControllerPermissionAvailable() bool {
 	return c.available
@@ -261,13 +251,13 @@ func newPermissionServer(t *testing.T, controller PersistentRCIPermissionControl
 	return srv, store
 }
 
-func newLifecycleServer(t *testing.T, runtime backend.Runtime, controller PersistentRCIPermissionController) (*httptest.Server, *state.Store) {
+func newLifecycleServer(t *testing.T, runtime PluginRuntime, controller PersistentRCIPermissionController) (*httptest.Server, *state.Store) {
 	srv, store, _, _ := newLifecycleHarness(t, runtime, controller)
 
 	return srv, store
 }
 
-func newLifecycleHarness(t *testing.T, runtime backend.Runtime, controller PersistentRCIPermissionController) (*httptest.Server, *state.Store, *Handler, Config) {
+func newLifecycleHarness(t *testing.T, runtime PluginRuntime, controller PersistentRCIPermissionController) (*httptest.Server, *state.Store, *Handler, Config) {
 	t.Helper()
 
 	root := t.TempDir()

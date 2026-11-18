@@ -191,15 +191,15 @@ func cloneRuntimeStatus(status RuntimeStatus) RuntimeStatus {
 	return status
 }
 
-func (r *RuntimeImpl) operationOf(name string) Operation {
+func (r *Runtime) operationOf(name string) Operation {
 	return r.supervisor.operationOf(name)
 }
 
-func (r *RuntimeImpl) intentOf(name string) Intent {
+func (r *Runtime) intentOf(name string) Intent {
 	return r.supervisor.intentOf(name)
 }
 
-func (r *RuntimeImpl) generationOf(name string) uint64 {
+func (r *Runtime) generationOf(name string) uint64 {
 	return r.supervisor.pluginSnapshot(name).generation
 }
 

@@ -3,7 +3,7 @@
 // and the /api/mgmt/opkg/* package-manager endpoints.
 //
 // The whole surface is session-gated by the authz middleware wired in cmd/mndwd.
-// approval explicitly installs declared packages; backend.Runtime owns service
+// approval explicitly installs declared packages; the backend runtime owns service
 // processes and request-scoped command execution.
 package mgmt
 
@@ -58,6 +58,14 @@ type ManagementEventPublisher interface {
 	PublishTelemetryGatheringChanged(contractEvents.TelemetryGatheringChangedPayload) error
 }
 
+// PluginRuntime exposes the runtime operations used by management handlers.
+type PluginRuntime interface {
+	ExecuteLifecycle(string, backend.Operation, backend.Intent, func(context.Context, backend.LifecycleControl) error) error
+	BlocksTraffic(string) bool
+	Status(string) backend.RuntimeStatus
+	Limits() backend.RuntimeLimitsSnapshot
+}
+
 // Config carries the on-disk locations the handlers operate over.
 type Config struct {
 	// StagingDir holds uploaded-but-unapproved plugins.
@@ -69,7 +77,7 @@ type Config struct {
 	// MaxUploadBytes caps the request body of an upload (design: 10 MB).
 	MaxUploadBytes int64
 	// Runtime controls manifest exec/service lifecycle.
-	Runtime backend.Runtime
+	Runtime PluginRuntime
 	// RuntimeResolver resolves lifecycle targets; nil retains the store-backed fallback.
 	RuntimeResolver RuntimeResolver
 	// PersistentRCIPermissionController owns grant-triggered socket reconciliation.
@@ -90,7 +98,7 @@ type Handler struct {
 	builtins             BuiltinSource
 	runtimeResolver      RuntimeResolver
 	logger               *slog.Logger
-	runtime              backend.Runtime
+	runtime              PluginRuntime
 	permissionController PersistentRCIPermissionController
 	selfUpdate           selfupdate.Service
 	telemetry            TelemetryController

@@ -160,7 +160,7 @@ func TestLinuxRealBackendLifecycle(t *testing.T) {
 	}
 }
 
-func waitForServiceState(t *testing.T, runtime *RuntimeImpl, pluginID string, want ServiceState, timeout time.Duration) {
+func waitForServiceState(t *testing.T, runtime *Runtime, pluginID string, want ServiceState, timeout time.Duration) {
 	t.Helper()
 
 	ticker := time.NewTicker(20 * time.Millisecond)

@@ -148,7 +148,7 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 type activationIntegrationFixture struct {
 	store    *state.Store
 	registry *registry.Registry
-	runtime  *backend.RuntimeImpl
+	runtime  *backend.Runtime
 	assembly *coordinator.Coordinator
 	gateway  *backend.Gateway
 	mux      *http.ServeMux
@@ -330,7 +330,7 @@ func (f *activationIntegrationFixture) registryPlugins() []*registry.Plugin {
 	return f.registry.AllBackendPlugins()
 }
 
-func waitForRuntimeState(t *testing.T, runtime *backend.RuntimeImpl, plugin string, want backend.ServiceState) {
+func waitForRuntimeState(t *testing.T, runtime *backend.Runtime, plugin string, want backend.ServiceState) {
 	t.Helper()
 
 	deadline := time.NewTimer(5 * time.Second)
@@ -356,7 +356,7 @@ func waitForRuntimeState(t *testing.T, runtime *backend.RuntimeImpl, plugin stri
 	}
 }
 
-func waitForReservedServices(t *testing.T, runtime *backend.RuntimeImpl, want int) {
+func waitForReservedServices(t *testing.T, runtime *backend.Runtime, want int) {
 	t.Helper()
 
 	deadline := time.NewTimer(5 * time.Second)

@@ -26,18 +26,6 @@ type RuntimeLimitsSnapshot struct {
 	SupportedServiceProtocols  []int `json:"supportedServiceProtocols"`
 }
 
-// Runtime is the lifecycle facade shared by the gateway, management, and
-// daemon startup/shutdown paths.
-type Runtime interface {
-	Reconcile(context.Context, []*registry.Plugin)
-	ExecuteLifecycle(string, Operation, Intent, func(context.Context, LifecycleControl) error) error
-	BlocksTraffic(string) bool
-	Status(string) RuntimeStatus
-	Limits() RuntimeLimitsSnapshot
-	BeginPlatformMaintenance(context.Context) error
-	Shutdown(context.Context) error
-}
-
 type RuntimeConfig struct {
 	RuntimeRoot               string
 	PluginDataRoot            string
@@ -57,9 +45,9 @@ type LifecycleEvent struct {
 
 type LifecycleObserver func(LifecycleEvent)
 
-// RuntimeImpl owns request-scoped exec admission and the supervised-service
+// Runtime owns request-scoped exec admission and the supervised-service
 // runtime that enforces each subsystem's configured capacity.
-type RuntimeImpl struct {
+type Runtime struct {
 	exec              *ExecRunner
 	supervisor        *Supervisor
 	traffic           *TrafficGate
@@ -121,13 +109,13 @@ func (config RuntimeConfig) withDefaults() RuntimeConfig {
 	return config
 }
 
-func NewRuntime(config RuntimeConfig) *RuntimeImpl {
+func NewRuntime(config RuntimeConfig) *Runtime {
 	config = config.withDefaults()
 
 	admission := NewAdmission(config.Limits)
 	supervisor := newSupervisor(config.Supervisor, admission)
 
-	runtime := &RuntimeImpl{
+	runtime := &Runtime{
 		exec:              newExecRunner(config.Exec, admission),
 		supervisor:        supervisor,
 		traffic:           newTrafficGate(supervisor),
@@ -144,7 +132,7 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 	return runtime
 }
 
-func (r *RuntimeImpl) Reconcile(ctx context.Context, plugins []*registry.Plugin) {
+func (r *Runtime) Reconcile(ctx context.Context, plugins []*registry.Plugin) {
 	specs := make([]ServiceSpec, 0, len(plugins))
 	specsByID := make(map[string]ServiceSpec, len(plugins))
 
@@ -174,7 +162,7 @@ func (r *RuntimeImpl) Reconcile(ctx context.Context, plugins []*registry.Plugin)
 	}
 }
 
-func (r *RuntimeImpl) executeDesiredStartup(spec ServiceSpec) {
+func (r *Runtime) executeDesiredStartup(spec ServiceSpec) {
 	outcome := r.supervisor.beginDesiredStartup(spec)
 	err := r.executeLifecycleOutcome(spec.PluginID, OpStarting,
 		func(_ context.Context, _ LifecycleControl) error {
@@ -186,7 +174,7 @@ func (r *RuntimeImpl) executeDesiredStartup(spec ServiceSpec) {
 	}
 }
 
-func (r *RuntimeImpl) executeReconcileStop(pluginID string, remove bool) {
+func (r *Runtime) executeReconcileStop(pluginID string, remove bool) {
 	op := OpStopping
 	intent := IntentStop
 
@@ -203,11 +191,11 @@ func (r *RuntimeImpl) executeReconcileStop(pluginID string, remove bool) {
 	}
 }
 
-func (r *RuntimeImpl) Status(pluginID string) RuntimeStatus {
+func (r *Runtime) Status(pluginID string) RuntimeStatus {
 	return r.supervisor.Status(pluginID)
 }
 
-func (r *RuntimeImpl) Limits() RuntimeLimitsSnapshot {
+func (r *Runtime) Limits() RuntimeLimitsSnapshot {
 	execTotal, _ := r.supervisor.admission.Snapshot()
 	services := r.supervisor.reservedServiceCount()
 
@@ -221,13 +209,13 @@ func (r *RuntimeImpl) Limits() RuntimeLimitsSnapshot {
 	}
 }
 
-func (r *RuntimeImpl) BeginPlatformMaintenance(ctx context.Context) error {
+func (r *Runtime) BeginPlatformMaintenance(ctx context.Context) error {
 	r.traffic.BeginPlatformMaintenance()
 
 	return r.supervisor.StopAll(ctx)
 }
 
-func (r *RuntimeImpl) Shutdown(ctx context.Context) error {
+func (r *Runtime) Shutdown(ctx context.Context) error {
 	r.traffic.BeginPlatformMaintenance()
 
 	pluginIDs := r.supervisor.runningPluginIDs()
@@ -240,7 +228,7 @@ func (r *RuntimeImpl) Shutdown(ctx context.Context) error {
 
 	return err
 }
-func (r *RuntimeImpl) serviceSpec(plugin *registry.Plugin) (ServiceSpec, bool) {
+func (r *Runtime) serviceSpec(plugin *registry.Plugin) (ServiceSpec, bool) {
 	spec, ok := serviceSpec(plugin, r.activationGates)
 
 	if !ok {
@@ -252,23 +240,23 @@ func (r *RuntimeImpl) serviceSpec(plugin *registry.Plugin) (ServiceSpec, bool) {
 	return spec, true
 }
 
-func (r *RuntimeImpl) Traffic() *TrafficGate { return r.traffic }
+func (r *Runtime) Traffic() *TrafficGate { return r.traffic }
 
-func (r *RuntimeImpl) Now() time.Time { return r.now() }
+func (r *Runtime) Now() time.Time { return r.now() }
 
-func (r *RuntimeImpl) SocketPath(pluginID string) (string, bool) {
+func (r *Runtime) SocketPath(pluginID string) (string, bool) {
 	return r.supervisor.SocketPath(pluginID)
 }
 
-func (r *RuntimeImpl) SupportsProtocol(protocol int) bool {
+func (r *Runtime) SupportsProtocol(protocol int) bool {
 	return r.supervisor.SupportsProtocol(protocol)
 }
 
-func (r *RuntimeImpl) SupportedProtocols() []int {
+func (r *Runtime) SupportedProtocols() []int {
 	return r.supervisor.SupportedProtocols()
 }
 
-func (r *RuntimeImpl) TryAcquireExec(pluginID string) (*Reservation, bool) {
+func (r *Runtime) TryAcquireExec(pluginID string) (*Reservation, bool) {
 	if r.exec == nil {
 		return nil, false
 	}
@@ -276,7 +264,7 @@ func (r *RuntimeImpl) TryAcquireExec(pluginID string) (*Reservation, bool) {
 	return r.exec.admission.TryAcquireExec(pluginID)
 }
 
-func (r *RuntimeImpl) ServeExec(ctx context.Context, request ExecRequest, writer http.ResponseWriter, reservation *Reservation) *httpx.APIError {
+func (r *Runtime) ServeExec(ctx context.Context, request ExecRequest, writer http.ResponseWriter, reservation *Reservation) *httpx.APIError {
 	request.RuntimeDir = runtimeDir(r.exec, request.PluginID)
 
 	return r.exec.ServeReserved(ctx, request, writer, reservation)
@@ -301,7 +289,7 @@ func runtimeDir(runner *ExecRunner, pluginID string) string {
 
 // LiveDiagnostics exposes only the bounded service callback used by support
 // diagnostics; service paths and process identity stay inside the backend.
-func (r *RuntimeImpl) LiveDiagnostics(ctx context.Context, pluginID string) ([]byte, error) {
+func (r *Runtime) LiveDiagnostics(ctx context.Context, pluginID string) ([]byte, error) {
 	return r.supervisor.LiveDiagnostics(ctx, pluginID)
 }
 

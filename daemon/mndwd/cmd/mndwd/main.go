@@ -170,7 +170,7 @@ func run(cfg Config) (err error) {
 type components struct {
 	handler   http.Handler
 	reg       *registry.Registry
-	runtime   *backend.RuntimeImpl
+	runtime   *backend.Runtime
 	gateway   *backend.Gateway
 	telemetry *telemetry.Capability
 	events    *eventLifecycle
@@ -205,7 +205,7 @@ type daemonCore struct {
 	cfg             Config
 	store           *state.Store
 	reg             *registry.Registry
-	runtime         *backend.RuntimeImpl
+	runtime         *backend.Runtime
 	activationGates *backend.ActivationGateRegistry
 	verifier        *authz.Verifier
 	logger          *slog.Logger
@@ -572,7 +572,7 @@ func registerPlugins(mux *http.ServeMux, core daemonCore, intake *httpx.BodyInta
 	return gateway
 }
 
-func diagnosticsPlugins(reg *registry.Registry, runtime *backend.RuntimeImpl) []diagnostics.Plugin {
+func diagnosticsPlugins(reg *registry.Registry, runtime *backend.Runtime) []diagnostics.Plugin {
 	plugins := make([]diagnostics.Plugin, 0)
 
 	for _, plugin := range reg.AllBackendPlugins() {

@@ -44,13 +44,13 @@ func authFail() *fakeAuth {
 // disabled and pending state variants that reuse the same validated manifest
 // bytes. It uses a runtime for route-gate state; prelude tests never dispatch to
 // a backend.
-func newPreludeGateway(t *testing.T, auth Authenticator, runtimes ...*RuntimeImpl) *Gateway {
+func newPreludeGateway(t *testing.T, auth Authenticator, runtimes ...*Runtime) *Gateway {
 	t.Helper()
 
 	return newPreludeGatewayWithConfig(t, auth, GatewayConfig{}, runtimes...)
 }
 
-func newPreludeGatewayWithConfig(t *testing.T, auth Authenticator, cfg GatewayConfig, runtimes ...*RuntimeImpl) *Gateway {
+func newPreludeGatewayWithConfig(t *testing.T, auth Authenticator, cfg GatewayConfig, runtimes ...*Runtime) *Gateway {
 	t.Helper()
 
 	root := t.TempDir()

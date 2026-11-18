@@ -375,7 +375,7 @@ func startTermIgnoringProcess(t *testing.T, waitAfterReady bool) (*exec.Cmd, *pr
 	return command, done, startWait
 }
 
-func seedTermIgnoringService(t *testing.T, runtime *RuntimeImpl, spec ServiceSpec) (*exec.Cmd, *processExit, func()) {
+func seedTermIgnoringService(t *testing.T, runtime *Runtime, spec ServiceSpec) (*exec.Cmd, *processExit, func()) {
 	t.Helper()
 
 	command, done, startWait := startTermIgnoringProcess(t, false)
@@ -396,7 +396,7 @@ func seedTermIgnoringService(t *testing.T, runtime *RuntimeImpl, spec ServiceSpe
 	return command, done, startWait
 }
 
-func timeoutTermIgnoringService(t *testing.T, runtime *RuntimeImpl, pluginID string) chan struct{} {
+func timeoutTermIgnoringService(t *testing.T, runtime *Runtime, pluginID string) chan struct{} {
 	t.Helper()
 
 	err := runtime.supervisor.stopProcess(context.Background(), pluginID, true)

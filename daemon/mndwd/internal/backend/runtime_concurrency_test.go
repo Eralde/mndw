@@ -35,7 +35,7 @@ func awaitTestSignal(t *testing.T, signal <-chan struct{}, description string) {
 	}
 }
 
-func gatedStartupPlugin(t *testing.T, runtime *RuntimeImpl, pluginID string) (*registry.Plugin, ServiceSpec) {
+func gatedStartupPlugin(t *testing.T, runtime *Runtime, pluginID string) (*registry.Plugin, ServiceSpec) {
 	t.Helper()
 
 	plugin := testServicePlugin(t, pluginID, nil, "backend/service.sh", true)
@@ -1333,7 +1333,7 @@ func TestReconcileChangedSpecRestartsExistingService(t *testing.T) {
 	}
 }
 
-func slowStartupRuntime(t *testing.T, pluginID string) (*RuntimeImpl, *registry.Plugin) {
+func slowStartupRuntime(t *testing.T, pluginID string) (*Runtime, *registry.Plugin) {
 	t.Helper()
 
 	root := t.TempDir()
@@ -1362,7 +1362,7 @@ func slowStartupRuntime(t *testing.T, pluginID string) (*RuntimeImpl, *registry.
 	return runtime, plugin
 }
 
-func waitForLifecycleAttempt(t *testing.T, runtime *RuntimeImpl, pluginID string) {
+func waitForLifecycleAttempt(t *testing.T, runtime *Runtime, pluginID string) {
 	t.Helper()
 
 	deadline := time.After(2 * time.Second)

@@ -227,7 +227,7 @@ func TestOperationTraitsCoverEveryOperation(t *testing.T) {
 }
 
 func executeForTest(
-	r *RuntimeImpl,
+	r *Runtime,
 	name string,
 	op Operation,
 	target Intent,

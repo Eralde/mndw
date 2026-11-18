@@ -344,14 +344,14 @@ func statusTestStoreBackendless(t *testing.T, store *state.Store, name string) {
 	}
 }
 
-func newStatusTestRuntime(now time.Time) *RuntimeImpl {
+func newStatusTestRuntime(now time.Time) *Runtime {
 	return NewRuntime(RuntimeConfig{
 		SupportedServiceProtocols: []int{1},
 		Supervisor:                SupervisorConfig{Now: func() time.Time { return now }},
 	})
 }
 
-func setTrafficBlockedForTest(runtime *RuntimeImpl, pluginID string, blocked bool) {
+func setTrafficBlockedForTest(runtime *Runtime, pluginID string, blocked bool) {
 	if !blocked {
 		setSupervisorTransitionForTest(runtime.supervisor, pluginID, nil)
 

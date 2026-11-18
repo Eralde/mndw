@@ -41,7 +41,7 @@ POST /api/mgmt/approve
   → mark approved and enabled
 ```
 
-Service activation is owned by `backend.Runtime`; startup reconciles approved
+Service activation is owned by the backend runtime; startup reconciles approved
 and enabled services without background package-install retries. `enable`,
 `disable`, `delete`, `restart`, `list`, and `pending` complete management.
 

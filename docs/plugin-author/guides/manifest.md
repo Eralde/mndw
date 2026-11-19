@@ -10,9 +10,9 @@ the same schema used by the CLI:
 }
 ```
 
-Since manifest spec 1.7, unknown top-level keys are ignored by the runtime schema, and
-`mndw validate` warns about them so a misspelled key is visible. See the shared valid and invalid
-examples in [`frontend/sdk/fixtures/manifests`](https://github.com/Eralde/mndw/tree/master/frontend/sdk/fixtures/manifests).
+Unknown manifest keys and unknown widget `size` keys fail validation with field-specific errors; `$schema` accepts
+any string, and page `size` and widget `route` values are discarded. See the shared valid and invalid examples in
+[`frontend/sdk/fixtures/manifests`](https://github.com/Eralde/mndw/tree/master/frontend/sdk/fixtures/manifests).
 
 ## Identity and entry
 

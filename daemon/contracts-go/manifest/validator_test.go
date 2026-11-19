@@ -128,6 +128,80 @@ func TestValidateRejectsRemovedFixedHeight(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsUnknownManifestFields(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+		want string
+	}{
+		{
+			name: "unknown top-level field",
+			data: `{"manifestVersion":1,"name":"unknown-top-level","version":"1.0.0","type":"widget","label":"Unknown","entry":"index.js","size":{"w":4,"h":3},"capabilites":[]}`,
+			want: `invalid manifest for "unknown-top-level": manifest contains unknown field "capabilites"`,
+		},
+		{
+			name: "unknown page field",
+			data: `{"manifestVersion":1,"name":"unknown-page-field","version":"1.0.0","type":"page","label":"Unknown","entry":"index.js","route":"/unknown","analytics":true}`,
+			want: `invalid manifest for "unknown-page-field": manifest contains unknown field "analytics"`,
+		},
+		{
+			name: "unknown size field",
+			data: `{"manifestVersion":1,"name":"unknown-size-field","version":"1.0.0","type":"widget","label":"Unknown","entry":"index.js","size":{"w":4,"h":3,"extra":true}}`,
+			want: `invalid manifest for "unknown-size-field": size contains unknown field "extra"`,
+		},
+		{
+			name: "removed field precedes unknown field",
+			data: `{"manifestVersion":1,"name":"removed-precedes-unknown","version":"1.0.0","type":"widget","label":"Unknown","entry":"index.js","size":{"w":4,"h":3},"capabilites":[],"permissions":[]}`,
+			want: `invalid manifest for "removed-precedes-unknown": permissions was renamed to capabilities in 0.3`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := Validate([]byte(test.data))
+			if err == nil || err.Error() != test.want {
+				t.Fatalf("Validate() error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestValidateSchemaHintAcceptsOnlyStrings(t *testing.T) {
+	tests := []struct {
+		name    string
+		schema  string
+		wantErr string
+	}{
+		{name: "empty string", schema: `""`},
+		{name: "arbitrary string", schema: `"custom://editor/schema"`},
+		{name: "null", schema: `null`, wantErr: `invalid manifest for "schema-hint": $schema must be a string`},
+		{name: "number", schema: `42`, wantErr: `invalid manifest for "schema-hint": $schema must be a string`},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			data := []byte(`{"$schema":` + test.schema + `,"manifestVersion":1,"name":"schema-hint","version":"1.0.0","type":"widget","label":"Schema hint","entry":"index.js","size":{"w":4,"h":3}}`)
+			_, canonical, err := ValidateCanonical(data)
+
+			if test.wantErr != "" {
+				if err == nil || err.Error() != test.wantErr {
+					t.Fatalf("ValidateCanonical() error = %v, want %q", err, test.wantErr)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("ValidateCanonical() error = %v", err)
+			}
+
+			if strings.Contains(string(canonical), `"$schema"`) {
+				t.Errorf("canonical manifest retained editor schema metadata: %s", canonical)
+			}
+		})
+	}
+}
+
 func TestValidateReturnsValueManifestWithDefaults(t *testing.T) {
 	tests := []struct {
 		name              string

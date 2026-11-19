@@ -2,6 +2,7 @@ import {readFileSync, readdirSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {describe, expect, it} from 'vitest';
 import {ManifestValidationError, validateManifest} from './manifest-validator.js';
+import {createManifestSchemaDocument} from './scripts/manifest-schema-document.js';
 
 const fixturesRoot = resolve(import.meta.dirname, '..', '..', 'sdk', 'fixtures', 'manifests');
 
@@ -311,6 +312,7 @@ describe('validateManifest behavior', () => {
     try {
       validateManifest({
         ...base,
+        capabilites: [],
         name: 'Bad Name',
         entry: '/dist/index.js',
         size: {w: 13, h: 0},
@@ -327,6 +329,7 @@ describe('validateManifest behavior', () => {
       const paths = validationError.issues.map((issue) => issue.path);
 
       expect(paths).toEqual(expect.arrayContaining([
+        'capabilites',
         'name',
         'entry',
         'size.w',
@@ -335,6 +338,7 @@ describe('validateManifest behavior', () => {
         'backend.routes.0.path',
         'backend.routes.0.command',
       ]));
+      expect(validationError.message).toContain('manifest contains unknown field "capabilites"');
       expect(validationError.message).toContain('backend.routes.0.path');
     }
   });
@@ -352,5 +356,59 @@ describe('validateManifest behavior', () => {
 
     expect(page.type).toBe('page');
     expect('route' in page).toBe(true);
+  });
+});
+
+describe('strict manifest fields', () => {
+  const base = {
+    manifestVersion: 1 as const,
+    name: 'test-plugin',
+    version: '3.0.0',
+    type: 'widget' as const,
+    label: 'Backend Plugin',
+    entry: 'index.js',
+    size: {w: 4, h: 3},
+  };
+
+  it('accepts any string as editor schema metadata', () => {
+    expect(() => validateManifest({...base, $schema: ''})).not.toThrow();
+    expect(() => validateManifest({...base, $schema: 'custom://editor/schema'})).not.toThrow();
+    expect(() => validateManifest({...base, $schema: null})).toThrow('$schema must be a string');
+  });
+
+  it.each([
+    ['top-level typo', {...base, capabilites: []}, 'manifest contains unknown field "capabilites"'],
+    [
+      'unknown page field',
+      {...base, type: 'page' as const, route: '/test-page', analytics: true},
+      'manifest contains unknown field "analytics"',
+    ],
+    ['unknown size field', {...base, size: {...base.size, extra: true}}, 'size contains unknown field "extra"'],
+  ])('rejects %s with a field-specific message', (_name, manifest, message) => {
+    expect(() => validateManifest(manifest)).toThrow(message);
+  });
+
+  it('reports removed manifest fields before unknown fields', () => {
+    expect(() => validateManifest({...base, capabilites: [], permissions: []})).toThrow(
+      'permissions was renamed to capabilities in 0.3',
+    );
+  });
+
+  it('keeps the editor schema strict while permitting type-foreign fields', () => {
+    const schema = createManifestSchemaDocument();
+    const variants = schema.oneOf as Array<Record<string, unknown>>;
+
+    for (const variant of variants) {
+      const properties = variant.properties as Record<string, unknown>;
+      const manifestType = (properties.type as {const: string}).const;
+
+      expect(properties.$schema).toMatchObject({type: 'string'});
+      expect(variant.additionalProperties).toBe(false);
+      expect(properties[manifestType === 'page' ? 'size' : 'route']).toEqual({});
+
+      if (manifestType === 'widget') {
+        expect(properties.size).toMatchObject({additionalProperties: false});
+      }
+    }
   });
 });

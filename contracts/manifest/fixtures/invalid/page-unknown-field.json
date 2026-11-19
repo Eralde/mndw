@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "name": "page-unknown-field",
+  "version": "1.0.0",
+  "type": "page",
+  "label": "Unknown page field",
+  "entry": "index.js",
+  "route": "/unknown-field",
+  "analytics": true
+}

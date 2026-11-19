@@ -12,7 +12,10 @@ export class ManifestValidationError extends Error {
 
   constructor(pluginName: string, issues: readonly ZodIssue[]) {
     const formattedIssues = issues.map((issue) => {
-      const path = issue.path.length === 0 ? '<root>' : issue.path.join('.');
+      const issuePath = issue.code === 'unrecognized_keys'
+        ? [...issue.path, [...issue.keys].sort()[0] ?? '<unknown>']
+        : issue.path;
+      const path = issuePath.length === 0 ? '<root>' : issuePath.join('.');
 
       return {path, message: issue.message};
     });
@@ -24,6 +27,8 @@ export class ManifestValidationError extends Error {
 }
 
 export function validateManifest(data: unknown): PluginManifestOutput {
+  let manifestData = data;
+
   if (
     typeof data === 'object'
     && data !== null
@@ -41,9 +46,17 @@ export function validateManifest(data: unknown): PluginManifestOutput {
         }]);
       }
     }
+
+    const normalized = {...record};
+
+    if (record.type === 'page' || record.type === 'widget') {
+      delete normalized[record.type === 'page' ? 'size' : 'route'];
+    }
+
+    manifestData = normalized;
   }
 
-  const result = pluginManifestSchema.safeParse(data);
+  const result = pluginManifestSchema.safeParse(manifestData);
 
   if (!result.success) {
     const pluginName = typeof data === 'object' && data !== null
@@ -54,6 +67,8 @@ export function validateManifest(data: unknown): PluginManifestOutput {
 
     throw new ManifestValidationError(pluginName, result.error.issues);
   }
+
+  delete result.data.$schema;
 
   return result.data;
 }

@@ -469,7 +469,7 @@ describe('Task 5 plugin reference guides', () => {
     const manifest = readFileSync(resolve(repoRoot, 'docs/plugin-author/guides/manifest.md'), 'utf8');
 
     expect(manifest).toContain('./node_modules/@mndw/sdk/manifest.schema.json');
-    expect(manifest).toContain('unknown top-level keys');
+    expect(manifest).toMatch(/Unknown manifest keys and unknown widget[\s\S]*any string/);
     expect(manifest).not.toContain('frontend/sdk-internal/src/manifest-schema.ts');
   });
 

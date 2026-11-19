@@ -6,8 +6,19 @@
 // re-declare the manifest shape by hand anywhere.
 
 import {z} from 'zod';
+import type {$ZodErrorMap} from 'zod/v4/core';
 import {isReservedPageRoute} from './page-routes.js';
 import {pluginCapabilitySchema} from './sdk-source.js';
+
+const strictObjectError = (scope: 'manifest' | 'size'): $ZodErrorMap => (issue) => {
+  if (issue.code !== 'unrecognized_keys') {
+    return undefined;
+  }
+
+  const key = [...issue.keys].sort()[0] ?? '<unknown>';
+
+  return `${scope} contains unknown field "${key}"`;
+};
 
 const pluginNameSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, {
   message: 'name must be lowercase alphanumeric with hyphens (e.g. my-widget)',
@@ -271,10 +282,11 @@ const sizeSchema = z.object({
   h: gridRows,
   minW: gridColumns.optional(),
   minH: gridRows.optional(),
-}).refine((size) => size.minW === undefined || size.minW <= size.w, {
-  message: 'size.minW must be less than or equal to size.w',
-  path: ['minW'],
-})
+}, {error: strictObjectError('size')}).strict()
+  .refine((size) => size.minW === undefined || size.minW <= size.w, {
+    message: 'size.minW must be less than or equal to size.w',
+    path: ['minW'],
+  })
   .refine((size) => size.minH === undefined || size.minH <= size.h, {
     message: 'size.minH must be less than or equal to size.h',
     path: ['minH'],
@@ -284,6 +296,9 @@ const pageRouteSchema = z.string().regex(/^\/[^/?#*]+$/)
   .refine((route) => !isReservedPageRoute(route), {message: 'route is reserved by the host'});
 
 const baseFields = {
+  $schema: z.string({error: '$schema must be a string'})
+    .optional()
+    .describe('JSON Schema editor hint for this manifest.'),
   manifestVersion: versionSchema,
   name: nameSchema,
   version: versionField,
@@ -299,13 +314,13 @@ const widgetManifestSchema = z.object({
   ...baseFields,
   type: z.literal('widget'),
   size: sizeSchema,
-});
+}, {error: strictObjectError('manifest')}).strict();
 
 const pageManifestSchema = z.object({
   ...baseFields,
   type: z.literal('page'),
   route: pageRouteSchema,
-});
+}, {error: strictObjectError('manifest')}).strict();
 
 export const pluginManifestSchema = z.discriminatedUnion('type', [widgetManifestSchema, pageManifestSchema]);
 
@@ -320,4 +335,7 @@ export type PluginServiceBackendOutput = z.infer<typeof serviceBackendSchema>;
 export type PluginBackendOutput = z.infer<typeof backendSchema>;
 export type WidgetSizeOutput = z.infer<typeof sizeSchema>;
 export type PluginManifestInput = z.input<typeof pluginManifestSchema>;
-export type PluginManifestOutput = z.infer<typeof pluginManifestSchema>;
+
+type OmitEditorSchema<T> = T extends unknown ? Omit<T, '$schema'> : never;
+
+export type PluginManifestOutput = OmitEditorSchema<z.infer<typeof pluginManifestSchema>>;

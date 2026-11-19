@@ -5,6 +5,11 @@ import {pluginManifestSchema} from '../manifest-schema.js';
 /** Builds editor-only JSON Schema from the Zod runtime authority. */
 export function createManifestSchemaDocument(): Record<string, unknown> {
   const jsonSchema = z.toJSONSchema(pluginManifestSchema, {unrepresentable: 'any'});
+  const variants = jsonSchema.oneOf as Array<{properties: Record<string, {const?: string}>}>;
+
+  for (const {properties} of variants) {
+    properties[properties.type.const === 'page' ? 'size' : 'route'] = {};
+  }
 
   return {
     $schema: 'https://json-schema.org/draft/2020-12/schema',

@@ -119,6 +119,14 @@ var (
 
 const gridColumns = 12
 
+var (
+	manifestFields = map[string]struct{}{
+		"$schema": {}, "manifestVersion": {}, "name": {}, "version": {}, "type": {}, "label": {},
+		"description": {}, "entry": {}, "capabilities": {}, "i18n": {}, "backend": {}, "size": {}, "route": {},
+	}
+	sizeFields = map[string]struct{}{"w": {}, "h": {}, "minW": {}, "minH": {}}
+)
+
 // Validate parses and validates one manifest document.
 func Validate(data []byte) (*Manifest, error) {
 	validated, _, err := ValidateCanonical(data)
@@ -138,6 +146,10 @@ func ValidateCanonical(data []byte) (*Manifest, []byte, error) {
 			if _, legacy := fields[removed.key]; legacy {
 				return nil, nil, &ValidationError{PluginName: pluginName(data), Reason: removed.reason}
 			}
+		}
+
+		if err := validateManifestFields(fields); err != nil {
+			return nil, nil, &ValidationError{PluginName: pluginName(data), Reason: err.Error()}
 		}
 
 		manifestData = stripForeignFields(data, fields)
@@ -166,6 +178,56 @@ func ValidateCanonical(data []byte) (*Manifest, []byte, error) {
 	}
 
 	return validatedManifest(m), canonical, nil
+}
+
+func validateManifestFields(fields map[string]json.RawMessage) error {
+	if key, found := firstUnknownKey(fields, manifestFields); found {
+		return fmt.Errorf("manifest contains unknown field %q", key)
+	}
+
+	if schema, exists := fields["$schema"]; exists {
+		var value any
+
+		if err := json.Unmarshal(schema, &value); err != nil || value == nil {
+			return fmt.Errorf("$schema must be a string")
+		}
+
+		if _, isString := value.(string); !isString {
+			return fmt.Errorf("$schema must be a string")
+		}
+	}
+
+	var manifestType Type
+
+	if err := json.Unmarshal(fields["type"], &manifestType); err == nil && manifestType == TypeWidget {
+		var size map[string]json.RawMessage
+
+		if err := json.Unmarshal(fields["size"], &size); err == nil && size != nil {
+			if key, found := firstUnknownKey(size, sizeFields); found {
+				return fmt.Errorf("size contains unknown field %q", key)
+			}
+		}
+	}
+
+	return nil
+}
+
+func firstUnknownKey(fields map[string]json.RawMessage, allowed map[string]struct{}) (string, bool) {
+	keys := make([]string, 0, len(fields))
+
+	for key := range fields {
+		keys = append(keys, key)
+	}
+
+	slices.Sort(keys)
+
+	for _, key := range keys {
+		if _, known := allowed[key]; !known {
+			return key, true
+		}
+	}
+
+	return "", false
 }
 
 func stripForeignFields(data []byte, fields map[string]json.RawMessage) []byte {

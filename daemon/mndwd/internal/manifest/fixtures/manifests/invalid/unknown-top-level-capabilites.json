@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "name": "unknown-top-level-capabilites",
+  "version": "1.0.0",
+  "type": "widget",
+  "label": "Unknown top-level field",
+  "entry": "index.js",
+  "size": {"w": 4, "h": 3},
+  "capabilites": ["events:*"]
+}

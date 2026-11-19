@@ -1,0 +1,9 @@
+{
+  "manifestVersion": 1,
+  "name": "size-unknown-field",
+  "version": "1.0.0",
+  "type": "widget",
+  "label": "Unknown size field",
+  "entry": "index.js",
+  "size": {"w": 4, "h": 3, "extra": true}
+}

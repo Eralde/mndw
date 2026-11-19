@@ -123,7 +123,7 @@ func TestResolveBuiltin(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := `{"manifestVersion":1,"name":"core","version":"2.0.0","type":"page","label":"C","entry":"index.js","route":"/core","size":{},"unknown":"ignored"}`
+	m := `{"manifestVersion":1,"name":"core","version":"2.0.0","type":"page","label":"C","entry":"index.js","route":"/core","size":{}}`
 
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(m), 0o644); err != nil {
 		t.Fatal(err)
@@ -250,7 +250,7 @@ func TestListBuiltins(t *testing.T) {
 		m := fmt.Sprintf(`{"manifestVersion":1,"name":"%s","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`, name)
 
 		if name == "alpha" {
-			m = `{"manifestVersion":1,"name":"alpha","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3},"route":"/ignored","backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"health","transport":"http","method":"get","path":"health"}]},"unknown":"ignored"}`
+			m = `{"manifestVersion":1,"name":"alpha","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3},"route":"/ignored","backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"health","transport":"http","method":"get","path":"health"}]}}`
 		}
 
 		if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(m), 0o644); err != nil {

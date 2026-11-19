@@ -211,6 +211,8 @@ The SDK test fixture follows the same rule. Its widget context has a default tit
 The manifest has a new optional `description`: plain text of 1–160 characters in the plugin's default language.
 The host shows it in the Add widget dialog.
 
+Unknown manifest and widget `size` keys now fail validation; `$schema` remains allowed as editor metadata.
+
 ```json
 {
   "label": "Ping",

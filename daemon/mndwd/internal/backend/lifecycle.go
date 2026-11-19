@@ -88,7 +88,7 @@ func (r *Runtime) executeLifecycleOutcome(
 	}
 
 	if traitsOf(op).exclusive {
-		r.traffic.ClosePlugin(name)
+		r.supervisor.closePluginSockets(name)
 	}
 
 	if outcome.supersededWorkDone != nil {

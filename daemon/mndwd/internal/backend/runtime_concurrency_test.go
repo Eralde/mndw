@@ -556,7 +556,7 @@ func TestPromotedServiceQueuedBehindStartupProjectsAsStarting(t *testing.T) {
 	runtime.supervisor.Reconcile(context.Background(), specs)
 
 	fourth := testServicePlugin(t, "service-d", nil, "backend/missing", true)
-	gateway := &Gateway{runtime: runtime, traffic: runtime.Traffic(), activationGates: runtime.activationGates}
+	gateway := &Gateway{runtime: runtime, activationGates: runtime.activationGates}
 	status := gateway.projectBackendStatus(fourth, runtime.Now())
 
 	if got := runtime.Status("service-d").State; got != StateCapacityBlocked {

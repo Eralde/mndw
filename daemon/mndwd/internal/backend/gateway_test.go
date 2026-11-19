@@ -79,7 +79,7 @@ func TestGatewayMaintenanceGateUsesRuntimeBlockAndPlatformScope(t *testing.T) {
 		t.Fatal("plugin maintenance scope is incorrect")
 	}
 
-	gateway.traffic.BeginPlatformMaintenance()
+	runtime.supervisor.beginPlatformMaintenance()
 
 	if !gateway.isMaintenance("demo") || !gateway.isMaintenance("other") {
 		t.Fatal("platform maintenance scope is incorrect")
@@ -88,7 +88,7 @@ func TestGatewayMaintenanceGateUsesRuntimeBlockAndPlatformScope(t *testing.T) {
 
 func TestGatewayAdmitWebSocketRefusesBlockedPlugin(t *testing.T) {
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
-	gateway := &Gateway{runtime: runtime, traffic: runtime.Traffic()}
+	gateway := &Gateway{runtime: runtime}
 
 	setTrafficBlockedForTest(runtime, "p", true)
 
@@ -102,7 +102,7 @@ func TestGatewayAdmitWebSocketRefusesBlockedPlugin(t *testing.T) {
 		t.Fatalf("refused close records = %#v, want one service-restart close", got)
 	}
 
-	runtime.Traffic().ClosePlugin("p")
+	runtime.supervisor.closePluginSockets("p")
 
 	if got := refusedCloser.closeRecords(); len(got) != 1 {
 		t.Fatalf("refused close records after ClosePlugin = %#v, want one close", got)
@@ -141,7 +141,8 @@ func TestGatewayDevValidationAllowsSymlinkedBuiltinRoot(t *testing.T) {
 	}
 
 	plugin := &registry.Plugin{Dir: symlinkedPlugin, Source: state.SourceBuiltin}
-	dev := NewGateway(GatewayConfig{AllowSymlinkedBuiltinRoot: true}, nil, nil, nil, backendTestLogger())
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
+	dev := NewGateway(GatewayConfig{AllowSymlinkedBuiltinRoot: true}, nil, nil, runtime, backendTestLogger())
 
 	if _, err := dev.validateCommand(plugin, "backend/command.sh"); err != nil {
 		t.Fatalf("dev exec validation rejected a symlinked builtin root: %v", err)

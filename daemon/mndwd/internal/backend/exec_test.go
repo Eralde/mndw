@@ -24,7 +24,12 @@ func TestExecRunnerProvidesBoundedCGIEnvironmentAndBody(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runner := NewExecRunner(ExecRunnerConfig{Timeout: 5 * time.Second, MaxBodyBytes: 1024, MaxOutputBytes: 4096, MaxConcurrentExecTotal: 2, MaxConcurrentExecPerPlugin: 1})
+	runner := NewExecRunner(ExecRunnerConfig{
+		Timeout:        5 * time.Second,
+		MaxBodyBytes:   1024,
+		MaxOutputBytes: 4096,
+		Limits:         Limits{MaxConcurrentExecTotal: 2, MaxConcurrentExecPerPlugin: 1},
+	})
 	recorder := httptest.NewRecorder()
 	err := runner.Serve(context.Background(), ExecRequest{
 		PluginID: "demo",

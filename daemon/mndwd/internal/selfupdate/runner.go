@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"mndwd/internal/fsutil"
 	"mndwd/internal/opkg"
 )
 
@@ -142,47 +143,14 @@ func (s *Service) copyHelper() error {
 		return fmt.Errorf("create self-update state directory: %w", err)
 	}
 
-	temp, err := os.CreateTemp(s.stateDir, ".self-update-helper-")
+	data, err := io.ReadAll(source)
 	if err != nil {
-		return fmt.Errorf("create self-update helper temporary file: %w", err)
-	}
-
-	tempPath := temp.Name()
-	keep := false
-
-	defer func() {
-		if !keep {
-			_ = os.Remove(tempPath)
-		}
-	}()
-
-	if err := temp.Chmod(0o755); err != nil {
-		_ = temp.Close()
-
-		return err
-	}
-
-	if _, err := io.Copy(temp, source); err != nil {
-		_ = temp.Close()
-
 		return fmt.Errorf("copy self-update helper: %w", err)
 	}
 
-	if err := temp.Sync(); err != nil {
-		_ = temp.Close()
-
-		return fmt.Errorf("sync self-update helper: %w", err)
+	if err := fsutil.WriteFileAtomic(s.helperPath(), data, 0o755); err != nil {
+		return fmt.Errorf("persist self-update helper: %w", err)
 	}
-
-	if err := temp.Close(); err != nil {
-		return fmt.Errorf("close self-update helper: %w", err)
-	}
-
-	if err := os.Rename(tempPath, s.helperPath()); err != nil {
-		return fmt.Errorf("activate self-update helper: %w", err)
-	}
-
-	keep = true
 
 	return nil
 }

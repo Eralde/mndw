@@ -97,7 +97,7 @@ func (g *Gateway) projectBackendStatus(plugin *registry.Plugin, now time.Time) b
 		return response
 	}
 
-	if plugin.Manifest.Backend.Kind != manifest.BackendKindService || g.runtime == nil {
+	if plugin.Manifest.Backend.Kind != manifest.BackendKindService {
 		response.State = "unavailable"
 
 		return response
@@ -159,9 +159,5 @@ func (g *Gateway) handleStatus(writer http.ResponseWriter, request *http.Request
 }
 
 func (g *Gateway) now() time.Time {
-	if g.runtime == nil {
-		return time.Now()
-	}
-
 	return g.runtime.Now()
 }

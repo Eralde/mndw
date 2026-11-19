@@ -1,9 +1,13 @@
 package palette
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -12,6 +16,17 @@ func storePath(t *testing.T) string {
 	t.Helper()
 
 	return filepath.Join(t.TempDir(), "palette.json")
+}
+
+func paletteBackupPaths(t *testing.T, path string) []string {
+	t.Helper()
+
+	paths, err := filepath.Glob(path + ".bak-*")
+	if err != nil {
+		t.Fatalf("list palette backups: %v", err)
+	}
+
+	return paths
 }
 
 func TestOpenCreatesCanonicalEmptyFile(t *testing.T) {
@@ -157,8 +172,8 @@ func TestOpenQuarantinesUnusableFiles(t *testing.T) {
 				t.Error("recovered store reports an override")
 			}
 
-			if _, err := os.Stat(path + ".bak"); err != nil {
-				t.Errorf("original was not preserved as palette.json.bak: %v", err)
+			if backups := paletteBackupPaths(t, path); len(backups) != 1 {
+				t.Errorf("palette backups = %#v, want one timestamped backup", backups)
 			}
 		})
 	}
@@ -199,8 +214,86 @@ func TestOpenQuarantinesLegacy14TokenPalette(t *testing.T) {
 		t.Error("legacy document became an active palette")
 	}
 
-	if _, err := os.Stat(path + ".bak"); err != nil {
-		t.Errorf("legacy document was not quarantined: %v", err)
+	if backups := paletteBackupPaths(t, path); len(backups) != 1 {
+		t.Errorf("legacy palette backups = %#v, want one timestamped backup", backups)
+	}
+}
+
+func TestOpenKeepsEarlierCorruptPaletteBackup(t *testing.T) {
+	path := storePath(t)
+	first := []byte(`{"version":1,"palette":{`)
+
+	if err := os.WriteFile(path, first, 0o600); err != nil {
+		t.Fatalf("seed first corrupt palette: %v", err)
+	}
+
+	if _, err := Open(path); err != nil {
+		t.Fatalf("open first corrupt palette: %v", err)
+	}
+
+	second := []byte(`{"version":77,"palette":null}`)
+
+	if err := os.WriteFile(path, second, 0o600); err != nil {
+		t.Fatalf("seed second invalid palette: %v", err)
+	}
+
+	if _, err := Open(path); err != nil {
+		t.Fatalf("open second invalid palette: %v", err)
+	}
+
+	backups := paletteBackupPaths(t, path)
+
+	if len(backups) != 2 {
+		t.Fatalf("palette backup count = %d, want 2 (%#v)", len(backups), backups)
+	}
+
+	got := make(map[string]bool, len(backups))
+
+	for _, backupPath := range backups {
+		data, err := os.ReadFile(backupPath)
+		if err != nil {
+			t.Fatalf("read palette backup %q: %v", backupPath, err)
+		}
+
+		got[string(data)] = true
+	}
+
+	if !got[string(first)] || !got[string(second)] {
+		t.Fatalf("palette backup contents = %#v, want both original invalid files", got)
+	}
+}
+
+func TestOpenContinuesWhenCorruptPaletteBackupFails(t *testing.T) {
+	path := storePath(t)
+	original := []byte(`{"version":1,"palette":{`)
+
+	if err := os.WriteFile(path, original, 0o600); err != nil {
+		t.Fatalf("seed corrupt palette: %v", err)
+	}
+
+	wantErr := errors.New("backup rename failed")
+	previousRename := renameBackupFile
+	renameBackupFile = func(_, _ string) error { return wantErr }
+
+	defer func() { renameBackupFile = previousRename }()
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	store, err := Open(path, logger)
+	if err != nil {
+		t.Fatalf("Open after backup failure: %v", err)
+	}
+
+	if _, ok := store.Get(); ok {
+		t.Error("recovered store reports an override, want default palette")
+	}
+
+	if backups := paletteBackupPaths(t, path); len(backups) != 0 {
+		t.Errorf("palette backups after injected failure = %#v, want none", backups)
+	}
+
+	if !strings.Contains(logs.String(), "corrupt palette backup failed") || !strings.Contains(logs.String(), wantErr.Error()) {
+		t.Errorf("backup warning = %q, want injected error", logs.String())
 	}
 }
 

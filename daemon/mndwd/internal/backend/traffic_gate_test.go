@@ -43,16 +43,16 @@ func (c *recordingCloser) closeRecords() []recordedClose {
 	return slices.Clone(c.closes)
 }
 
-func TestTrafficGateClosePluginClosesOnlyMatching(t *testing.T) {
-	gate := NewTrafficGate()
+func TestSupervisorClosePluginSocketsClosesOnlyMatching(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 	a1 := &recordingCloser{}
 	a2 := &recordingCloser{}
 	b1 := &recordingCloser{}
 
-	gate.Track(a1, "a")
-	gate.Track(a2, "a")
-	gate.Track(b1, "b")
-	gate.ClosePlugin("a")
+	runtime.supervisor.trackSocket(a1, "a")
+	runtime.supervisor.trackSocket(a2, "a")
+	runtime.supervisor.trackSocket(b1, "b")
+	runtime.supervisor.closePluginSockets("a")
 
 	for name, closer := range map[string]*recordingCloser{"a1": a1, "a2": a2} {
 		got := closer.closeRecords()
@@ -67,30 +67,30 @@ func TestTrafficGateClosePluginClosesOnlyMatching(t *testing.T) {
 	}
 }
 
-func TestTrafficGateRetrackingMovesSocketToLatestPlugin(t *testing.T) {
-	gate := NewTrafficGate()
+func TestSupervisorRetrackingMovesSocketToLatestPlugin(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 	closer := &recordingCloser{}
 
-	gate.Track(closer, "a")
-	gate.Track(closer, "b")
+	runtime.supervisor.trackSocket(closer, "a")
+	runtime.supervisor.trackSocket(closer, "b")
 
-	gate.ClosePlugin("a")
+	runtime.supervisor.closePluginSockets("a")
 
 	if got := closer.closeRecords(); len(got) != 0 {
 		t.Fatalf("close records after closing previous plugin = %#v, want none", got)
 	}
 
-	gate.ClosePlugin("b")
+	runtime.supervisor.closePluginSockets("b")
 
 	if got := closer.closeRecords(); len(got) != 1 {
 		t.Fatalf("close records after closing current plugin = %#v, want one", got)
 	}
 }
 
-func TestTrafficGateUntrackStopsClosing(t *testing.T) {
-	gate := NewTrafficGate()
+func TestSupervisorUntrackStopsClosing(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 	closer := &recordingCloser{}
-	untrack, ok := gate.Track(closer, "a")
+	untrack, ok := runtime.supervisor.trackSocket(closer, "a")
 
 	if !ok {
 		t.Fatal("Track refused a connection outside maintenance")
@@ -98,20 +98,20 @@ func TestTrafficGateUntrackStopsClosing(t *testing.T) {
 
 	untrack()
 	untrack()
-	gate.ClosePlugin("a")
+	runtime.supervisor.closePluginSockets("a")
 
 	if got := closer.closeRecords(); len(got) != 0 {
 		t.Fatalf("close records = %#v, want none after untrack", got)
 	}
 }
 
-func TestTrafficGateSetsFlagBeforeClosing(t *testing.T) {
-	gate := NewTrafficGate()
+func TestSupervisorSetsMaintenanceBeforeClosing(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 	var observed bool
-	closer := &recordingCloser{onClose: func() { observed = gate.PlatformMaintenance() }}
+	closer := &recordingCloser{onClose: func() { observed = runtime.supervisor.platformMaintenanceActive() }}
 
-	gate.Track(closer, "a")
-	gate.BeginPlatformMaintenance()
+	runtime.supervisor.trackSocket(closer, "a")
+	runtime.supervisor.beginPlatformMaintenance()
 
 	if !observed {
 		t.Fatal("close callback observed platform maintenance as false")
@@ -122,12 +122,12 @@ func TestTrafficGateSetsFlagBeforeClosing(t *testing.T) {
 	}
 }
 
-func TestTrafficGateCloseRunsOutsideLock(t *testing.T) {
-	gate := NewTrafficGate()
+func TestSupervisorCloseSocketsRunsOutsideLock(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 	var untrack func()
 	closer := &recordingCloser{onClose: func() { untrack() }}
 	var ok bool
-	untrack, ok = gate.Track(closer, "a")
+	untrack, ok = runtime.supervisor.trackSocket(closer, "a")
 
 	if !ok {
 		t.Fatal("Track refused a connection outside maintenance")
@@ -136,7 +136,7 @@ func TestTrafficGateCloseRunsOutsideLock(t *testing.T) {
 	done := make(chan struct{})
 
 	go func() {
-		gate.ClosePlugin("a")
+		runtime.supervisor.closePluginSockets("a")
 		close(done)
 	}()
 
@@ -147,9 +147,11 @@ func TestTrafficGateCloseRunsOutsideLock(t *testing.T) {
 	}
 }
 
-func TestTrafficGateFreshIsNotInMaintenance(t *testing.T) {
-	if NewTrafficGate().PlatformMaintenance() {
-		t.Fatal("new traffic gate started in platform maintenance")
+func TestSupervisorFreshIsNotInMaintenance(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
+
+	if runtime.supervisor.platformMaintenanceActive() {
+		t.Fatal("new supervisor started in platform maintenance")
 	}
 }
 
@@ -158,7 +160,7 @@ func TestSocketTrackDoesNotCreateLifecycleRecord(t *testing.T) {
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 	closer := &recordingCloser{}
 
-	if _, ok := runtime.Traffic().Track(closer, "socket-only"); !ok {
+	if _, ok := runtime.supervisor.trackSocket(closer, "socket-only"); !ok {
 		t.Fatal("Track refused a socket outside platform maintenance")
 	}
 
@@ -180,7 +182,7 @@ func TestSocketTrackDoesNotCreateLifecycleRecord(t *testing.T) {
 func TestSocketOnlyRecordLivesUntilLastUntrack(t *testing.T) {
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 	closer := &recordingCloser{}
-	untrack, ok := runtime.Traffic().Track(closer, "socket-only")
+	untrack, ok := runtime.supervisor.trackSocket(closer, "socket-only")
 
 	if !ok {
 		t.Fatal("Track refused a connection outside platform maintenance")
@@ -197,13 +199,13 @@ func TestSocketOnlyRecordLivesUntilLastUntrack(t *testing.T) {
 	}
 }
 
-func TestTrafficGateTrackRefusedDuringPlatformMaintenance(t *testing.T) {
-	gate := NewTrafficGate()
+func TestSupervisorTrackRefusedDuringPlatformMaintenance(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 
-	gate.BeginPlatformMaintenance()
+	runtime.supervisor.beginPlatformMaintenance()
 
 	closer := &recordingCloser{}
-	untrack, ok := gate.Track(closer, "a")
+	untrack, ok := runtime.supervisor.trackSocket(closer, "a")
 
 	if ok {
 		t.Fatal("Track accepted a connection during platform maintenance")
@@ -214,7 +216,7 @@ func TestTrafficGateTrackRefusedDuringPlatformMaintenance(t *testing.T) {
 	}
 
 	untrack()
-	gate.ClosePlugin("a")
+	runtime.supervisor.closePluginSockets("a")
 
 	if got := closer.closeRecords(); len(got) != 0 {
 		t.Fatalf("refused connection close records = %#v, want none", got)

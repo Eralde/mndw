@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"mndwd/internal/fsutil"
 )
 
 type ServiceLease struct {
@@ -22,39 +24,15 @@ func WriteServiceLease(path string, lease ServiceLease) error {
 		return fmt.Errorf("create lease directory: %w", err)
 	}
 
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".service-lease-")
+	data, err := json.Marshal(lease)
 	if err != nil {
-		return fmt.Errorf("create lease temp file: %w", err)
-	}
-
-	temporaryPath := temporary.Name()
-
-	defer os.Remove(temporaryPath)
-
-	if err := temporary.Chmod(0o600); err != nil {
-		_ = temporary.Close()
-
-		return fmt.Errorf("restrict lease temp file: %w", err)
-	}
-
-	if err := json.NewEncoder(temporary).Encode(lease); err != nil {
-		_ = temporary.Close()
-
 		return fmt.Errorf("encode lease: %w", err)
 	}
 
-	if err := temporary.Sync(); err != nil {
-		_ = temporary.Close()
+	data = append(data, '\n')
 
-		return fmt.Errorf("sync lease: %w", err)
-	}
-
-	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("close lease: %w", err)
-	}
-
-	if err := os.Rename(temporaryPath, path); err != nil {
-		return fmt.Errorf("install lease: %w", err)
+	if err := fsutil.WriteFileAtomic(path, data, 0o600); err != nil {
+		return fmt.Errorf("persist lease: %w", err)
 	}
 
 	return nil

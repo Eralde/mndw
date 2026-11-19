@@ -10,12 +10,24 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/coder/websocket"
 )
 
 const (
 	maxConsecutiveFailures = 5
 	healthyServiceDuration = 60 * time.Second
 )
+
+type socketCloser interface {
+	Close(code websocket.StatusCode, reason string) error
+}
+
+func closeSockets(connections []socketCloser) {
+	for _, conn := range connections {
+		_ = conn.Close(websocket.StatusServiceRestart, "mndw updating")
+	}
+}
 
 type ServiceSpec struct {
 	PluginID         string
@@ -130,22 +142,10 @@ type pluginRecord struct {
 }
 
 func (cfg SupervisorConfig) withDefaults() SupervisorConfig {
-	defaults := DefaultLimits()
+	cfg.Limits = cfg.Limits.WithDefaults()
 
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.DiscardHandler)
-	}
-
-	if cfg.Limits.MaxConcurrentExecTotal <= 0 {
-		cfg.Limits.MaxConcurrentExecTotal = defaults.MaxConcurrentExecTotal
-	}
-
-	if cfg.Limits.MaxConcurrentExecPerPlugin <= 0 {
-		cfg.Limits.MaxConcurrentExecPerPlugin = defaults.MaxConcurrentExecPerPlugin
-	}
-
-	if cfg.Limits.MaxSupervisedServices <= 0 {
-		cfg.Limits.MaxSupervisedServices = defaults.MaxSupervisedServices
 	}
 
 	if cfg.ReadinessTimeout <= 0 {

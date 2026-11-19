@@ -21,14 +21,27 @@ func TestDefaultLimits(t *testing.T) {
 	}
 }
 
+func TestLimitsWithDefaultsPreservesOverridesAndFillsZeroValues(t *testing.T) {
+	got := (Limits{MaxConcurrentExecTotal: 2}).WithDefaults()
+	want := Limits{
+		MaxConcurrentExecTotal:     2,
+		MaxConcurrentExecPerPlugin: 4,
+		MaxSupervisedServices:      8,
+	}
+
+	if got != want {
+		t.Fatalf("WithDefaults() = %+v, want %+v", got, want)
+	}
+}
+
 func TestNewExecRunnerUsesDefaultLimits(t *testing.T) {
 	runner := NewExecRunner(ExecRunnerConfig{})
 	defaults := DefaultLimits()
 
-	if runner.cfg.MaxConcurrentExecTotal != defaults.MaxConcurrentExecTotal ||
-		runner.cfg.MaxConcurrentExecPerPlugin != defaults.MaxConcurrentExecPerPlugin {
+	if runner.cfg.Limits.MaxConcurrentExecTotal != defaults.MaxConcurrentExecTotal ||
+		runner.cfg.Limits.MaxConcurrentExecPerPlugin != defaults.MaxConcurrentExecPerPlugin {
 		t.Fatalf("exec runner limits = total:%d plugin:%d, want total:%d plugin:%d",
-			runner.cfg.MaxConcurrentExecTotal, runner.cfg.MaxConcurrentExecPerPlugin,
+			runner.cfg.Limits.MaxConcurrentExecTotal, runner.cfg.Limits.MaxConcurrentExecPerPlugin,
 			defaults.MaxConcurrentExecTotal, defaults.MaxConcurrentExecPerPlugin)
 	}
 }

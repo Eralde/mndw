@@ -10,6 +10,24 @@ func DefaultLimits() Limits {
 	}
 }
 
+func (l Limits) WithDefaults() Limits {
+	defaults := DefaultLimits()
+
+	if l.MaxConcurrentExecTotal <= 0 {
+		l.MaxConcurrentExecTotal = defaults.MaxConcurrentExecTotal
+	}
+
+	if l.MaxConcurrentExecPerPlugin <= 0 {
+		l.MaxConcurrentExecPerPlugin = defaults.MaxConcurrentExecPerPlugin
+	}
+
+	if l.MaxSupervisedServices <= 0 {
+		l.MaxSupervisedServices = defaults.MaxSupervisedServices
+	}
+
+	return l
+}
+
 type Admission struct {
 	mu                sync.Mutex
 	maxConcurrentExec int

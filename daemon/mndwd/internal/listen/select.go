@@ -11,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"mndwd/internal/fsutil"
 )
 
 // DefaultPort is the fresh-install front-door port.
@@ -161,7 +163,7 @@ func (c Config) finish(listener net.Listener, port, preferred int, usedFallback 
 	if err := writePortAtomic(c.PersistPath, port); err != nil {
 		_ = listener.Close()
 
-		return Selection{}, fmt.Errorf("persist front-door port: %w", err)
+		return Selection{}, err
 	}
 
 	return Selection{Listener: listener, Port: port, PreferredPort: preferred, UsedFallback: usedFallback}, nil
@@ -194,33 +196,8 @@ func writePortAtomic(path string, port int) error {
 		return err
 	}
 
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".frontend-port-*")
-	if err != nil {
-		return err
-	}
-
-	temporaryName := temporary.Name()
-	cleanup := func() {
-		_ = temporary.Close()
-		_ = os.Remove(temporaryName)
-	}
-
-	if _, err := temporary.WriteString(strconv.Itoa(port)); err != nil {
-		cleanup()
-
-		return err
-	}
-
-	if err := temporary.Close(); err != nil {
-		_ = os.Remove(temporaryName)
-
-		return err
-	}
-
-	if err := os.Rename(temporaryName, path); err != nil {
-		_ = os.Remove(temporaryName)
-
-		return err
+	if err := fsutil.WriteFileAtomic(path, []byte(strconv.Itoa(port)), 0o600); err != nil {
+		return fmt.Errorf("persist front-door port: %w", err)
 	}
 
 	return nil

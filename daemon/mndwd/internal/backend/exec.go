@@ -31,16 +31,15 @@ type ExecRequest struct {
 }
 
 type ExecRunnerConfig struct {
-	Timeout                    time.Duration
-	KillGrace                  time.Duration
-	MaxBodyBytes               int64
-	MaxOutputBytes             int64
-	MaxConcurrentExecTotal     int
-	MaxConcurrentExecPerPlugin int
-	RuntimeRoot                string
-	PluginDataRoot             string
-	Logger                     *slog.Logger
-	Dev                        bool
+	Timeout        time.Duration
+	KillGrace      time.Duration
+	MaxBodyBytes   int64
+	MaxOutputBytes int64
+	Limits         Limits
+	RuntimeRoot    string
+	PluginDataRoot string
+	Logger         *slog.Logger
+	Dev            bool
 }
 
 type ExecRunner struct {
@@ -49,7 +48,7 @@ type ExecRunner struct {
 }
 
 func (cfg ExecRunnerConfig) withDefaults() ExecRunnerConfig {
-	defaults := DefaultLimits()
+	cfg.Limits = cfg.Limits.WithDefaults()
 
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = DefaultExecTimeout
@@ -65,14 +64,6 @@ func (cfg ExecRunnerConfig) withDefaults() ExecRunnerConfig {
 
 	if cfg.MaxOutputBytes <= 0 {
 		cfg.MaxOutputBytes = DefaultMaxOutputBytes
-	}
-
-	if cfg.MaxConcurrentExecTotal <= 0 {
-		cfg.MaxConcurrentExecTotal = defaults.MaxConcurrentExecTotal
-	}
-
-	if cfg.MaxConcurrentExecPerPlugin <= 0 {
-		cfg.MaxConcurrentExecPerPlugin = defaults.MaxConcurrentExecPerPlugin
 	}
 
 	return cfg

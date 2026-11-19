@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"mndwd/internal/fsutil"
 )
 
 type Operation string
@@ -156,47 +158,9 @@ func atomicWrite(path string, data []byte, mode os.FileMode) error {
 		return err
 	}
 
-	temp, err := os.CreateTemp(filepath.Dir(path), ".self-update-*")
-	if err != nil {
-		return err
+	if err := fsutil.WriteFileAtomic(path, data, mode); err != nil {
+		return fmt.Errorf("persist self-update state: %w", err)
 	}
-
-	tempPath := temp.Name()
-	keep := false
-
-	defer func() {
-		if !keep {
-			_ = os.Remove(tempPath)
-		}
-	}()
-
-	if err := temp.Chmod(mode); err != nil {
-		_ = temp.Close()
-
-		return err
-	}
-
-	if _, err := temp.Write(data); err != nil {
-		_ = temp.Close()
-
-		return err
-	}
-
-	if err := temp.Sync(); err != nil {
-		_ = temp.Close()
-
-		return err
-	}
-
-	if err := temp.Close(); err != nil {
-		return err
-	}
-
-	if err := os.Rename(tempPath, path); err != nil {
-		return err
-	}
-
-	keep = true
 
 	return nil
 }

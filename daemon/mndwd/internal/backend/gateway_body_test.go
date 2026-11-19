@@ -32,7 +32,9 @@ func TestGatewayBodyReadTimeoutDefault(t *testing.T) {
 }
 
 func TestGatewayExecWithoutRunnerReturnsInternal(t *testing.T) {
-	gateway := NewGateway(GatewayConfig{}, nil, nil, &Runtime{}, backendTestLogger())
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
+	runtime.exec = nil
+	gateway := NewGateway(GatewayConfig{}, nil, nil, runtime, backendTestLogger())
 	request := httptest.NewRequest(http.MethodPost, "/", nil)
 	recorder := httptest.NewRecorder()
 

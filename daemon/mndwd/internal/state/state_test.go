@@ -1,11 +1,14 @@
 package state
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -20,6 +23,29 @@ func newStore(t *testing.T) (*Store, string) {
 	}
 
 	return store, path
+}
+
+func stateBackupPaths(t *testing.T, path string) []string {
+	t.Helper()
+
+	paths, err := filepath.Glob(path + ".bak-*")
+	if err != nil {
+		t.Fatalf("list state backups: %v", err)
+	}
+
+	return paths
+}
+
+func oneStateBackup(t *testing.T, path string) string {
+	t.Helper()
+
+	paths := stateBackupPaths(t, path)
+
+	if len(paths) != 1 {
+		t.Fatalf("state backup count = %d, want one (%#v)", len(paths), paths)
+	}
+
+	return paths[0]
 }
 
 func TestNewStateUsesSchemaVersionOne(t *testing.T) {
@@ -224,8 +250,8 @@ func TestPersistentRCIEnabledReadsStateWithoutField(t *testing.T) {
 		t.Fatal("backgroundTelemetry was lost")
 	}
 
-	if _, err := os.Stat(path + ".bak"); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("state backup stat error = %v, want no backup", err)
+	if backups := stateBackupPaths(t, path); len(backups) != 0 {
+		t.Fatalf("state backups = %#v, want none", backups)
 	}
 }
 
@@ -374,8 +400,8 @@ func TestMutateErrorLeavesStateUntouched(t *testing.T) {
 }
 
 // TestCorruptStateRecovered is the crash-safety property: a garbled state.json
-// (e.g. a write torn by power loss) must not wedge startup — it is set aside as
-// .bak and startup proceeds from empty state.
+// (e.g. a write torn by power loss) must be backed up before startup proceeds
+// from empty state.
 func TestCorruptStateRecovered(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
@@ -384,7 +410,9 @@ func TestCorruptStateRecovered(t *testing.T) {
 		t.Fatalf("seed corrupt file: %v", err)
 	}
 
-	store, err := Open(path)
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	store, err := Open(path, logger)
 	if err != nil {
 		t.Fatalf("Open on corrupt state should recover, got: %v", err)
 	}
@@ -393,8 +421,95 @@ func TestCorruptStateRecovered(t *testing.T) {
 		t.Error("expected empty state after recovery")
 	}
 
-	if _, err := os.Stat(path + ".bak"); err != nil {
-		t.Errorf("expected corrupt file preserved as .bak: %v", err)
+	backups := stateBackupPaths(t, path)
+
+	if len(backups) != 1 {
+		t.Fatalf("state backups = %#v, want one timestamped backup", backups)
+	}
+
+	backup, err := os.ReadFile(backups[0])
+	if err != nil {
+		t.Fatalf("read state backup: %v", err)
+	}
+
+	if string(backup) != "{ this is not json" {
+		t.Fatalf("state backup = %q, want original corrupt bytes", backup)
+	}
+
+	if !strings.Contains(logs.String(), "corrupt state backed up") || !strings.Contains(logs.String(), backups[0]) {
+		t.Errorf("backup warning = %q, want supplied logger to record backup path", logs.String())
+	}
+}
+
+func TestOpenKeepsEarlierCorruptStateBackup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	first := []byte("first corrupt state")
+
+	if err := os.WriteFile(path, first, 0o600); err != nil {
+		t.Fatalf("seed first corrupt state: %v", err)
+	}
+
+	if _, err := Open(path); err != nil {
+		t.Fatalf("open first corrupt state: %v", err)
+	}
+
+	second := []byte("second corrupt state")
+
+	if err := os.WriteFile(path, second, 0o600); err != nil {
+		t.Fatalf("seed second corrupt state: %v", err)
+	}
+
+	if _, err := Open(path); err != nil {
+		t.Fatalf("open second corrupt state: %v", err)
+	}
+
+	backups := stateBackupPaths(t, path)
+
+	if len(backups) != 2 {
+		t.Fatalf("state backup count = %d, want 2 (%#v)", len(backups), backups)
+	}
+
+	got := make(map[string]bool, len(backups))
+
+	for _, backupPath := range backups {
+		data, err := os.ReadFile(backupPath)
+		if err != nil {
+			t.Fatalf("read state backup %q: %v", backupPath, err)
+		}
+
+		got[string(data)] = true
+	}
+
+	if !got[string(first)] || !got[string(second)] {
+		t.Fatalf("state backup contents = %#v, want both original corrupt files", got)
+	}
+}
+
+func TestOpenReturnsErrorWhenCorruptStateCannotBeBackedUp(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	original := []byte("corrupt state that must stay in place")
+
+	if err := os.WriteFile(path, original, 0o600); err != nil {
+		t.Fatalf("seed corrupt state: %v", err)
+	}
+
+	wantErr := errors.New("backup rename failed")
+	previousRename := renameBackupFile
+	renameBackupFile = func(_, _ string) error { return wantErr }
+
+	defer func() { renameBackupFile = previousRename }()
+
+	if _, err := Open(path); !errors.Is(err, wantErr) {
+		t.Fatalf("Open error = %v, want backup error %v", err, wantErr)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read original state after backup failure: %v", err)
+	}
+
+	if string(got) != string(original) {
+		t.Fatalf("original state after backup failure = %q, want unchanged %q", got, original)
 	}
 }
 
@@ -416,7 +531,7 @@ func TestUnsupportedStateIsBackedUpWithoutMigration(t *testing.T) {
 		t.Fatalf("legacy state was migrated instead of reset: %+v", store.Snapshot())
 	}
 
-	backup, err := os.ReadFile(path + ".bak")
+	backup, err := os.ReadFile(oneStateBackup(t, path))
 	if err != nil {
 		t.Fatalf("read legacy backup: %v", err)
 	}
@@ -648,9 +763,7 @@ func TestLoadBacksUpStateWithUnknownSource(t *testing.T) {
 		t.Fatal("plugin with unknown source was loaded instead of reset")
 	}
 
-	if _, err := os.Stat(path + ".bak"); err != nil {
-		t.Fatalf("invalid-source state was not preserved as .bak: %v", err)
-	}
+	oneStateBackup(t, path)
 }
 
 func TestLoadBacksUpStateWithUnknownApproval(t *testing.T) {
@@ -670,9 +783,7 @@ func TestLoadBacksUpStateWithUnknownApproval(t *testing.T) {
 		t.Fatal("plugin with unknown approval was loaded instead of reset")
 	}
 
-	if _, err := os.Stat(path + ".bak"); err != nil {
-		t.Fatalf("invalid-approval state was not preserved as .bak: %v", err)
-	}
+	oneStateBackup(t, path)
 }
 
 func TestMutateAcceptsValidCombinations(t *testing.T) {
@@ -725,7 +836,5 @@ func TestLoadBacksUpStateWithInvalidCombination(t *testing.T) {
 		t.Fatal("invalid on-disk plugin was loaded instead of reset")
 	}
 
-	if _, err := os.Stat(path + ".bak"); err != nil {
-		t.Fatalf("invalid state was not preserved as .bak: %v", err)
-	}
+	oneStateBackup(t, path)
 }

@@ -19,7 +19,7 @@ import (
 func TestProjectBackendStatusMapsLifecycleAndRuntimeStates(t *testing.T) {
 	now := time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC)
 	runtime := newStatusTestRuntime(now)
-	gateway := &Gateway{runtime: runtime, traffic: runtime.Traffic(), activationGates: NewActivationGateRegistry()}
+	gateway := &Gateway{runtime: runtime, activationGates: NewActivationGateRegistry()}
 
 	service := statusTestPlugin(t, "demo", manifest.BackendKindService, 1, state.ApprovalApproved, true, nil)
 	exec := statusTestPlugin(t, "exec", manifest.BackendKindExec, 0, state.ApprovalApproved, true, nil)
@@ -69,7 +69,7 @@ func TestProjectBackendStatusMapsLifecycleAndRuntimeStates(t *testing.T) {
 func TestProjectBackendStatusUsesLifecyclePrecedenceAndStaticCompatibility(t *testing.T) {
 	now := time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC)
 	runtime := newStatusTestRuntime(now)
-	gateway := &Gateway{runtime: runtime, traffic: runtime.Traffic(), activationGates: NewActivationGateRegistry()}
+	gateway := &Gateway{runtime: runtime, activationGates: NewActivationGateRegistry()}
 
 	disabled := statusTestPlugin(t, "disabled", manifest.BackendKindService, 2, state.ApprovalApproved, false, nil)
 	notApproved := statusTestPlugin(t, "pending", manifest.BackendKindService, 2, state.ApprovalPending, true, nil)
@@ -112,7 +112,7 @@ func TestProjectBackendStatusApprovalPrecedesEnabled(t *testing.T) {
 		return []ActivationBlocker{{Capability: capability, Reason: BlockerNotGranted}}
 	}))
 
-	gateway := &Gateway{runtime: runtime, traffic: runtime.Traffic(), activationGates: gates}
+	gateway := &Gateway{runtime: runtime, activationGates: gates}
 
 	approvedEnabled := statusTestPlugin(t, "approved-enabled", manifest.BackendKindService, 1, state.ApprovalApproved, true, nil)
 	approvedDisabled := statusTestPlugin(t, "approved-disabled", manifest.BackendKindService, 1, state.ApprovalApproved, false, nil)
@@ -176,7 +176,7 @@ func TestProjectBackendStatusExecSkipsActivationEvaluation(t *testing.T) {
 		return []ActivationBlocker{{Capability: capability, Reason: "not-granted"}}
 	}))
 
-	gateway := &Gateway{activationGates: gates}
+	gateway := &Gateway{runtime: NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()}), activationGates: gates}
 	plugin := statusTestPlugin(t, "exec", manifest.BackendKindExec, 0, state.ApprovalApproved, true, []string{manifest.PersistentRCISessionWriteCapability})
 
 	got := gateway.projectBackendStatus(plugin, now)
@@ -200,7 +200,7 @@ func TestProjectBackendStatusPreservesTypedBlockerWireValues(t *testing.T) {
 		}
 	}))
 
-	gateway := &Gateway{activationGates: gates}
+	gateway := &Gateway{runtime: NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()}), activationGates: gates}
 	plugin := statusTestPlugin(t, "demo", manifest.BackendKindService, 1, state.ApprovalApproved, true, []string{manifest.PersistentRCISessionReadCapability})
 
 	got, err := json.Marshal(gateway.projectBackendStatus(plugin, time.Time{}))
@@ -245,7 +245,7 @@ func TestStatusHandlerAuthenticatesBeforeResolutionAndSanitizesResponse(t *testi
 	statusTestStoreBackendless(t, store, "backendless")
 
 	auth := &statusTestAuthenticator{err: httpx.NewError(http.StatusUnauthorized, httpx.CodeUnauthorized, "unauthorized")}
-	gateway := NewGateway(GatewayConfig{}, registry, auth, nil, backendTestLogger())
+	gateway := NewGateway(GatewayConfig{}, registry, auth, NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()}), backendTestLogger())
 	mux := http.NewServeMux()
 
 	gateway.Register(mux)

@@ -55,7 +55,6 @@ type Gateway struct {
 	registry        *registry.Registry
 	auth            Authenticator
 	runtime         *Runtime
-	traffic         *TrafficGate
 	activationGates *ActivationGateRegistry
 	logger          *slog.Logger
 }
@@ -80,6 +79,7 @@ func (cfg GatewayConfig) withDefaults() GatewayConfig {
 	return cfg
 }
 
+// NewGateway requires a non-nil Runtime.
 func NewGateway(cfg GatewayConfig, registry *registry.Registry, auth Authenticator, runtime *Runtime, logger *slog.Logger) *Gateway {
 	cfg = cfg.withDefaults()
 
@@ -87,18 +87,11 @@ func NewGateway(cfg GatewayConfig, registry *registry.Registry, auth Authenticat
 		logger = slog.New(slog.DiscardHandler)
 	}
 
-	traffic := NewTrafficGate()
-
-	if runtime != nil {
-		traffic = runtime.Traffic()
-	}
-
 	return &Gateway{
 		cfg:             cfg,
 		registry:        registry,
 		auth:            auth,
 		runtime:         runtime,
-		traffic:         traffic,
 		activationGates: cfg.ActivationGates,
 		logger:          logger,
 	}
@@ -272,12 +265,6 @@ func (g *Gateway) serveExec(writer http.ResponseWriter, request *http.Request, p
 		return
 	}
 
-	if g.runtime == nil {
-		g.writeError(writer, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "exec backend is not configured"))
-
-		return
-	}
-
 	if g.runtime.exec == nil {
 		g.writeError(writer, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "exec backend is not configured"))
 
@@ -343,12 +330,6 @@ func (g *Gateway) validateCommand(plugin *registry.Plugin, relative string) (Val
 }
 
 func (g *Gateway) serveService(writer http.ResponseWriter, request *http.Request, plugin *registry.Plugin, route manifest.BackendRoute) {
-	if g.runtime == nil {
-		g.writeError(writer, httpx.NewError(http.StatusServiceUnavailable, httpx.CodeBackendUnavailable, "service backend is unavailable"))
-
-		return
-	}
-
 	if plugin.Manifest.Backend.ProtocolVersion <= 0 || !g.runtime.SupportsProtocol(plugin.Manifest.Backend.ProtocolVersion) {
 		g.writeError(writer, httpx.NewError(http.StatusServiceUnavailable, httpx.CodeBackendIncompatible, "service backend protocol is unsupported"))
 
@@ -432,7 +413,7 @@ func (g *Gateway) handleWebSocket(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 
-	if g.runtime == nil || g.runtime.Status(plugin.Name).State != StateReady {
+	if g.runtime.Status(plugin.Name).State != StateReady {
 		g.writeError(writer, httpx.NewError(http.StatusServiceUnavailable, httpx.CodeBackendUnavailable, "service backend is unavailable"))
 
 		return
@@ -513,13 +494,13 @@ func (g *Gateway) isMaintenance(pluginID string) bool {
 // isPlatformMaintenance reports the coarse gate applied to every backend during
 // daemon shutdown or package replacement.
 func (g *Gateway) isPlatformMaintenance() bool {
-	return g.traffic != nil && g.traffic.PlatformMaintenance()
+	return g.runtime.supervisor.platformMaintenanceActive()
 }
 
 // pluginTrafficBlocked reports the per-plugin lifecycle traffic gate, which is
 // held only while a plugin is stopping, restarting, or otherwise mid-operation.
 func (g *Gateway) pluginTrafficBlocked(pluginID string) bool {
-	return g.runtime != nil && g.runtime.BlocksTraffic(pluginID)
+	return g.runtime.BlocksTraffic(pluginID)
 }
 
 // activationBlockers returns the unmet activation prerequisites for a plugin's
@@ -539,7 +520,7 @@ func (g *Gateway) activationBlockers(plugin *registry.Plugin) []ActivationBlocke
 }
 
 func (g *Gateway) admitWebSocket(connection socketCloser, pluginID string) (func(), bool) {
-	untrack, ok := g.traffic.Track(connection, pluginID)
+	untrack, ok := g.runtime.supervisor.trackSocket(connection, pluginID)
 
 	if !ok || g.pluginTrafficBlocked(pluginID) {
 		untrack()

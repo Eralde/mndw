@@ -50,7 +50,6 @@ type LifecycleObserver func(LifecycleEvent)
 type Runtime struct {
 	exec              *ExecRunner
 	supervisor        *Supervisor
-	traffic           *TrafficGate
 	limits            Limits
 	protocols         []int
 	now               func() time.Time
@@ -65,19 +64,7 @@ func (config RuntimeConfig) withDefaults() RuntimeConfig {
 		config.RuntimeRoot = "/opt/tmp/mndw/plugin-runtime"
 	}
 
-	defaults := DefaultLimits()
-
-	if config.Limits.MaxConcurrentExecTotal <= 0 {
-		config.Limits.MaxConcurrentExecTotal = defaults.MaxConcurrentExecTotal
-	}
-
-	if config.Limits.MaxConcurrentExecPerPlugin <= 0 {
-		config.Limits.MaxConcurrentExecPerPlugin = defaults.MaxConcurrentExecPerPlugin
-	}
-
-	if config.Limits.MaxSupervisedServices <= 0 {
-		config.Limits.MaxSupervisedServices = defaults.MaxSupervisedServices
-	}
+	config.Limits = config.Limits.WithDefaults()
 
 	if len(config.SupportedServiceProtocols) == 0 {
 		config.SupportedServiceProtocols = []int{1}
@@ -91,8 +78,7 @@ func (config RuntimeConfig) withDefaults() RuntimeConfig {
 		config.OnLifecycle = func(LifecycleEvent) {}
 	}
 
-	config.Exec.MaxConcurrentExecTotal = config.Limits.MaxConcurrentExecTotal
-	config.Exec.MaxConcurrentExecPerPlugin = config.Limits.MaxConcurrentExecPerPlugin
+	config.Exec.Limits = config.Limits
 	config.Exec.RuntimeRoot = config.RuntimeRoot
 	config.Exec.PluginDataRoot = config.PluginDataRoot
 	config.Exec = config.Exec.withDefaults()
@@ -118,7 +104,6 @@ func NewRuntime(config RuntimeConfig) *Runtime {
 	runtime := &Runtime{
 		exec:              newExecRunner(config.Exec, admission),
 		supervisor:        supervisor,
-		traffic:           newTrafficGate(supervisor),
 		limits:            config.Limits,
 		protocols:         slices.Clone(config.SupportedServiceProtocols),
 		now:               supervisor.now,
@@ -210,13 +195,13 @@ func (r *Runtime) Limits() RuntimeLimitsSnapshot {
 }
 
 func (r *Runtime) BeginPlatformMaintenance(ctx context.Context) error {
-	r.traffic.BeginPlatformMaintenance()
+	r.supervisor.beginPlatformMaintenance()
 
 	return r.supervisor.StopAll(ctx)
 }
 
 func (r *Runtime) Shutdown(ctx context.Context) error {
-	r.traffic.BeginPlatformMaintenance()
+	r.supervisor.beginPlatformMaintenance()
 
 	pluginIDs := r.supervisor.runningPluginIDs()
 	err := r.supervisor.StopAll(ctx)
@@ -239,8 +224,6 @@ func (r *Runtime) serviceSpec(plugin *registry.Plugin) (ServiceSpec, bool) {
 
 	return spec, true
 }
-
-func (r *Runtime) Traffic() *TrafficGate { return r.traffic }
 
 func (r *Runtime) Now() time.Time { return r.now() }
 

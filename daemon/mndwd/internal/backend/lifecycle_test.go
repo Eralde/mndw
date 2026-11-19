@@ -274,7 +274,7 @@ func TestAcceptedExclusiveLifecycleClosesSocketsOnceAndGatesTraffic(t *testing.T
 	closed := make(chan string, 1)
 	closer := &recordingCloser{onClose: func() { closed <- "p" }}
 
-	if _, ok := runtime.Traffic().Track(closer, "p"); !ok {
+	if _, ok := runtime.supervisor.trackSocket(closer, "p"); !ok {
 		t.Fatal("Track refused connection outside platform maintenance")
 	}
 
@@ -331,11 +331,11 @@ func TestRuntimeExclusiveLifecycleClosesTrackedSockets(t *testing.T) {
 	pCloser := &recordingCloser{}
 	qCloser := &recordingCloser{}
 
-	if _, ok := runtime.Traffic().Track(pCloser, "p"); !ok {
+	if _, ok := runtime.supervisor.trackSocket(pCloser, "p"); !ok {
 		t.Fatal("Track refused p outside platform maintenance")
 	}
 
-	if _, ok := runtime.Traffic().Track(qCloser, "q"); !ok {
+	if _, ok := runtime.supervisor.trackSocket(qCloser, "q"); !ok {
 		t.Fatal("Track refused q outside platform maintenance")
 	}
 

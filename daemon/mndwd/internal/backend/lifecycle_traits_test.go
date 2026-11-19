@@ -114,7 +114,7 @@ func TestExecuteLifecycleOperationTraits(t *testing.T) {
 
 					closer := &recordingCloser{}
 
-					if _, ok := runtime.Traffic().Track(closer, "p"); !ok {
+					if _, ok := runtime.supervisor.trackSocket(closer, "p"); !ok {
 						t.Fatal("Track refused connection outside platform maintenance")
 					}
 

@@ -104,12 +104,12 @@ func run(cfg Config) (err error) {
 		logger.Warn("running in --dev mode: ALL session auth is bypassed — never use on a real device")
 	}
 
-	store, err := state.Open(cfg.StateFile())
+	store, err := state.Open(cfg.StateFile(), logger)
 	if err != nil {
 		return fmt.Errorf("open state: %w", err)
 	}
 
-	paletteStore, err := palette.Open(cfg.PaletteFile())
+	paletteStore, err := palette.Open(cfg.PaletteFile(), logger)
 	if err != nil {
 		return fmt.Errorf("open palette store: %w", err)
 	}

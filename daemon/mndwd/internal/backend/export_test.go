@@ -73,8 +73,8 @@ func NewExecRunner(cfg ExecRunnerConfig) *ExecRunner {
 	cfg = cfg.withDefaults()
 
 	return newExecRunner(cfg, NewAdmission(Limits{
-		MaxConcurrentExecTotal:     cfg.MaxConcurrentExecTotal,
-		MaxConcurrentExecPerPlugin: cfg.MaxConcurrentExecPerPlugin,
+		MaxConcurrentExecTotal:     cfg.Limits.MaxConcurrentExecTotal,
+		MaxConcurrentExecPerPlugin: cfg.Limits.MaxConcurrentExecPerPlugin,
 	}))
 }
 

@@ -8,10 +8,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"mndwd/internal/fsutil"
 )
 
 // schemaVersion is the first released state format. Older pre-alpha state is
@@ -21,6 +24,8 @@ const schemaVersion = 1
 
 // MaxAuditEntries bounds the persisted security audit trail.
 const MaxAuditEntries = 256
+
+var renameBackupFile = os.Rename
 
 // Approval is a plugin backend's approval status. Plugins without a backend are installed
 // directly as approved because they expose no executable server-side code.
@@ -119,14 +124,20 @@ type Store struct {
 }
 
 // Open loads the store at path, creating the parent directory and an empty state
-// if none exists. A corrupt state.json is preserved as state.json.bak and replaced
-// with fresh empty state, so a garbled file never wedges startup.
-func Open(path string) (*Store, error) {
+// if none exists. A corrupt state.json is preserved with a timestamped backup
+// before fresh empty state is written.
+func Open(path string, loggers ...*slog.Logger) (*Store, error) {
+	logger := slog.Default()
+
+	if len(loggers) > 0 && loggers[0] != nil {
+		logger = loggers[0]
+	}
+
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create state dir: %w", err)
 	}
 
-	st, err := load(path)
+	st, err := load(path, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +152,7 @@ func Open(path string) (*Store, error) {
 	return store, nil
 }
 
-func load(path string) (*State, error) {
+func load(path string, logger *slog.Logger) (*State, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -158,8 +169,9 @@ func load(path string) (*State, error) {
 	var st State
 
 	if err := json.Unmarshal(data, &st); err != nil {
-		// Corrupt file: keep it for forensics, start clean rather than crash-loop.
-		_ = os.Rename(path, path+".bak")
+		if err := backupCorruptState(path, logger); err != nil {
+			return nil, err
+		}
 
 		return emptyState(), nil
 	}
@@ -167,7 +179,9 @@ func load(path string) (*State, error) {
 	if !validState(&st) {
 		// A structurally valid but unsupported state is just as unsafe to
 		// reinterpret as corrupt JSON. Preserve it before starting empty.
-		_ = os.Rename(path, path+".bak")
+		if err := backupCorruptState(path, logger); err != nil {
+			return nil, err
+		}
 
 		return emptyState(), nil
 	}
@@ -177,6 +191,21 @@ func load(path string) (*State, error) {
 	}
 
 	return &st, nil
+}
+
+func backupCorruptState(path string, logger *slog.Logger) error {
+	backupPath, err := fsutil.UniqueBackupPath(path, time.Now())
+	if err != nil {
+		return fmt.Errorf("choose corrupt state backup path: %w", err)
+	}
+
+	if err := renameBackupFile(path, backupPath); err != nil {
+		return fmt.Errorf("preserve corrupt state as %s: %w", backupPath, err)
+	}
+
+	logger.Warn("corrupt state backed up", "path", backupPath)
+
+	return nil
 }
 
 func validState(st *State) bool {
@@ -376,43 +405,9 @@ func (s *Store) persist(st *State) error {
 		return fmt.Errorf("marshal state: %w", err)
 	}
 
-	dir := filepath.Dir(s.path)
-	tmp, err := os.CreateTemp(dir, "state-*.json.tmp")
-	if err != nil {
-		return fmt.Errorf("create temp state: %w", err)
+	if err := fsutil.WriteFileAtomic(s.path, data, 0o600); err != nil {
+		return fmt.Errorf("persist state: %w", err)
 	}
-
-	tmpPath := tmp.Name()
-
-	committed := false
-
-	defer func() {
-		if !committed {
-			_ = os.Remove(tmpPath)
-		}
-	}()
-
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-
-		return fmt.Errorf("write temp state: %w", err)
-	}
-
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-
-		return fmt.Errorf("sync temp state: %w", err)
-	}
-
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp state: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, s.path); err != nil {
-		return fmt.Errorf("rename temp state: %w", err)
-	}
-
-	committed = true
 
 	return nil
 }

@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"mndwd/internal/fsutil"
 	"mndwd/internal/rcisession/model"
 )
 
@@ -301,36 +302,8 @@ func writeAtomic(path string, data []byte) error {
 		return err
 	}
 
-	temporary, err := os.CreateTemp(directory, ".rci-session-*.tmp")
-	if err != nil {
-		return fmt.Errorf("create persistent RCI temporary file: %w", err)
-	}
-
-	temporaryPath := temporary.Name()
-
-	defer func() {
-		_ = temporary.Close()
-		_ = os.Remove(temporaryPath)
-	}()
-
-	if err := temporary.Chmod(0o600); err != nil {
-		return fmt.Errorf("secure persistent RCI temporary file: %w", err)
-	}
-
-	if _, err := temporary.Write(data); err != nil {
-		return fmt.Errorf("write persistent RCI ciphertext: %w", err)
-	}
-
-	if err := temporary.Sync(); err != nil {
-		return fmt.Errorf("sync persistent RCI ciphertext: %w", err)
-	}
-
-	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("close persistent RCI ciphertext: %w", err)
-	}
-
-	if err := os.Rename(temporaryPath, path); err != nil {
-		return fmt.Errorf("replace persistent RCI ciphertext: %w", err)
+	if err := fsutil.WriteFileAtomic(path, data, 0o600); err != nil {
+		return fmt.Errorf("persist persistent RCI ciphertext: %w", err)
 	}
 
 	return nil

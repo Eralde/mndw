@@ -109,6 +109,9 @@ describe('buildManifest', () => {
     const manifest = buildManifest(options({name: 'traffic-monitor', type: 'widget'}));
 
     expect(manifest.label).toBe('Traffic Monitor');
+    expect(manifest.description).toEqual(expect.any(String));
+    expect((manifest.description as string).length).toBeGreaterThanOrEqual(1);
+    expect((manifest.description as string).length).toBeLessThanOrEqual(160);
   });
 
   it('defaults a page route to /<name>', () => {

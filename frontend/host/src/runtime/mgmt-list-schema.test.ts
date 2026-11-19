@@ -24,6 +24,13 @@ describe('decodeMgmtList', () => {
     expect(entries[0]).toMatchObject({name: 'demo', type: 'widget', source: 'builtin'});
   });
 
+  it('preserves optional description and ignores retired icon wire data', () => {
+    const entry = decodeMgmtListEntry({...widgetEntry, description: 'Shows device status.', icon: 'chart'});
+
+    expect(entry.description).toBe('Shows device status.');
+    expect(entry).not.toHaveProperty('icon');
+  });
+
   it('decodes a page entry with a route', () => {
     const page = {...widgetEntry, type: 'page', route: '/demo', size: undefined};
 

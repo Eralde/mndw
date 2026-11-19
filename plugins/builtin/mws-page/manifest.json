@@ -4,6 +4,7 @@
   "version": "0.1.1",
   "type": "page",
   "label": "MWS",
+  "description": "Explore mesh nodes, clients, telemetry, and remote controls.",
   "route": "/mws",
   "entry": "index.js",
   "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}},

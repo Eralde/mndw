@@ -1,4 +1,5 @@
 {
+  "manifest": {"label": "Device Info", "description": "View device identity, firmware, uptime, and hardware details."},
   "title": "Device info",
   "loading": "Loading…",
   "error": "Failed to load device info",

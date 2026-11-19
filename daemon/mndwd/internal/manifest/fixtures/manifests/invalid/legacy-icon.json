@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "name": "legacy-icon",
+  "version": "1.0.0",
+  "type": "widget",
+  "label": "Legacy Icon",
+  "entry": "index.js",
+  "icon": "chart",
+  "size": {"w": 4, "h": 3}
+}

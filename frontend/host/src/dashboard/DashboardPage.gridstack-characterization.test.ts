@@ -165,7 +165,7 @@ function addWidgetByLabel(target: HTMLElement, label: string): void {
   flushSync();
 
   const button = [...document.body.querySelectorAll<HTMLElement>('.mndw-floating-panel mndw-button')]
-    .find((candidate) => candidate.textContent?.trim() === label);
+    .find((candidate) => candidate.querySelector('.mndw-floating-panel__label')?.textContent?.trim() === label);
 
   expect(button, `missing add button for ${label}`).toBeDefined();
   button?.click();

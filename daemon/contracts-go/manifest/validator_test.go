@@ -82,6 +82,15 @@ func TestLegacyPermissionsFieldRequiresCapabilities(t *testing.T) {
 	}
 }
 
+func TestLegacyIconFieldRequiresManifestUpdate(t *testing.T) {
+	data := []byte(`{"manifestVersion":1,"name":"legacy-icon","version":"1.0.0","type":"widget","label":"Legacy","entry":"index.js","size":{"w":2,"h":2},"icon":"chart"}`)
+
+	_, err := Validate(data)
+	if err == nil || !strings.Contains(err.Error(), "icon was removed in 0.3") {
+		t.Fatalf("Validate() error = %v, want removal guidance", err)
+	}
+}
+
 func TestI18nManifestValidation(t *testing.T) {
 	base := func(i18n string) []byte {
 		return []byte(fmt.Sprintf(`{"manifestVersion":1,"name":"i18n-plugin","version":"1.0.0","type":"widget","label":"I18n plugin","entry":"index.js","size":{"w":2,"h":2},"i18n":%s}`, i18n))

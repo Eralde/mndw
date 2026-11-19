@@ -27,14 +27,16 @@
           "minLength": 1,
           "description": "Human-readable name shown in the dashboard or navigation."
         },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "description": "Optional plain-text description in the plugin default language."
+        },
         "entry": {
           "type": "string",
           "minLength": 1,
           "description": "Relative path to the bundled entry module."
-        },
-        "icon": {
-          "description": "Optional icon name.",
-          "type": "string"
         },
         "capabilities": {
           "type": "array",
@@ -357,14 +359,16 @@
           "minLength": 1,
           "description": "Human-readable name shown in the dashboard or navigation."
         },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "description": "Optional plain-text description in the plugin default language."
+        },
         "entry": {
           "type": "string",
           "minLength": 1,
           "description": "Relative path to the bundled entry module."
-        },
-        "icon": {
-          "description": "Optional icon name.",
-          "type": "string"
         },
         "capabilities": {
           "type": "array",

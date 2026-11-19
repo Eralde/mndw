@@ -34,9 +34,10 @@ describe('validatePluginCatalogs', () => {
     const {pluginDir, manifest} = loadFixture('valid', 'key-parity-gap');
     const warnings = validatePluginCatalogs(pluginDir, manifest, {strict: false});
 
-    expect(warnings).toHaveLength(1);
+    expect(warnings).toHaveLength(2);
     expect(warnings[0]).toContain('ru');
     expect(warnings[0]).toContain('extra');
+    expect(warnings[1]).toContain('manifest.description');
   });
 
   it('escalates parity warnings in strict mode', () => {

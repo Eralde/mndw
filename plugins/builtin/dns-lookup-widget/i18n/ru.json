@@ -1,4 +1,5 @@
 {
+  "manifest": {"label": "Поиск DNS", "description": "Ищите DNS-записи по имени хоста."},
   "title": "Поиск DNS",
   "hostname-label": "Имя хоста",
   "hostname-hint": "Например, google.com",

@@ -858,11 +858,18 @@ describe('DashboardPage', () => {
     target.remove();
   });
 
-  it('adds a widget and closes the picker on add', async () => {
+  it('scrolls to and briefly highlights an added widget with reduced motion enabled', async () => {
     const trafficPlugin = {
       entry: widgetEntry('traffic'),
       module: {createInstance: vi.fn()},
     };
+    const newTile = document.createElement('div');
+    const scrollIntoView = vi.fn();
+
+    newTile.className = 'mndw-grid-tile';
+    newTile.dataset.widgetId = 'widget-traffic:1';
+    newTile.scrollIntoView = scrollIntoView;
+    vi.stubGlobal('matchMedia', vi.fn(() => ({matches: true})));
 
     replacePluginLoadStates([trafficPlugin.entry]);
     setPluginLoadState('traffic', 'loaded');
@@ -871,6 +878,7 @@ describe('DashboardPage', () => {
     save.mockReturnValue([{id: 'widget-traffic:1', x: 0, y: 0, w: 4, h: 3}]);
     vi.mocked(addWidgetTile).mockImplementation(() => {
       gridHandlers.get('added')?.(new Event('added'));
+      document.querySelector('.grid-stack')?.append(newTile);
 
       return 'widget-traffic:1';
     });
@@ -888,7 +896,7 @@ describe('DashboardPage', () => {
       flushSync();
 
       const pickerButton = [...document.querySelectorAll('.mndw-floating-panel mndw-button')].find(
-        (btn) => btn.textContent?.trim() === 'traffic',
+        (btn) => btn.querySelector('.mndw-floating-panel__label')?.textContent?.trim() === 'traffic',
       ) as HTMLButtonElement | undefined;
 
       pickerButton?.click();
@@ -908,6 +916,79 @@ describe('DashboardPage', () => {
           target.querySelector('.mndw-dashboard__toolbar mndw-button'),
         );
       });
+      await vi.waitFor(() => {
+        expect(scrollIntoView).toHaveBeenCalledWith({behavior: 'auto', block: 'center'});
+        expect(newTile.classList.contains('mndw-grid-tile--newly-added')).toBe(true);
+      });
+
+      vi.advanceTimersByTime(1600);
+
+      expect(newTile.classList.contains('mndw-grid-tile--newly-added')).toBe(false);
+    } finally {
+      await unmount(component);
+      target.remove();
+    }
+  });
+
+  it('clears the earlier highlight when a second widget is added within 1.6 seconds', async () => {
+    const trafficPlugin = {entry: widgetEntry('traffic'), module: {createInstance: vi.fn()}};
+    const weatherPlugin = {entry: widgetEntry('weather'), module: {createInstance: vi.fn()}};
+    const addedTiles = new Map<string, HTMLElement>();
+
+    vi.stubGlobal('matchMedia', vi.fn(() => ({matches: true})));
+    replacePluginLoadStates([trafficPlugin.entry, weatherPlugin.entry]);
+    setPluginLoadState('traffic', 'loaded');
+    setPluginLoadState('weather', 'loaded');
+    vi.mocked(pluginRegistry).get.mockImplementation((name: string) =>
+      name === 'traffic' ? trafficPlugin : name === 'weather' ? weatherPlugin : undefined
+    );
+    vi.mocked(pluginRegistry).getWidgets.mockReturnValue([trafficPlugin, weatherPlugin]);
+    vi.mocked(addWidgetTile).mockImplementation((_services, _registry, _grid, name) => {
+      const id = `widget-${name}:1`;
+      const tile = document.createElement('div');
+
+      tile.className = 'mndw-grid-tile';
+      tile.dataset.widgetId = id;
+      document.querySelector('.grid-stack')?.append(tile);
+      addedTiles.set(name, tile);
+      gridHandlers.get('added')?.(new Event('added'));
+
+      return id;
+    });
+
+    const {component, target} = mountPage();
+
+    const addWidget = async (name: string): Promise<void> => {
+      const addButton = [...target.querySelectorAll('mndw-button')].find(
+        (btn) => btn.textContent?.includes('Add widget'),
+      );
+
+      addButton?.click();
+      flushSync();
+
+      const pickerButton = [...document.querySelectorAll('.mndw-floating-panel mndw-button')].find(
+        (btn) => btn.querySelector('.mndw-floating-panel__label')?.textContent?.trim() === name,
+      ) as HTMLButtonElement | undefined;
+
+      pickerButton?.click();
+      flushSync();
+      await vi.waitFor(() => expect(document.querySelector('.mndw-floating-panel')).toBeNull());
+      await vi.waitFor(() =>
+        expect(addedTiles.get(name)?.classList.contains('mndw-grid-tile--newly-added')).toBe(true)
+      );
+    };
+
+    try {
+      await addWidget('traffic');
+      await addWidget('weather');
+
+      expect(addedTiles.get('traffic')?.classList.contains('mndw-grid-tile--newly-added')).toBe(false);
+      expect(addedTiles.get('weather')?.classList.contains('mndw-grid-tile--newly-added')).toBe(true);
+
+      vi.advanceTimersByTime(1600);
+
+      expect(addedTiles.get('traffic')?.classList.contains('mndw-grid-tile--newly-added')).toBe(false);
+      expect(addedTiles.get('weather')?.classList.contains('mndw-grid-tile--newly-added')).toBe(false);
     } finally {
       await unmount(component);
       target.remove();
@@ -960,7 +1041,7 @@ describe('DashboardPage', () => {
       flushSync();
 
       const pickerButton = [...document.querySelectorAll('.mndw-floating-panel mndw-button')].find(
-        (button) => button.textContent?.trim() === 'Traffic',
+        (button) => button.querySelector('.mndw-floating-panel__label')?.textContent?.trim() === 'Traffic',
       ) as HTMLButtonElement | undefined;
 
       pickerButton?.click();

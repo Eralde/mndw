@@ -1,4 +1,5 @@
 {
+  "manifest": {"label": "Clients", "description": "See connected devices, their addresses, link status, and recent activity."},
   "title": "Clients",
   "show-offline": "Show offline",
   "settings": "Client settings",

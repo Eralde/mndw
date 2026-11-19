@@ -1,4 +1,5 @@
 {
+  "manifest": {"label": "Hello Widget", "description": "Try a simple widget that calls a sample backend."},
   "title": "Hello widget",
   "action": {
     "greet": "Get greeting",

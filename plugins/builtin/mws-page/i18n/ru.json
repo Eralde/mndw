@@ -1,4 +1,5 @@
 {
+  "manifest": {"label": "MWS", "description": "Изучайте узлы mesh-сети, клиентов, телеметрию и удалённое управление."},
   "title": "MWS",
   "summary": {
     "mock-data": "Тестовые данные: ретрансляторов — {extenders}, клиентов — {clients}",

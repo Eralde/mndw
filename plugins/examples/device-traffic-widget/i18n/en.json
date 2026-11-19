@@ -1,4 +1,5 @@
 {
+  "manifest": {"label": "Host Traffic", "description": "Compare traffic history for devices connected to the router."},
   "title": "Device traffic monitor",
   "action": {
     "retry": "Retry",

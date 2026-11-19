@@ -1,4 +1,5 @@
 {
+  "manifest": {"label": "CPU Temperature", "description": "Track CPU temperature and review its recent history."},
   "title": "CPU temperature",
   "loading": "Loading…",
   "error": "Temperature data is unavailable.",

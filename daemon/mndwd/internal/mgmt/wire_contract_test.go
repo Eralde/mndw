@@ -47,7 +47,7 @@ const goldenAlphaPageManifest = `{"manifestVersion":1,"name":"alpha-page","versi
 
 const goldenBetaServiceManifest = `{"manifestVersion":1,"name":"beta-service","version":"2.0.0","type":"widget","label":"Beta","entry":"index.js","size":{"w":6,"h":4,"minW":3,"minH":2},"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","args":["--foreground"],"routes":[{"id":"health","transport":"http","method":"GET","path":"health","access":"public"},{"id":"status","transport":"http","method":"GET","path":"status"},{"id":"terminal","transport":"websocket","path":"terminal","protocols":["tty"]}]}}`
 
-const goldenDeltaRCIManifest = `{"manifestVersion":1,"name":"delta-rci","version":"1.0.0","type":"widget","label":"Delta","entry":"index.js","icon":"shield","size":{"w":4,"h":3},"capabilities":["persistent-rci-session:read","persistent-rci-session:write","events:wan"]}`
+const goldenDeltaRCIManifest = `{"manifestVersion":1,"name":"delta-rci","version":"1.0.0","type":"widget","label":"Delta","description":"Demonstrates approved RCI capabilities.","entry":"index.js","size":{"w":4,"h":3},"capabilities":["persistent-rci-session:read","persistent-rci-session:write","events:wan"]}`
 
 const goldenGammaExecManifest = `{"manifestVersion":1,"name":"gamma-exec","version":"3.0.0","type":"widget","label":"Gamma","entry":"index.js","size":{"w":4,"h":3},"backend":{"kind":"exec","packages":["curl"],"routes":[{"id":"run","transport":"http","method":"GET","path":"run","command":"backend/run.sh"}]}}`
 

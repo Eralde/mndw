@@ -10,6 +10,7 @@ import {
   applyPluginListSnapshot,
   getPluginLoadState,
   replacePluginLoadStates,
+  setPluginLoadCatalog,
   setPluginLoadListOutcome,
   setPluginLoadState,
 } from './plugin-load-state.svelte.js';
@@ -108,8 +109,8 @@ export function manifestToListEntry(manifest: PluginManifest, catalogBaseUrl?: s
     name: manifest.name,
     version: manifest.version,
     label: manifest.label,
+    ...(manifest.description === undefined ? {} : {description: manifest.description}),
     entry: manifest.entry,
-    ...(manifest.icon !== undefined ? {icon: manifest.icon} : {}),
     ...(manifest.i18n === undefined ? {} : {i18n: manifest.i18n}),
     ...(catalogBaseUrl === undefined ? {} : {catalogBaseUrl}),
     source: 'builtin' as const,
@@ -131,7 +132,11 @@ export function manifestToListEntry(manifest: PluginManifest, catalogBaseUrl?: s
   return {...base, type: 'page', route: manifest.route};
 }
 
-async function buildLoadedPlugin(deps: SandboxLoaderDeps, knownEntry?: PluginListEntry): Promise<LoadedPlugin> {
+async function buildLoadedPlugin(
+  deps: SandboxLoaderDeps,
+  knownEntry?: PluginListEntry,
+  isCurrent: () => boolean = () => true,
+): Promise<LoadedPlugin> {
   let entry = knownEntry;
 
   if (entry === undefined) {
@@ -147,7 +152,6 @@ async function buildLoadedPlugin(deps: SandboxLoaderDeps, knownEntry?: PluginLis
     entry = manifestToListEntry(manifest, catalogBaseUrl);
   }
 
-  const module = validateModule(await deps.importPluginModule());
   const catalogService = deps.catalogService;
   const localeOf = deps.getLocale;
   const source = createPluginCatalogSource(
@@ -161,6 +165,12 @@ async function buildLoadedPlugin(deps: SandboxLoaderDeps, knownEntry?: PluginLis
   if (catalog !== undefined) {
     await catalogService.loadInitialPluginCatalog(catalog, localeOf());
   }
+
+  if (isCurrent()) {
+    setPluginLoadCatalog(entry.name, catalog);
+  }
+
+  const module = validateModule(await deps.importPluginModule());
 
   return {entry, module, ...(catalog === undefined ? {} : {catalog})};
 }
@@ -238,7 +248,7 @@ export async function loadSandboxPlugin(deps: SandboxLoaderDeps): Promise<void> 
 
     activeSandboxRun = {deps: runDeps, entry, isCurrent};
 
-    const plugin = await buildLoadedPlugin(deps, entry);
+    const plugin = await buildLoadedPlugin(deps, entry, ownsOperation);
 
     if (!ownsOperation()) {
       return;
@@ -294,7 +304,7 @@ export async function retrySandboxPlugin(name: string): Promise<boolean> {
 
   const retry = (async (): Promise<boolean> => {
     try {
-      const plugin = await buildLoadedPlugin(run.deps, run.entry);
+      const plugin = await buildLoadedPlugin(run.deps, run.entry, ownsOperation);
 
       if (!ownsOperation()) {
         return false;
@@ -348,7 +358,7 @@ export async function reloadSandboxPlugin(deps: SandboxLoaderDeps): Promise<Sand
   let candidate: LoadedPlugin;
 
   try {
-    candidate = await buildLoadedPlugin(reloadDeps);
+    candidate = await buildLoadedPlugin(reloadDeps, undefined, isCurrent);
   } catch (err) {
     if (!isCurrent()) {
       return 'failed';

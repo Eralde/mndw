@@ -248,9 +248,17 @@ const versionField = z.string()
   .describe('Semantic version of this plugin.');
 const labelField = z.string().min(1)
   .describe('Human-readable name shown in the dashboard or navigation.');
+const descriptionField = z.string()
+  .refine((value) => {
+    const codePointCount = Array.from(value).length;
+
+    return codePointCount >= 1 && codePointCount <= 160;
+  }, {
+    message: 'Description must contain between 1 and 160 Unicode code points.',
+  })
+  .meta({minLength: 1, maxLength: 160})
+  .describe('Optional plain-text description in the plugin default language.');
 const entryField = pluginEntrySchema.describe('Relative path to the bundled entry module.');
-const iconField = z.string().optional()
-  .describe('Optional icon name.');
 const capabilitySchema = pluginCapabilitySchema;
 const capabilitiesSchema = z.array(capabilitySchema).superRefine((capabilities, ctx) => {
   if (new Set(capabilities).size !== capabilities.length) {
@@ -280,8 +288,8 @@ const baseFields = {
   name: nameSchema,
   version: versionField,
   label: labelField,
+  description: descriptionField.optional(),
   entry: entryField,
-  icon: iconField,
   capabilities: capabilitiesSchema.optional(),
   i18n: i18nSchema.optional(),
   backend: backendSchema.optional(),

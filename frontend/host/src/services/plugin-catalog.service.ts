@@ -1,4 +1,6 @@
 import {type PluginLifetime, hostValue$} from '../runtime/plugin-lifetime.js';
+import {SvelteMap} from 'svelte/reactivity';
+import type {PluginListEntry} from '../runtime/plugin-types.js';
 import type {PluginI18n} from '@mndw/sdk';
 import type {PluginManifestI18n} from '@mndw/sdk-internal';
 import {type PluginCatalog, parseCatalog} from '@mndw/sdk-internal/catalog';
@@ -204,16 +206,24 @@ function emptyState(source: PluginCatalogSource, locale: string): PluginCatalogS
 
 class CatalogCell implements PluginCatalogCell {
   public readonly source: PluginCatalogSource;
-  private state: PluginCatalogState;
+  private readonly state: SvelteMap<'current', PluginCatalogState>;
   private listeners = new Set<() => void>();
 
   constructor(source: PluginCatalogSource, locale: string) {
     this.source = Object.freeze({...source, locales: Object.freeze({...source.locales})});
-    this.state = emptyState(this.source, locale);
+    this.state = new SvelteMap<'current', PluginCatalogState>([
+      ['current', emptyState(this.source, locale)],
+    ]);
   }
 
   public readCurrentState(): PluginCatalogState {
-    return this.state;
+    const state = this.state.get('current');
+
+    if (state === undefined) {
+      throw new Error(`Catalog state is missing for plugin "${this.source.name}"`);
+    }
+
+    return state;
   }
 
   public subscribe(callback: () => void): () => void {
@@ -225,7 +235,7 @@ class CatalogCell implements PluginCatalogCell {
   }
 
   public commit(state: PluginCatalogState, notify = true): void {
-    this.state = Object.freeze(state);
+    this.state.set('current', Object.freeze(state));
 
     if (notify) {
       for (const listener of this.listeners) {
@@ -429,6 +439,43 @@ export function formatPluginTranslation(
   const message = state?.primaryCatalog?.[key] ?? state?.defaultCatalog?.[key] ?? key;
 
   return formatMessage(message, values, locale);
+}
+
+/** Uses manifest text until its reserved catalog message is available. */
+export function formatPluginManifestText(
+  cell: PluginCatalogCell | undefined,
+  key: 'manifest.label' | 'manifest.description',
+  fallback: string | undefined,
+  locale: string,
+): string {
+  const state = cell?.readCurrentState();
+  const message = state?.primaryCatalog?.[key] ?? state?.defaultCatalog?.[key];
+
+  if (message === undefined) {
+    return fallback ?? '';
+  }
+
+  return formatMessage(message, undefined, locale);
+}
+
+export interface PluginManifestPresentation {
+  readonly label: string;
+  readonly description?: string;
+}
+
+/** Resolves a manifest label and description from its catalog, falling back to manifest text. */
+export function getPluginManifestPresentation(
+  entry: Pick<PluginListEntry, 'label' | 'description'>,
+  cell: PluginCatalogCell | undefined,
+  locale: string,
+): PluginManifestPresentation {
+  const label = formatPluginManifestText(cell, 'manifest.label', entry.label, locale);
+  const description = formatPluginManifestText(cell, 'manifest.description', entry.description, locale);
+
+  return {
+    label,
+    ...(description === '' ? {} : {description}),
+  };
 }
 
 export function createPluginI18n(

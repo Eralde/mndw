@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "type": "page",
   "label": "__MNDW_LABEL__",
+  "description": "__MNDW_DESCRIPTION__",
   "entry": "index.js",
   "route": "__MNDW_ROUTE__",
   "i18n": {

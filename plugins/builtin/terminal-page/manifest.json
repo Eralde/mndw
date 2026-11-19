@@ -5,6 +5,7 @@
   "type": "page",
   "route": "/terminal",
   "label": "Terminal",
+  "description": "Open a router shell or Entware terminal session.",
   "entry": "index.js",
   "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}},
   "backend": {

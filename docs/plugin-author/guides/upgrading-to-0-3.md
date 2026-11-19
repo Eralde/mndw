@@ -205,3 +205,23 @@ if (ctx.kind === 'widget') {
 
 The SDK test fixture follows the same rule. Its widget context has a default title recorder; read recorded values from
 `fixture.tileTitles`. Page fixtures omit the setter.
+
+## Manifest
+
+The manifest has a new optional `description`: plain text of 1–160 characters in the plugin's default language.
+The host shows it in the Add widget dialog.
+
+```json
+{
+  "label": "Ping",
+  "description": "Track ping statistics for hosts you choose."
+}
+```
+
+To translate the name and the description, add the reserved keys `manifest.label` and `manifest.description` to
+each catalog in `i18n/`. The host loads the catalog of every enabled plugin at startup, so the sidebar, settings
+and the Add widget dialog show translated names before the plugin mounts. Until a catalog loads, or when a key is
+missing, the host uses the manifest values.
+
+The `icon` field is removed. Delete it from `manifest.json`; an old manifest fails validation with
+`icon was removed in 0.3`.

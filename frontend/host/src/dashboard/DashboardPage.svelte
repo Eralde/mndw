@@ -35,6 +35,7 @@ import {
 } from '../services/storage.service.js';
 import {openHostModal} from '../services/overlay/host-overlay.js';
 import {toast} from '../services/toast/toast.svelte.js';
+import {getPluginManifestPresentation} from '../services/plugin-catalog.service.js';
 import {appState} from '../state/app.svelte.js';
 import {
   createHostServicesContext,
@@ -79,7 +80,7 @@ let addPanelSession: OverlaySession<undefined> | null = null;
 let orderOverlaySession: OverlaySession<undefined> | null = null;
 
 type AddPanelProps = {
-  onAddWidget: (pluginName: string) => void;
+  onAddWidget: (pluginName: string) => string | null;
   close: (result: undefined) => void;
 };
 
@@ -101,6 +102,8 @@ let visibleMobileOrder = $derived.by(() => {
 });
 let restoring = false;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+let addedTileHighlightTimer: ReturnType<typeof setTimeout> | undefined;
+let highlightedAddedTile: HTMLElement | undefined;
 let pendingRemoval: {
   tile: PersistedGridTile;
   tileIndex: number;
@@ -333,7 +336,13 @@ function handleWidgetRemoved(
   const instanceId = `${parsed.pluginName}:${parsed.counter}`;
   const plugin = registry.get(parsed.pluginName);
   const label = controller?.getTileTitle()
-    || plugin?.entry.label
+    || (plugin === undefined
+      ? undefined
+      : getPluginManifestPresentation(
+        plugin.entry,
+        plugin.catalog,
+        appState.locale,
+      ).label)
     || parsed.pluginName;
   const mobileIndex = mobileOrder.indexOf(tileId);
 
@@ -516,15 +525,15 @@ function handleWidgetResized(id: string, size: {w: number; h: number}): void {
   resizeWidgetTile(id, size);
 }
 
-function addMobileWidget(pluginName: string): boolean {
+function addMobileWidget(pluginName: string): string | null {
   if (getPluginLoadListOutcome() !== 'ok') {
-    return false;
+    return null;
   }
 
   const size = resolveWidgetSize(pluginName);
 
   if (size === undefined) {
-    return false;
+    return null;
   }
 
   const instanceId = getNextInstanceId(pluginName);
@@ -537,7 +546,7 @@ function addMobileWidget(pluginName: string): boolean {
   );
 
   if (controller === null) {
-    return false;
+    return null;
   }
 
   // No GridStack on mobile to auto-place: compute desktop geometry below the
@@ -547,12 +556,12 @@ function addMobileWidget(pluginName: string): boolean {
 
   persistNow();
 
-  return true;
+  return controller.id;
 }
 
-function handleAddWidget(pluginName: string): boolean {
+function handleAddWidget(pluginName: string): string | null {
   if (getPluginLoadListOutcome() !== 'ok') {
-    return false;
+    return null;
   }
 
   if (isMobile) {
@@ -562,7 +571,7 @@ function handleAddWidget(pluginName: string): boolean {
   const activeGrid = grid;
 
   if (activeGrid === null) {
-    return false;
+    return null;
   }
 
   const id = addWidgetTile(
@@ -581,10 +590,48 @@ function handleAddWidget(pluginName: string): boolean {
 
     persistNow();
 
-    return true;
+    return id;
   }
 
-  return false;
+  return null;
+}
+
+async function revealAddedTile(tileId: string): Promise<void> {
+  await tick();
+
+  const tile = [
+    ...(dashboardRoot?.querySelectorAll<HTMLElement>('.mndw-grid-tile') ?? []),
+  ]
+    .find((candidate) => candidate.dataset.widgetId === tileId);
+
+  if (tile === undefined) {
+    return;
+  }
+
+  const reducedMotion =
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (typeof tile.scrollIntoView === 'function') {
+    tile.scrollIntoView({behavior: reducedMotion ? 'auto' : 'smooth',
+      block: 'center'});
+  }
+  highlightedAddedTile?.classList.remove('mndw-grid-tile--newly-added');
+
+  if (addedTileHighlightTimer !== undefined) {
+    clearTimeout(addedTileHighlightTimer);
+  }
+
+  highlightedAddedTile = tile;
+  tile.classList.add('mndw-grid-tile--newly-added');
+  addedTileHighlightTimer = setTimeout(() => {
+    tile.classList.remove('mndw-grid-tile--newly-added');
+
+    if (highlightedAddedTile === tile) {
+      highlightedAddedTile = undefined;
+    }
+
+    addedTileHighlightTimer = undefined;
+  }, 1600);
 }
 
 function openAddWidgetModal(): void {
@@ -593,12 +640,14 @@ function openAddWidgetModal(): void {
   }
 
   const opener = document.activeElement;
-  let widgetAdded = false;
+  let addedWidgetId: string | null = null;
   const session = openHostModal<undefined, AddPanelProps>(FloatingAddPanel, {
     title: hostT('dashboard.add-widget'),
     props: {
       onAddWidget: (pluginName) => {
-        widgetAdded = handleAddWidget(pluginName);
+        addedWidgetId = handleAddWidget(pluginName);
+
+        return addedWidgetId;
       },
     },
     closeOnOutsideClick: true,
@@ -611,14 +660,19 @@ function openAddWidgetModal(): void {
       addPanelSession = null;
     }
 
-    if (widgetAdded && opener instanceof HTMLElement && !opener.isConnected) {
-      await tick();
+    if (addedWidgetId !== null) {
+      if (opener instanceof HTMLElement && !opener.isConnected) {
+        const returnTarget = dashboardRoot?.querySelector<HTMLElement>(
+          '.mndw-dashboard__toolbar mndw-button',
+        )
+          ?? dashboardRoot?.querySelector<HTMLElement>(
+            '.mndw-grid-tile__close',
+          );
 
-      const returnTarget = dashboardRoot?.querySelector<HTMLElement>(
-        '.mndw-dashboard__toolbar mndw-button',
-      ) ?? dashboardRoot?.querySelector<HTMLElement>('.mndw-grid-tile__close');
+        returnTarget?.focus({preventScroll: true});
+      }
 
-      returnTarget?.focus();
+      await revealAddedTile(addedWidgetId);
     }
   });
 }
@@ -671,8 +725,14 @@ const overlayCards = $derived.by(() => {
       return [];
     }
 
-    const fallback = registry.get(parsed.pluginName)?.entry.label
-      ?? parsed.pluginName;
+    const plugin = registry.get(parsed.pluginName);
+    const fallback = plugin === undefined
+      ? parsed.pluginName
+      : getPluginManifestPresentation(
+        plugin.entry,
+        plugin.catalog,
+        appState.locale,
+      ).label;
 
     const currentTitle = getTileController(id)?.getTileTitle() ?? '';
 
@@ -816,6 +876,13 @@ function handlePageHide(): void {
 }
 
 onDestroy(() => {
+  if (addedTileHighlightTimer !== undefined) {
+    clearTimeout(addedTileHighlightTimer);
+  }
+
+  highlightedAddedTile?.classList.remove('mndw-grid-tile--newly-added');
+  highlightedAddedTile = undefined;
+
   // Flush any pending layout change before host navigation tears down this page.
   if (pendingPersist !== null && getPluginLoadListOutcome() === 'ok') {
     persistNow(pendingPersist);

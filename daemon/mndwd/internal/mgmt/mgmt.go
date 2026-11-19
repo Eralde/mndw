@@ -268,8 +268,8 @@ type ListEntry struct {
 	Type             string          `json:"type"`
 	Version          string          `json:"version"`
 	Label            string          `json:"label"`
+	Description      string          `json:"description,omitempty"`
 	Entry            string          `json:"entry"`
-	Icon             string          `json:"icon,omitempty"`
 	Source           state.Source    `json:"source"`
 	Approval         state.Approval  `json:"approval"`
 	Enabled          bool            `json:"enabled"`
@@ -388,8 +388,8 @@ func (h *pluginsAPI) entryFrom(m *manifest.Manifest, source state.Source, approv
 		Type:        m.TypeValue(),
 		Version:     m.VersionValue(),
 		Label:       m.LabelValue(),
+		Description: m.DescriptionValue(),
 		Entry:       m.EntryValue(),
-		Icon:        m.IconValue(),
 		Source:      source,
 		Approval:    approval,
 		Enabled:     enabled,

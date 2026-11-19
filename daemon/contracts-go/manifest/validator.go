@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/text/language"
 )
@@ -80,8 +81,8 @@ type Manifest struct {
 	Version         *string  `json:"version"`
 	Type            *string  `json:"type"`
 	Label           *string  `json:"label"`
+	Description     *string  `json:"description,omitempty"`
 	Entry           *string  `json:"entry"`
-	Icon            *string  `json:"icon,omitempty"`
 	Capabilities    []string `json:"capabilities,omitempty"`
 	Size            *Size    `json:"size,omitempty"`
 	FixedHeight     *bool    `json:"fixedHeight,omitempty"`
@@ -115,6 +116,10 @@ func Validate(data []byte) (*Manifest, error) {
 	if err := json.Unmarshal(data, &fields); err == nil {
 		if _, legacy := fields["permissions"]; legacy {
 			return nil, &ValidationError{PluginName: pluginName(data), Reason: "permissions was renamed to capabilities in 0.3"}
+		}
+
+		if _, legacy := fields["icon"]; legacy {
+			return nil, &ValidationError{PluginName: pluginName(data), Reason: "icon was removed in 0.3"}
 		}
 	}
 
@@ -164,6 +169,10 @@ func validate(m *Manifest, data []byte) error {
 
 	if m.Entry == nil || *m.Entry == "" || !safeRelativePath(*m.Entry) || !hasFileName(*m.Entry) {
 		return fail("entry must be a safe relative path with a file name")
+	}
+
+	if m.Description != nil && (utf8.RuneCountInString(*m.Description) < 1 || utf8.RuneCountInString(*m.Description) > 160) {
+		return fail("description must contain between 1 and 160 characters")
 	}
 
 	capabilities := make(map[string]struct{}, len(m.Capabilities))

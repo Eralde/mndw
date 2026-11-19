@@ -4,6 +4,7 @@
   "version": "1.1.1",
   "type": "widget",
   "label": "Ping Utility",
+  "description": "Track ping statistics for hosts you choose.",
   "entry": "index.js",
   "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}},
   "size": {"w": 6, "h": 4, "minW": 4, "minH": 3},

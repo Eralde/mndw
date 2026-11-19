@@ -22,6 +22,7 @@
   },
   "dashboard": {
     "add-widget": "Добавить виджет",
+    "widget-size": "Размер: {width} × {height}",
     "arrange-widgets": "Упорядочить виджеты",
     "no-widgets": "Нет доступных виджетов",
     "preparing": "подготовка…",

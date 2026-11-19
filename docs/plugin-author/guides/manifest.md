@@ -29,10 +29,16 @@ most 12 columns, `h` is a positive row count, and optional `minW`/`minH` cannot 
   "version": "0.1.0",
   "type": "widget",
   "label": "Hello Widget",
+  "description": "A sample widget that calls the router backend.",
   "entry": "index.js",
   "size": { "w": 4, "h": 3, "minW": 2, "minH": 2 }
 }
 ```
+
+`description` is optional plain text from 1 to 160 characters, written in the manifest's default language.
+When the manifest declares catalogs, `manifest.label` and `manifest.description` are reserved catalog keys for
+their localized versions. The manifest values remain fallbacks when a catalog has not loaded or omits either key.
+The manifest no longer accepts an `icon` field.
 
 The `entry` points to the packaged module. For source development, the CLI resolves the source entry
 from the plugin package (normally `src/index.ts`) and emits the manifest entry during packing. Page `route` is a

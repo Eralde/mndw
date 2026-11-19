@@ -5,6 +5,7 @@ import {
   createPluginCatalogService,
   createPluginCatalogSource,
   createPluginI18n,
+  formatPluginManifestText,
   formatPluginTranslation,
 } from './plugin-catalog.service.js';
 import {createPluginLifetime} from '../runtime/plugin-lifetime.js';
@@ -53,6 +54,29 @@ afterEach(() => {
 });
 
 describe('plugin catalog loading', () => {
+  it('uses manifest label and description as fallback until reserved catalog keys load', async () => {
+    catalogService = createPluginCatalogService({fetchCatalog: () => Promise.resolve({})});
+    const cell = catalogService.createPluginCatalogCell(source, 'en');
+
+    expect(formatPluginManifestText(cell, 'manifest.label', 'Manifest Label', 'en')).toBe('Manifest Label');
+    expect(formatPluginManifestText(cell, 'manifest.description', 'Manifest description.', 'en'))
+      .toBe('Manifest description.');
+
+    await catalogService.loadInitialPluginCatalog(cell, 'en');
+
+    expect(formatPluginManifestText(cell, 'manifest.label', 'Manifest Label', 'en')).toBe('Manifest Label');
+    expect(formatPluginManifestText(cell, 'manifest.description', 'Manifest description.', 'en'))
+      .toBe('Manifest description.');
+  });
+
+  it('uses manifest text when a loaded catalog omits a reserved key', async () => {
+    const cell = catalogService.createPluginCatalogCell(source, 'en');
+
+    await catalogService.loadInitialPluginCatalog(cell, 'en');
+
+    expect(formatPluginManifestText(cell, 'manifest.label', 'Manifest Label', 'en')).toBe('Manifest Label');
+  });
+
   it('completes i18n.locale$ when the plugin lifetime ends', () => {
     const lifetime = createPluginLifetime();
     const i18n = createPluginI18n(undefined, () => 'en', () => () => {}, lifetime);

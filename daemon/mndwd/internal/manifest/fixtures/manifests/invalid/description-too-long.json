@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "name": "long-description",
+  "version": "1.0.0",
+  "type": "widget",
+  "label": "Long Description",
+  "description": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "entry": "index.js",
+  "size": {"w": 4, "h": 3}
+}

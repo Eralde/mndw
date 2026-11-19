@@ -10,7 +10,9 @@ import {
 } from './sandbox-loader.js';
 import {createPluginCatalogService} from '../services/plugin-catalog.service.js';
 import {createHostServices} from '../host-services.js';
+import {appState} from '../state/app.svelte.js';
 import {getDepsStatus, replaceDepsStatuses} from '../state/deps-status.svelte.js';
+import {getPagePluginCandidates} from './page-plugin-candidates.js';
 import {
   applyPluginListSnapshot,
   getPluginLoadListOutcome,
@@ -245,6 +247,42 @@ describe('loadSandboxPlugin dashboard state', () => {
 });
 
 describe('loadSandboxPlugin', () => {
+  it('updates sandbox page candidate labels after a locale switch', async () => {
+    const catalogService = createPluginCatalogService({
+      fetchCatalog: (url) =>
+        Promise.resolve({
+          'manifest.label': url.includes('ru.json') ? 'Страница песочницы' : 'Sandbox page',
+        }),
+    });
+    const registry = new PluginRegistry({catalog: catalogService});
+
+    appState.locale = 'en';
+
+    await loadSandboxPlugin(deps({
+      registry,
+      catalogService,
+      importManifestModule: () =>
+        Promise.resolve({
+          default: {
+            ...pageManifest,
+            label: 'Sandbox page',
+            i18n: {defaultLocale: 'en', locales: {en: 'en.json', ru: 'ru.json'}},
+          },
+        }),
+    }));
+
+    expect(getPagePluginCandidates(registry).map(({label}) => label)).toEqual(['Sandbox page']);
+
+    const generation = catalogService.preparePluginCatalogGeneration('ru');
+
+    await generation.promise;
+    catalogService.commitPluginCatalogGeneration(generation, () => {
+      appState.locale = 'ru';
+    });
+
+    expect(getPagePluginCandidates(registry).map(({label}) => label)).toEqual(['Страница песочницы']);
+  });
+
   it('uses the injected catalog service and locale', async () => {
     const registry = new PluginRegistry();
     const catalogService = createPluginCatalogService({

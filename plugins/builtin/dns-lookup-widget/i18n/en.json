@@ -1,4 +1,5 @@
 {
+  "manifest": {"label": "DNS Lookup", "description": "Look up DNS records for a hostname."},
   "title": "DNS lookup",
   "hostname-label": "Hostname",
   "hostname-hint": "Example: google.com",

@@ -50,8 +50,11 @@ Widgets declare grid-unit dimensions:
 ```
 
 Pages declare a single-segment route such as `/traffic`. `/`, `/login`, and
-`/settings` are reserved; the host also reserves `/packages`. A page may also
-declare an icon.
+`/settings` are reserved; the host also reserves `/packages`. A manifest may
+include an optional 1–160 character `description` in its default language.
+Catalogs can localize the manifest label and description with the reserved
+`manifest.label` and `manifest.description` keys. The manifest no longer has an
+`icon` field.
 
 Backend paths are relative strings. The daemon composes them into:
 

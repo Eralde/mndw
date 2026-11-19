@@ -1,4 +1,5 @@
 {
+  "manifest": {"label": "Backend Echo", "description": "Call a sample backend endpoint with GET and POST requests."},
   "title": "Backend echo",
   "status": "Status code",
   "get": "GET /echo",

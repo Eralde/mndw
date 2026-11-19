@@ -1,4 +1,5 @@
 {
+  "manifest": {"label": "Терминал", "description": "Откройте командную строку роутера или терминал Entware."},
   "title": "Терминал",
   "action": {
     "router-cli": "CLI роутера",

@@ -1,13 +1,17 @@
 // @vitest-environment happy-dom
-import {afterEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {PluginListEntry} from './plugin-types.js';
+import {appState} from '../state/app.svelte.js';
+import {createPluginCatalogService} from '../services/plugin-catalog.service.js';
 import {toast} from '../services/toast/toast.svelte.js';
-import {replacePluginLoadStates, setPluginLoadState} from './plugin-load-state.svelte.js';
+import {replacePluginLoadStates, setPluginLoadCatalog, setPluginLoadState} from './plugin-load-state.svelte.js';
 import {
   dismissPluginLoadFailureToast,
   resetPluginLoadFailureToast,
   syncPluginLoadFailureToast,
 } from './plugin-load-toast.svelte.js';
+
+let previousLocale: string;
 
 function plugin(name: string, label: string): PluginListEntry {
   return {
@@ -31,10 +35,16 @@ function failedPlugins(): void {
   setPluginLoadState('alpha', 'failed', 'timeout');
 }
 
+beforeEach(() => {
+  previousLocale = appState.locale;
+  appState.locale = 'en';
+});
+
 afterEach(() => {
   resetPluginLoadFailureToast();
   toast.clear();
   replacePluginLoadStates([]);
+  appState.locale = previousLocale;
   vi.restoreAllMocks();
 });
 
@@ -134,5 +144,43 @@ describe('plugin load failure toast updates', () => {
     dismissPluginLoadFailureToast(currentOwner);
 
     expect(toast.toasts).toHaveLength(0);
+  });
+});
+
+describe('plugin load failure toast locale changes', () => {
+  it('shows current-locale failure text and retry label after a catalog generation commits', async () => {
+    const catalogService = createPluginCatalogService({
+      fetchCatalog: (url) =>
+        Promise.resolve({
+          'manifest.label': url.includes('/ru.json') ? 'Погода' : 'Weather',
+        }),
+    });
+    const cell = catalogService.createPluginCatalogCell({
+      name: 'weather',
+      version: '1.0.0',
+      baseUrl: '/plugins/weather',
+      defaultLocale: 'en',
+      locales: {en: 'i18n/en.json', ru: 'i18n/ru.json'},
+    }, 'en');
+
+    await catalogService.loadInitialPluginCatalog(cell, 'en');
+    appState.locale = 'en';
+    replacePluginLoadStates([plugin('weather', 'Weather')]);
+    setPluginLoadCatalog('weather', cell);
+    setPluginLoadState('weather', 'failed', 'error');
+    syncPluginLoadFailureToast(vi.fn(() => Promise.resolve(false)), () => true);
+
+    expect(toast.toasts[0]?.message).toBe('Plugins failed to load: Weather');
+    expect(toast.toasts[0]?.action?.label).toBe('Retry');
+
+    const generation = catalogService.preparePluginCatalogGeneration('ru');
+
+    await generation.promise;
+    catalogService.commitPluginCatalogGeneration(generation, () => {
+      appState.locale = 'ru';
+    });
+
+    expect(toast.toasts[0]?.message).toBe('Не удалось загрузить плагины: Погода');
+    expect(toast.toasts[0]?.action?.label).toBe('Повторить');
   });
 });

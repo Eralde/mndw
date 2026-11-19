@@ -23,9 +23,10 @@ import {
 } from './plugin-load-state.svelte.js';
 import {appState, beginAuthRun, resetToLogin} from '../state/app.svelte.js';
 import {getDepsStatus, replaceDepsStatuses} from '../state/deps-status.svelte.js';
-import {createPluginCatalogService} from '../services/plugin-catalog.service.js';
+import {createPluginCatalogService, getPluginManifestPresentation} from '../services/plugin-catalog.service.js';
 import {toast} from '../services/toast/toast.svelte.js';
 import {buildPluginRoutes} from '../router/create-app-router.js';
+import {getPagePluginCandidates} from './page-plugin-candidates.js';
 
 const emptyBackend: PluginBackendDescriptor = {
   routes: {},
@@ -268,8 +269,10 @@ describe('loadPlugins', () => {
     expect(h.importModule).toHaveBeenCalledWith('/user-plugins/alpha/index.js?v=1.2.3');
   });
 
-  it('imports module before publishing a plugin with its populated catalog cell', async () => {
+  it('loads enabled catalogs before importing plugins and reuses them after registration', async () => {
     const h = harness([widget('localized', {
+      label: 'Manifest label',
+      description: 'Manifest description',
       i18n: {defaultLocale: 'en', locales: {en: 'i18n/en.json', ru: 'i18n/ru.json'}},
     })]);
     const events: string[] = [];
@@ -283,17 +286,82 @@ describe('loadPlugins', () => {
     const catalogService = createPluginCatalogService({fetchCatalog: (url) => {
       events.push(`catalog:${url}`);
 
-      return Promise.resolve({title: 'Hello'});
+      return Promise.resolve({
+        'manifest.label': url.includes('ru.json') ? 'Имя' : 'Name',
+        'manifest.description': url.includes('ru.json') ? 'Описание' : 'Description',
+      });
     }});
 
-    await loadPlugins({...h, catalogService});
+    await loadPlugins({...h, catalogService, getLocale: () => 'en'});
 
     const loaded = pluginRegistry.get('localized');
 
     expect(loaded?.catalog).toBeDefined();
-    expect(loaded?.catalog?.readCurrentState().primaryCatalog).toEqual({title: 'Hello'});
-    expect(events[0]).toContain('module:');
-    expect(events[1]).toContain('catalog:');
+    expect(loaded?.catalog?.readCurrentState().primaryCatalog).toMatchObject({'manifest.label': 'Name'});
+    expect(events[0]).toContain('catalog:');
+    expect(events[1]).toContain('module:');
+    expect(events.filter((event) => event.startsWith('catalog:'))).toHaveLength(1);
+    const loadState = getPluginLoadState('localized');
+
+    expect(loadState).toMatchObject({label: 'Manifest label', description: 'Manifest description'});
+    if (loadState === undefined) {
+      throw new Error('localized plugin load state should exist');
+    }
+
+    expect(getPluginManifestPresentation(loadState, loadState.catalog, 'en')).toEqual({
+      label: 'Name',
+      description: 'Description',
+    });
+
+    const localeGeneration = catalogService.preparePluginCatalogGeneration('ru');
+
+    await localeGeneration.promise;
+    catalogService.commitPluginCatalogGeneration(localeGeneration, () => {});
+
+    expect(getPluginManifestPresentation(loadState, loadState.catalog, 'ru')).toEqual({
+      label: 'Имя',
+      description: 'Описание',
+    });
+    expect(events.filter((event) => event.startsWith('catalog:'))).toHaveLength(2);
+  });
+
+  it('loads catalogs for enabled plugins only, including modules that fail to import', async () => {
+    const entries = [
+      widget('on', {i18n: {defaultLocale: 'en', locales: {en: 'i18n/en.json'}}}),
+      widget('off', {enabled: false, i18n: {defaultLocale: 'en', locales: {en: 'i18n/en.json'}}}),
+      widget('pending', {approval: 'pending', enabled: false,
+        i18n: {defaultLocale: 'en', locales: {en: 'i18n/en.json'}}}),
+      widget('broken', {i18n: {defaultLocale: 'en', locales: {en: 'i18n/en.json'}}}),
+    ];
+    const catalogRequests: string[] = [];
+    const catalogService = createPluginCatalogService({fetchCatalog: (url) => {
+      catalogRequests.push(url);
+
+      return Promise.resolve({'manifest.label': 'Translated'});
+    }});
+    const h = harness(entries);
+
+    h.importModule.mockImplementation((url) =>
+      url.includes('/broken/')
+        ? Promise.reject(new Error('broken import'))
+        : Promise.resolve(goodModule)
+    );
+
+    await loadPlugins({...h, catalogService});
+
+    expect(catalogRequests).toHaveLength(2);
+    expect(catalogRequests.some((url) => url.includes('/on/'))).toBe(true);
+    expect(catalogRequests.some((url) => url.includes('/broken/'))).toBe(true);
+    expect(catalogRequests.some((url) => url.includes('/off/'))).toBe(false);
+    expect(catalogRequests.some((url) => url.includes('/pending/'))).toBe(false);
+    const brokenState = getPluginLoadState('broken');
+
+    if (brokenState === undefined) {
+      throw new Error('broken plugin load state should exist');
+    }
+
+    expect(brokenState.label).toBe('broken');
+    expect(getPluginManifestPresentation(brokenState, brokenState.catalog, 'en').label).toBe('Translated');
   });
 
   it('skips disabled and pending entries', async () => {
@@ -540,6 +608,34 @@ describe('loadPlugins', () => {
 });
 
 describe('syncPlugins', () => {
+  it('keeps a translated page name after reconciling the plugin list', async () => {
+    const registry = new PluginRegistry();
+    const entry = page('localized-page', '/localized', {
+      label: 'Manifest page',
+      i18n: {defaultLocale: 'en', locales: {en: 'i18n/en.json', ru: 'i18n/ru.json'}},
+    });
+    const catalogService = createPluginCatalogService({
+      fetchCatalog: (url) =>
+        Promise.resolve({
+          'manifest.label': url.includes('ru.json') ? 'Локализованная страница' : 'Localized page',
+        }),
+    });
+
+    await loadPlugins({
+      fetchList: () => Promise.resolve([entry]),
+      importModule: () => Promise.resolve(goodModule),
+      loadStylesheet: () => Promise.resolve(),
+      checkVersions: () => [],
+      catalogService,
+      registry,
+      getLocale: () => 'ru',
+    });
+
+    await syncPlugins([entry]);
+
+    expect(getPagePluginCandidates(registry).map(({label}) => label)).toEqual(['Локализованная страница']);
+  });
+
   it('increments the successful plugin-list revision on startup and every sync', async () => {
     const revision = getPluginListRevision();
 

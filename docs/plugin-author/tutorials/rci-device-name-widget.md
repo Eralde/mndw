@@ -64,6 +64,7 @@ Replace `i18n/en.json` with this catalog:
 <!-- docs-check: file plugins/examples/rci-device-name-widget/i18n/en.json -->
 ```json
 {
+  "manifest": {"label": "Device Description", "description": "View and update the router's device description."},
   "title": "Device description",
   "field": {
     "label": "Device description",
@@ -97,6 +98,7 @@ Replace `i18n/ru.json` with the matching Russian catalog:
 <!-- docs-check: file plugins/examples/rci-device-name-widget/i18n/ru.json -->
 ```json
 {
+  "manifest": {"label": "Описание устройства", "description": "Просматривайте и изменяйте описание роутера."},
   "title": "Описание устройства",
   "field": {
     "label": "Описание устройства",

@@ -4,6 +4,7 @@
   "version": "0.1.2",
   "type": "widget",
   "label": "Device Info",
+  "description": "View device identity, firmware, uptime, and hardware details.",
   "entry": "index.js",
   "i18n": {
     "defaultLocale": "en",

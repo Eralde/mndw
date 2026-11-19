@@ -1,4 +1,5 @@
 {
+  "manifest": {"label": "Device Description", "description": "View and update the router's device description."},
   "title": "Device description",
   "field": {
     "label": "Device description",

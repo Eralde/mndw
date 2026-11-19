@@ -4,6 +4,7 @@
   "version": "0.1.1",
   "type": "widget",
   "label": "DNS Lookup",
+  "description": "Look up DNS records for a hostname.",
   "entry": "index.js",
   "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}},
   "size": {"w": 4, "h": 6, "minW": 3, "minH": 3},

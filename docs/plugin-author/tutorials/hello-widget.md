@@ -107,6 +107,7 @@ and creates both catalog files. Replace `i18n/en.json` with this catalog:
 <!-- docs-check: file plugins/examples/hello-widget/i18n/en.json -->
 ```json
 {
+  "manifest": {"label": "Hello Widget", "description": "Try a simple widget that calls a sample backend."},
   "title": "Hello widget",
   "action": {
     "greet": "Get greeting",
@@ -130,6 +131,7 @@ Replace `i18n/ru.json` with the matching Russian catalog:
 <!-- docs-check: file plugins/examples/hello-widget/i18n/ru.json -->
 ```json
 {
+  "manifest": {"label": "Виджет приветствия", "description": "Попробуйте простой виджет, который обращается к демонстрационной серверной части."},
   "title": "Виджет приветствия",
   "action": {
     "greet": "Получить приветствие",

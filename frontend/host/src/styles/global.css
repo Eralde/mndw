@@ -403,6 +403,28 @@ body {
   height: 100%;
 }
 
+.mndw-grid-tile--newly-added {
+  animation: mndw-newly-added-highlight 1.6s ease-out;
+}
+
+@keyframes mndw-newly-added-highlight {
+  0%,
+  45% {
+    box-shadow: inset 0 0 0 2px var(--mndw-accent);
+  }
+
+  100% {
+    box-shadow: inset 0 0 0 2px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mndw-grid-tile--newly-added {
+    animation: none;
+    box-shadow: inset 0 0 0 2px var(--mndw-accent);
+  }
+}
+
 .mndw-grid-tile__title {
   flex-shrink: 0;
   overflow: hidden;
@@ -622,6 +644,18 @@ body {
   padding: 0.625rem 0.75rem;
   font-size: 0.875rem;
   text-align: left;
+}
+
+.mndw-floating-panel__label,
+.mndw-floating-panel__description,
+.mndw-floating-panel__size {
+  display: block;
+}
+
+.mndw-floating-panel__description,
+.mndw-floating-panel__size {
+  color: var(--mndw-text-subtle);
+  font-size: var(--mndw-text-sm);
 }
 
 .mndw-floating-panel__deps {

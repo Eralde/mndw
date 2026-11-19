@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "widget",
   "label": "Backend Echo",
+  "description": "Call a sample backend endpoint with GET and POST requests.",
   "entry": "index.js",
   "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}},
   "size": {"w": 4, "h": 3, "minW": 3, "minH": 2},

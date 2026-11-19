@@ -30,7 +30,7 @@ func TestManifestAccessorsHandleNilAndMissingFields(t *testing.T) {
 		{name: "TypeValue", get: nilManifest.TypeValue},
 		{name: "LabelValue", get: nilManifest.LabelValue},
 		{name: "EntryValue", get: nilManifest.EntryValue},
-		{name: "IconValue", get: nilManifest.IconValue},
+		{name: "DescriptionValue", get: nilManifest.DescriptionValue},
 		{name: "RouteValue", get: nilManifest.RouteValue},
 	}
 
@@ -83,18 +83,18 @@ func TestManifestAccessorsReadValuesAndBackendKind(t *testing.T) {
 	typeValue := "widget"
 	label := "Weather"
 	entry := "index.js"
-	icon := "weather.svg"
+	description := "Shows current weather."
 	route := "/weather"
 
 	m := &Manifest{
-		Name:    &name,
-		Version: &version,
-		Type:    &typeValue,
-		Label:   &label,
-		Entry:   &entry,
-		Icon:    &icon,
-		Route:   &route,
-		Backend: &Backend{Kind: &kind},
+		Name:        &name,
+		Version:     &version,
+		Type:        &typeValue,
+		Label:       &label,
+		Entry:       &entry,
+		Description: &description,
+		Route:       &route,
+		Backend:     &Backend{Kind: &kind},
 	}
 
 	if !m.HasBackend() || !m.HasBackendKind() || !m.IsService() || m.IsExec() {
@@ -129,8 +129,8 @@ func TestManifestAccessorsReadValuesAndBackendKind(t *testing.T) {
 		t.Errorf("EntryValue() = %q, want index.js", got)
 	}
 
-	if got := m.IconValue(); got != "weather.svg" {
-		t.Errorf("IconValue() = %q, want weather.svg", got)
+	if got := m.DescriptionValue(); got != "Shows current weather." {
+		t.Errorf("DescriptionValue() = %q, want Shows current weather.", got)
 	}
 
 	if got := m.RouteValue(); got != "/weather" {

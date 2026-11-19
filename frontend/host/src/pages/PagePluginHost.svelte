@@ -27,6 +27,7 @@ import {
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus} from '../state/deps-status.svelte.js';
 import {getPluginLoadState} from '../runtime/plugin-load-state.svelte.js';
+import {getPluginManifestPresentation} from '../services/plugin-catalog.service.js';
 import {retryPluginLoad} from '../runtime/plugin-loader.js';
 import {getHostServices} from '../host-services-context.js';
 import {hostT} from '../services/host-i18n.svelte.js';
@@ -107,20 +108,33 @@ const mountTarget = $derived(
     : null,
 );
 const pluginLoadTitle = $derived.by(() => {
-  return pluginLoadState?.label
-    ?? (pluginName === null ? '' : registry.get(pluginName)?.entry.label ?? '');
+  if (pluginName === null) {
+    return '';
+  }
+
+  const plugin = registry.get(pluginName);
+  const entry = plugin?.entry ?? pluginLoadState;
+
+  return entry === undefined
+    ? ''
+    : getPluginManifestPresentation(
+      entry,
+      plugin?.catalog ?? pluginLoadState?.catalog,
+      appState.locale,
+    ).label;
 });
 
 /**
- * Title shown by the status panels. Mirrors the sidebar's `entry.label` (the host does
- * not localize manifest labels), and is derived so a hot-reload candidate or a locale
- * switch re-reads it instead of freezing the title captured at mount time.
+ * Title shown by status panels. Resolve it from the same current catalog as navigation.
  */
 const mountStatusTitle = $derived.by(() => {
-  // Locale is a dependency so a switch re-derives the title with the panel copy.
-  void appState.locale;
-
-  return mountStatusPlugin?.entry.label ?? '';
+  return mountStatusPlugin === null
+    ? ''
+    : getPluginManifestPresentation(
+      mountStatusPlugin.entry,
+      mountStatusPlugin.catalog,
+      appState.locale,
+    ).label;
 });
 
 /** The page region is busy while a mount is pending, loading, or past its deadline. */

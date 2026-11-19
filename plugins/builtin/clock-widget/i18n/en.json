@@ -1,3 +1,4 @@
 {
+  "manifest": {"label": "Clock", "description": "Keep the current time visible on your dashboard."},
   "title": "Clock"
 }

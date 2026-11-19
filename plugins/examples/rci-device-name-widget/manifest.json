@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "widget",
   "label": "Device Description",
+  "description": "View and update the router's device description.",
   "entry": "index.js",
   "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}},
   "size": {"w": 4, "h": 4, "minW": 3, "minH": 3}

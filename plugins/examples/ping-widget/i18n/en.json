@@ -1,4 +1,5 @@
 {
+  "manifest": {"label": "Ping Utility", "description": "Track ping statistics for hosts you choose."},
   "title": "Ping utility",
   "action": {
     "refresh": "Refresh now",

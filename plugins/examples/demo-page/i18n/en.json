@@ -1,4 +1,5 @@
 {
+  "manifest": {"label": "Demo Page", "description": "Explore a sample page plugin and its host-provided context."},
   "title": "Demo page",
   "device": "Device",
   "vendor": "Vendor",

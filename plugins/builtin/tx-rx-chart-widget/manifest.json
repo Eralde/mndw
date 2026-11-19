@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "widget",
   "label": "TX/RX Traffic",
+  "description": "Monitor transmit and receive traffic across network interfaces.",
   "entry": "index.js",
   "i18n": {
     "defaultLocale": "en",

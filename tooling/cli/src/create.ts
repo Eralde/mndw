@@ -45,6 +45,7 @@ interface NormalizedOptions {
   readonly framework: PluginFramework;
   readonly outDir: string;
   readonly label: string;
+  readonly description: string;
   readonly route: string;
   readonly backend?: 'sh' | 'go';
 }
@@ -85,6 +86,7 @@ function normalize(options: CreateOptions): NormalizedOptions {
     framework: options.framework ?? 'svelte',
     outDir: options.outDir,
     label: options.label ?? toLabel(name),
+    description: `A starter ${options.type ?? 'widget'} for ${options.label ?? toLabel(name)}.`,
     route: options.route ?? `/${name}`,
     backend: options.backend,
   };
@@ -122,6 +124,7 @@ export function buildManifest(options: CreateOptions): Record<string, unknown> {
     version: '0.1.0',
     type: normalized.type,
     label: normalized.label,
+    description: normalized.description,
     entry: 'index.js',
   };
 
@@ -325,6 +328,7 @@ function buildPackageJson(normalized: NormalizedOptions): Record<string, unknown
 function renderPlaceholders(contents: string, normalized: NormalizedOptions): string {
   return contents
     .replaceAll('__MNDW_LABEL__', normalized.label)
+    .replaceAll('__MNDW_DESCRIPTION__', normalized.description)
     .replaceAll('__MNDW_NAME__', normalized.name)
     .replaceAll('__MNDW_ROUTE__', normalized.route)
     .replaceAll('__MNDW_SCHEMA__', schemaReference(normalized.outDir));

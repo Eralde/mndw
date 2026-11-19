@@ -1,4 +1,5 @@
 {
+  "manifest": {"label": "System Log", "description": "Browse, filter, and download the router's system log."},
   "title": "System log",
   "action": {
     "download": "Download",

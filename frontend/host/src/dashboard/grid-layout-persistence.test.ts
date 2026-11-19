@@ -189,7 +189,8 @@ describe('dashboard layout', () => {
       listOutcome: 'ok',
       getPlugin: (name) =>
         name === 'weather'
-          ? {runnable: true, status: 'failed', type: 'widget', label: 'weather', size: {w: 4, h: 3, minW: 3, minH: 2}}
+          ? {runnable: true, status: 'failed', type: 'widget', version: '1.0.0', label: 'weather',
+            size: {w: 4, h: 3, minW: 3, minH: 2}}
           : undefined,
     });
 
@@ -212,10 +213,11 @@ describe('dashboard layout', () => {
 
     const resolvePlugin = (name: string) =>
       name === 'clock'
-        ? {runnable: false, status: 'not-runnable' as const, type: 'widget' as const, label: 'clock',
+        ? {runnable: false, status: 'not-runnable' as const, type: 'widget' as const, version: '1.0.0', label: 'clock',
           size: {w: 2, h: 1}}
         : name === 'weather'
-        ? {runnable: true, status: 'loaded' as const, type: 'widget' as const, label: 'weather', size: {w: 4, h: 3}}
+        ? {runnable: true, status: 'loaded' as const, type: 'widget' as const, version: '1.0.0', label: 'weather',
+          size: {w: 4, h: 3}}
         : undefined;
     const layout = loadDashboardLayout(widgetSize, {listOutcome: 'ok', getPlugin: resolvePlugin});
 
@@ -260,7 +262,7 @@ describe('dashboard layout', () => {
       listOutcome: 'ok',
       getPlugin: (name) =>
         name === 'weather'
-          ? {runnable: true, status: 'loaded', type: 'widget', label: 'weather', size: {w: 4, h: 3}}
+          ? {runnable: true, status: 'loaded', type: 'widget', version: '1.0.0', label: 'weather', size: {w: 4, h: 3}}
           : undefined,
     })).toEqual({
       tiles: [{id: 'widget-weather:1', x: 0, y: 0, w: 4, h: 3}],

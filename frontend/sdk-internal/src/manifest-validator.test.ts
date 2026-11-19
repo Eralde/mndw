@@ -98,6 +98,21 @@ describe('validateManifest behavior', () => {
     );
   });
 
+  it('rejects the removed icon field with the 0.3 removal message', () => {
+    expect(() => validateManifest({...base, icon: 'shield'})).toThrow('icon was removed in 0.3');
+  });
+
+  it('accepts optional plain-text descriptions from 1 to 160 characters', () => {
+    expect(() => validateManifest({...base, description: 'A useful plugin.'})).not.toThrow();
+    expect(() => validateManifest({...base, description: 'x'.repeat(160)})).not.toThrow();
+    expect(() => validateManifest({...base, description: 'я'.repeat(160)})).not.toThrow();
+    expect(() => validateManifest({...base, description: '😀'.repeat(160)})).not.toThrow();
+    expect(() => validateManifest(base)).not.toThrow();
+    expect(() => validateManifest({...base, description: ''})).toThrow(ManifestValidationError);
+    expect(() => validateManifest({...base, description: 'x'.repeat(161)})).toThrow(ManifestValidationError);
+    expect(() => validateManifest({...base, description: '😀'.repeat(161)})).toThrow(ManifestValidationError);
+  });
+
   it('requires service and exec commands under backend/', () => {
     const service = {
       ...base,

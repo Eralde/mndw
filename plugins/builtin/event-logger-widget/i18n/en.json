@@ -1,4 +1,5 @@
 {
+  "manifest": {"label": "Event Logger", "description": "Inspect live router events and download the event log."},
   "title": "Event logger",
   "pause": "Pause",
   "resume": "Resume",

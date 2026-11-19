@@ -3,9 +3,8 @@
 // is the orchestration layer above the shared `mndw-alert` style kit — the same split
 // the overlay system uses (host owns orchestration; @mndw/ui owns the visual kit).
 //
-// It is deliberately host-only and l10n-agnostic: callers pass already-translated
-// strings, exactly as the previous in-panel status bar did. Plugin/SDK exposure is a
-// separate, later phase.
+// It is deliberately host-only. Most callers pass translated strings; optional
+// resolvers keep selected notification text current with reactive host state.
 
 import {SvelteMap} from 'svelte/reactivity';
 
@@ -13,12 +12,14 @@ export type ToastVariant = 'success' | 'info' | 'error';
 
 export interface ToastAction {
   label: string;
+  getLabel?: () => string;
   onAction: () => void | Promise<void>;
   busy?: boolean;
 }
 
 export interface ToastOptions {
   message: string;
+  getMessage?: () => string;
   variant?: ToastVariant;
   key?: string;
   action?: ToastAction;
@@ -52,6 +53,34 @@ export const DEFAULT_MAX_TOASTS = 4;
 // ratio (of the toast width) or the flick velocity dismisses; otherwise it snaps back.
 const SWIPE_DISTANCE_RATIO = 0.35;
 const SWIPE_VELOCITY_THRESHOLD = 0.5; // px per ms
+
+function createStoredAction(action: ToastAction): ToastAction {
+  return {
+    get label(): string {
+      return action.getLabel?.() ?? action.label;
+    },
+    onAction: action.onAction,
+    ...(action.busy === undefined ? {} : {busy: action.busy}),
+  };
+}
+
+function createStoredToast(
+  id: number,
+  options: ToastOptions,
+  variant: ToastVariant,
+  duration: number,
+): Toast {
+  return {
+    id,
+    get message(): string {
+      return options.getMessage?.() ?? options.message;
+    },
+    variant,
+    duration,
+    ...(options.key === undefined ? {} : {key: options.key}),
+    ...(options.action === undefined ? {} : {action: createStoredAction(options.action)}),
+  };
+}
 
 /**
  * Pure decision for swipe-to-dismiss, extracted so it is unit-testable without a DOM.
@@ -91,14 +120,7 @@ export class ToastStore {
       }
 
       this.clearTimer(current.id);
-      this.toasts[keyedIndex] = {
-        id: current.id,
-        message: options.message,
-        variant,
-        duration,
-        ...(options.key === undefined ? {} : {key: options.key}),
-        ...(options.action === undefined ? {} : {action: options.action}),
-      };
+      this.toasts[keyedIndex] = createStoredToast(current.id, options, variant, duration);
       this.startTimer(current.id, duration);
 
       return current.id;
@@ -110,14 +132,7 @@ export class ToastStore {
   private add(options: ToastOptions, variant: ToastVariant, duration: number): number {
     const id = this.nextId++;
 
-    this.toasts.push({
-      id,
-      message: options.message,
-      variant,
-      duration,
-      ...(options.key === undefined ? {} : {key: options.key}),
-      ...(options.action === undefined ? {} : {action: options.action}),
-    });
+    this.toasts.push(createStoredToast(id, options, variant, duration));
     this.enforceCap();
     this.startTimer(id, duration);
 

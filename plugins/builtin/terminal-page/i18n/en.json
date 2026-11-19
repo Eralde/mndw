@@ -1,4 +1,5 @@
 {
+  "manifest": {"label": "Terminal", "description": "Open a router shell or Entware terminal session."},
   "title": "Terminal",
   "action": {
     "router-cli": "Router CLI",

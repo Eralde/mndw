@@ -34,6 +34,22 @@ export function validateManifest(data: unknown): PluginManifestOutput {
     }]);
   }
 
+  if (
+    typeof data === 'object'
+    && data !== null
+    && !Array.isArray(data)
+    && Object.prototype.hasOwnProperty.call(data, 'icon')
+  ) {
+    const record = data as Record<string, unknown>;
+    const pluginName = typeof record.name === 'string' ? record.name : 'unknown';
+
+    throw new ManifestValidationError(pluginName, [{
+      code: 'custom',
+      path: ['icon'],
+      message: 'icon was removed in 0.3',
+    }]);
+  }
+
   const result = pluginManifestSchema.safeParse(data);
 
   if (!result.success) {

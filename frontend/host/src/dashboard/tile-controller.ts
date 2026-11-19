@@ -5,6 +5,7 @@ import {type LoadedPlugin, type PluginRegistry} from '../runtime/plugin-registry
 import {getPluginLoadState} from '../runtime/plugin-load-state.svelte.js';
 import {retryPluginLoad} from '../runtime/plugin-loader.js';
 import {retrySandboxPlugin} from '../runtime/sandbox-loader.js';
+import {type PluginCatalogCell, getPluginManifestPresentation} from '../services/plugin-catalog.service.js';
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus} from '../state/deps-status.svelte.js';
 import {hostT} from '../services/locale.service.js';
@@ -26,7 +27,9 @@ export interface TileController {
   body: HTMLElement;
   handle: WidgetTileHandle;
   themeUnsubscribe: () => void;
+  catalogUnsubscribe: () => void;
   setTileTitle: (title: string) => void;
+  setManifestLabel: (label: string) => void;
   getTileTitle: () => string;
   /** True while the tile shows the installing placeholder awaiting hydration. */
   pending: boolean;
@@ -74,7 +77,9 @@ function renderPluginLoadFailure(
 ): void {
   const state = getPluginLoadState(controller.pluginName);
   const retrying = state?.status === 'loading';
-  const label = state?.label ?? controller.pluginName;
+  const label = state === undefined
+    ? controller.pluginName
+    : getPluginManifestPresentation(state, state.catalog, appState.locale).label;
 
   const currentNotice = controller.body.querySelector<HTMLElement>('.mndw-grid-tile__notice--plugin-load-failed');
 
@@ -155,19 +160,17 @@ function buildTileFrame(
   body: HTMLElement;
   setTileTitle: (title: string) => void;
   getTileTitle: () => string;
+  setManifestLabel: (label: string) => void;
 } {
   const frame = document.createElement('div');
 
   frame.className = 'mndw-grid-tile';
+  frame.dataset.widgetId = '';
 
   const title = document.createElement('div');
 
   title.className = 'mndw-grid-tile__title';
   title.textContent = label;
-
-  title.setAttribute('data-manifest-label', label);
-
-  let currentTitle = label;
 
   const removeBtn = document.createElement('button');
 
@@ -188,8 +191,25 @@ function buildTileFrame(
 
   body.className = 'mndw-grid-tile__body';
 
+  let manifestLabel = label;
+  let currentTitle = label;
+
+  const setManifestLabel = (nextLabel: string): void => {
+    const usesManifestLabel = currentTitle === manifestLabel;
+    manifestLabel = nextLabel;
+    title.setAttribute('data-manifest-label', nextLabel);
+    removeBtn.setAttribute('aria-label', hostT('dashboard.remove-widget', {label: nextLabel}));
+
+    if (usesManifestLabel) {
+      currentTitle = nextLabel;
+      title.textContent = nextLabel;
+    }
+  };
+
+  title.setAttribute('data-manifest-label', manifestLabel);
+
   const setTileTitle = (tileTitle: string): void => {
-    const fallback = title.getAttribute('data-manifest-label') ?? label;
+    const fallback = manifestLabel;
     const effectiveTitle = tileTitle || fallback;
 
     currentTitle = effectiveTitle;
@@ -201,7 +221,24 @@ function buildTileFrame(
 
   frame.append(title, removeBtn, body);
 
-  return {frame, body, setTileTitle, getTileTitle};
+  return {frame, body, setTileTitle, getTileTitle, setManifestLabel};
+}
+
+function updateControllerManifestLabel(
+  controller: TileController,
+  plugin: LoadedPlugin,
+  cell: PluginCatalogCell | undefined,
+): void {
+  controller.catalogUnsubscribe();
+  controller.setManifestLabel(
+    getPluginManifestPresentation(plugin.entry, cell, appState.locale).label,
+  );
+
+  controller.catalogUnsubscribe = cell?.subscribe(() => {
+    controller.setManifestLabel(
+      getPluginManifestPresentation(plugin.entry, cell, appState.locale).label,
+    );
+  }) ?? (() => {});
 }
 
 function hydrateLoadedPlugin(
@@ -280,8 +317,16 @@ export function ensureTileController(
     return null;
   }
 
-  const label = loadedWidget?.entry.label ?? loadState?.label ?? pluginName;
-  const {frame, body, setTileTitle, getTileTitle} = buildTileFrame(label, () => onRemoveRequest(id));
+  const label = loadedWidget === undefined
+    ? loadState === undefined
+      ? pluginName
+      : getPluginManifestPresentation(loadState, loadState.catalog, appState.locale).label
+    : getPluginManifestPresentation(loadedWidget.entry, loadedWidget.catalog, appState.locale).label;
+  const {frame, body, setTileTitle, getTileTitle, setManifestLabel} = buildTileFrame(
+    label,
+    () => onRemoveRequest(id),
+  );
+  frame.dataset.widgetId = id;
   body.dataset.theme = getTheme();
   const themeUnsubscribe = subscribeTheme((theme) => {
     body.dataset.theme = theme;
@@ -293,9 +338,11 @@ export function ensureTileController(
     frame,
     body,
     themeUnsubscribe,
+    catalogUnsubscribe: () => {},
     handle: placeholderTileHandle(),
     setTileTitle,
     getTileTitle,
+    setManifestLabel,
     pending: false,
     pluginLoadPlaceholder: loadedWidget === undefined,
     retrying: loadState?.status === 'loading',
@@ -303,6 +350,10 @@ export function ensureTileController(
   };
 
   controllers.set(id, controller);
+
+  if (loadedWidget !== undefined) {
+    updateControllerManifestLabel(controller, loadedWidget, loadedWidget.catalog);
+  }
 
   if (controller.pluginLoadPlaceholder) {
     renderPluginLoadFailure(controller, onRemoveRequest, () => {
@@ -405,27 +456,12 @@ export function removeTileController(
 
   controllers.delete(tileId);
   controller.themeUnsubscribe();
+  controller.catalogUnsubscribe();
   controller.frame.remove();
   controller.handle.dispose({
     clearStorage: options.clearStorage ?? true,
     closeReason: 'plugin-unmount',
   });
-}
-
-/** Refreshes frame title/close label after a hot-reload swaps the plugin module. */
-function refreshTileFrame(frame: HTMLElement, label: string): void {
-  const title = frame.querySelector('.mndw-grid-tile__title');
-
-  if (title !== null) {
-    title.textContent = label;
-
-    title.setAttribute('data-manifest-label', label);
-  }
-
-  frame.querySelector('.mndw-grid-tile__close')?.setAttribute(
-    'aria-label',
-    hostT('dashboard.remove-widget', {label}),
-  );
 }
 
 /**
@@ -454,7 +490,7 @@ export async function remountWidgetTiles(
 
   const mountAll = (plugin: LoadedPlugin): WidgetTileHandle[] =>
     affected.map((controller) => {
-      refreshTileFrame(controller.frame, plugin.entry.label);
+      updateControllerManifestLabel(controller, plugin, plugin.catalog);
       controller.setTileTitle('');
 
       const hostInfo = appState.hostInfo ?? FALLBACK_HOST_INFO;
@@ -507,6 +543,7 @@ export function destroyAllTiles(closeReason: OverlayTeardownReason = 'plugin-unm
       console.error(`[mndw] Failed to unmount tile ${id}:`, error);
     } finally {
       controller.themeUnsubscribe();
+      controller.catalogUnsubscribe();
     }
   }
 

@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "name": "described-widget",
+  "version": "1.0.0",
+  "type": "widget",
+  "label": "Described Widget",
+  "description": "A short description for this widget.",
+  "entry": "index.js",
+  "size": {"w": 4, "h": 3}
+}

@@ -1,5 +1,7 @@
 import type {PluginRegistry} from './plugin-registry.js';
-import {getPluginLoadStates} from './plugin-load-state.svelte.js';
+import {getPluginLoadState, getPluginLoadStates} from './plugin-load-state.svelte.js';
+import {getPluginManifestPresentation} from '../services/plugin-catalog.service.js';
+import {appState} from '../state/app.svelte.js';
 
 export interface PagePluginCandidate {
   readonly name: string;
@@ -12,12 +14,16 @@ export interface PagePluginCandidate {
 export function getPagePluginCandidates(
   registry: Pick<PluginRegistry, 'getPages'>,
 ): PagePluginCandidate[] {
-  const loadedPages = registry.getPages().map((page) => ({
-    name: page.entry.name,
-    label: page.entry.label,
-    route: page.entry.route,
-    status: 'loaded' as const,
-  }));
+  const loadedPages = registry.getPages().map((page) => {
+    const state = getPluginLoadState(page.entry.name);
+
+    return {
+      name: page.entry.name,
+      label: getPluginManifestPresentation(page.entry, page.catalog ?? state?.catalog, appState.locale).label,
+      route: page.entry.route,
+      status: 'loaded' as const,
+    };
+  });
   const registeredNames = new Set(loadedPages.map(({name}) => name));
   const pendingPages = Object.entries(getPluginLoadStates()).flatMap(([name, state]) => {
     if (
@@ -30,7 +36,9 @@ export function getPagePluginCandidates(
       return [];
     }
 
-    return [{name, label: state.label, route: state.route, status: state.status}];
+    const {label} = getPluginManifestPresentation(state, state.catalog, appState.locale);
+
+    return [{name, label, route: state.route, status: state.status}];
   });
 
   return [...loadedPages, ...pendingPages]

@@ -4,6 +4,7 @@
   "version": "0.1.1",
   "type": "widget",
   "label": "Event Logger",
+  "description": "Inspect live router events and download the event log.",
   "entry": "index.js",
   "size": {"w": 4, "h": 6, "minW": 3, "minH": 3},
   "capabilities": ["events:*"],

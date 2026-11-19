@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "name": "empty-description",
+  "version": "1.0.0",
+  "type": "widget",
+  "label": "Empty Description",
+  "description": "",
+  "entry": "index.js",
+  "size": {"w": 4, "h": 3}
+}

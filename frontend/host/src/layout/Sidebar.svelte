@@ -32,6 +32,8 @@ const handleBreakpointChange = (event: MediaQueryListEvent): void => {
 };
 
 const pagePlugins = $derived.by(() => {
+  void appState.locale;
+
   return getPagePluginCandidates(registry).map((page) => ({
     ...page,
     failed: page.status !== 'loaded',

@@ -1,4 +1,8 @@
 {
+  "manifest": {
+    "label": "__MNDW_LABEL__",
+    "description": "__MNDW_DESCRIPTION__"
+  },
   "l10n": {
     "title": "Plugin starter",
     "button": "Call backend",

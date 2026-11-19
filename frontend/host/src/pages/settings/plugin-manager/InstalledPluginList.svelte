@@ -18,7 +18,9 @@ import type {
 } from '../../../runtime/plugin-types.js';
 import {getPluginVersionWarnings} from '../../../runtime/plugin-version-warnings.svelte.js';
 import {getDepsStatus} from '../../../state/deps-status.svelte.js';
+import {appState} from '../../../state/app.svelte.js';
 import {hostT} from '../../../services/host-i18n.svelte.js';
+import {getPluginManifestPresentation} from '../../../services/plugin-catalog.service.js';
 import EmptyState from '../../../components/EmptyState.svelte';
 import type {PluginRowState} from './reconcile.js';
 
@@ -202,6 +204,11 @@ function retryPlugin(name: string): void {
         {@const rowRole = row?.state === 'error' ? 'alert' : 'status'}
         {@const busy = row?.state === 'working' || row?.state === 'reconciling'}
         {@const loadState = getPluginLoadState(item.name)}
+        {@const presentation = getPluginManifestPresentation(
+        item,
+        loadState?.catalog,
+        appState.locale,
+      )}
         {@const loadRunnable = item.enabled
         && item.approval === 'approved'
         && loadState?.runnable === true}
@@ -216,7 +223,12 @@ function retryPlugin(name: string): void {
         : pluginLoadFailureText(loadFailureKind)}
         <li class="mndw-installed__item">
           <div class="mndw-installed__identity">
-            <strong>{item.label}</strong>
+            <strong>{presentation.label}</strong>
+            {#if presentation.description !== undefined}
+              <span class="mndw-installed__description">{
+                presentation.description
+              }</span>
+            {/if}
             <span>{item.name}</span>
           </div>
 
@@ -403,7 +415,7 @@ function retryPlugin(name: string): void {
                     {
                       hostT(
                         'settings.plugin-manager.delete-confirmation',
-                        {label: item.label},
+                        {label: presentation.label},
                       )
                     }
                   </p>
@@ -499,6 +511,12 @@ function retryPlugin(name: string): void {
 .mndw-installed__identity strong {
   font-size: var(--mndw-text-sm);
   font-weight: var(--mndw-weight-semibold);
+}
+
+.mndw-installed__identity .mndw-installed__description {
+  color: var(--mndw-text);
+  font-family: var(--mndw-font-sans);
+  font-size: var(--mndw-text-sm);
 }
 
 .mndw-installed__identity span {

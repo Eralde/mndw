@@ -22,6 +22,7 @@ function widget(name: string, label: string): LoadedWidget {
     name,
     version: '1.0.0',
     label,
+    description: 'A short widget description.',
     entry: 'index.js',
     source: 'builtin',
     approval: 'approved',
@@ -68,6 +69,12 @@ function widgetButtons(target: HTMLElement): MndwButtonHost[] {
   );
 }
 
+function widgetLabels(target: HTMLElement): string[] {
+  return widgetButtons(target).map((button) =>
+    button.querySelector('.mndw-floating-panel__label')?.textContent?.trim() ?? ''
+  );
+}
+
 describe('FloatingAddPanel', () => {
   beforeAll(() => {
     defineMndwUi();
@@ -89,10 +96,20 @@ describe('FloatingAddPanel', () => {
 
   it('lists widgets sorted by label then name', () => {
     const {component, target} = mountPanel();
-    const labels = widgetButtons(target).map((btn) => btn.textContent?.trim());
+    const labels = widgetLabels(target);
 
     // Status/Status tie broken by name (alpha-status before beta-status), then Traffic.
     expect(labels).toEqual(['Status', 'Status', 'Traffic']);
+
+    void unmount(component);
+    target.remove();
+  });
+
+  it('shows each manifest description and widget size', () => {
+    const {component, target} = mountPanel();
+
+    expect(target.textContent).toContain('A short widget description.');
+    expect(target.textContent).toContain('4 × 3');
 
     void unmount(component);
     target.remove();

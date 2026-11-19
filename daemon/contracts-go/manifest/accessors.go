@@ -90,12 +90,12 @@ func (m *Manifest) EntryValue() string {
 	return stringValue(m.Entry)
 }
 
-func (m *Manifest) IconValue() string {
+func (m *Manifest) DescriptionValue() string {
 	if m == nil {
 		return ""
 	}
 
-	return stringValue(m.Icon)
+	return stringValue(m.Description)
 }
 
 func (m *Manifest) RouteValue() string {

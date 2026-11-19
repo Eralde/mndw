@@ -27,6 +27,7 @@ import {
   getPluginLoadState,
   getPluginLoadStates,
   replacePluginLoadStates,
+  setPluginLoadCatalog,
   setPluginLoadListOutcome,
   setPluginLoadState,
 } from './plugin-load-state.svelte.js';
@@ -185,6 +186,7 @@ interface ResolvedLoaderDeps {
   checkVersions: (entry: PluginListEntry, dir: string) => string[] | Promise<string[]>;
   catalogService: PluginCatalogService;
   registry: Pick<PluginRegistry, 'register' | 'clear' | 'get' | 'remove'>;
+  retryPlugin: (name: string) => Promise<boolean>;
   getLocale: () => string;
   loadTimeoutMs: number;
 }
@@ -217,14 +219,6 @@ async function loadOne(
   const assetUrl = (asset: string): string => versionedAssetUrl(dir, asset, entry.version);
 
   try {
-    await deps.loadStylesheet(assetUrl('index.css'), entry.name);
-
-    if (!isCurrent() || signal.aborted) {
-      return {loaded: false};
-    }
-
-    const module = await deps.importModule(assetUrl(entry.entry));
-    const pluginModule = validateModule(module, entry.name);
     const source = createPluginCatalogSource(
       entry.name,
       entry.version,
@@ -234,10 +228,24 @@ async function loadOne(
     const catalog = source === undefined
       ? undefined
       : deps.catalogService.createPluginCatalogCell(source, deps.getLocale());
+    setPluginLoadCatalog(entry.name, catalog);
 
     if (catalog !== undefined) {
       await deps.catalogService.loadInitialPluginCatalog(catalog, deps.getLocale());
     }
+
+    if (!isCurrent() || signal.aborted) {
+      return {loaded: false};
+    }
+
+    await deps.loadStylesheet(assetUrl('index.css'), entry.name);
+
+    if (!isCurrent() || signal.aborted) {
+      return {loaded: false};
+    }
+
+    const module = await deps.importModule(assetUrl(entry.entry));
+    const pluginModule = validateModule(module, entry.name);
 
     // The load already timed out and was reported; registering now would surface a plugin the
     // rest of the startup has moved on without.
@@ -360,7 +368,7 @@ export async function syncPlugins(entries: PluginListEntry[]): Promise<boolean> 
   let reloadRequired = false;
 
   replaceDepsStatuses(entries);
-  applyPluginListSnapshot(entries);
+  applyPluginListSnapshot(entries, true);
   setPluginLoadListOutcome('ok');
 
   for (const name of run.entries.keys()) {
@@ -386,6 +394,8 @@ export async function syncPlugins(entries: PluginListEntry[]): Promise<boolean> 
     run.entries.set(name, entry);
 
     if (loaded !== undefined) {
+      setPluginLoadCatalog(name, loaded.catalog);
+
       if (loaded.entry.version !== entry.version) {
         reloadRequired = true;
       }
@@ -454,6 +464,7 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
     checkVersions: deps.checkVersions ?? defaultCheckVersions,
     catalogService: deps.catalogService ?? pluginCatalogService,
     registry: deps.registry ?? pluginRegistry,
+    retryPlugin: retryPluginLoad,
     getLocale: deps.getLocale ?? getLocale,
     loadTimeoutMs: deps.loadTimeoutMs ?? PLUGIN_LOAD_TIMEOUT_MS,
   };

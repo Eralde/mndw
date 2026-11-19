@@ -1,4 +1,5 @@
 {
+  "manifest": {"label": "MWS", "description": "Explore mesh nodes, clients, telemetry, and remote controls."},
   "title": "MWS",
   "summary": {
     "mock-data": "Mock data: {extenders} extenders · {clients} clients",

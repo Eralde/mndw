@@ -1,0 +1,15 @@
+{
+  "manifestVersion": 1,
+  "name": "foreign-page-partial",
+  "version": "1.0.0",
+  "type": "page",
+  "label": "Foreign partial",
+  "entry": "index.js",
+  "route": "/foreign-partial",
+  "size": {
+    "w": 2,
+    "minW": 0,
+    "minH": -1
+  },
+  "fixedHeight": false
+}

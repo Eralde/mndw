@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"mndwd/internal/httpx"
+	"mndwd/internal/manifest"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
@@ -38,13 +39,13 @@ func retryAfterSeconds(now time.Time, next *time.Time) *int {
 func (g *Gateway) projectBackendStatus(plugin *registry.Plugin, now time.Time) backendStatusResponse {
 	response := backendStatusResponse{RetryAfterSeconds: nil}
 
-	if plugin == nil || !plugin.Manifest.HasBackendKind() {
+	if plugin == nil || plugin.Manifest == nil || plugin.Manifest.Backend.Kind == manifest.BackendKindNone {
 		response.State = "unavailable"
 
 		return response
 	}
 
-	kind, _ := plugin.Manifest.BackendKind()
+	kind := plugin.Manifest.Backend.Kind
 
 	response.Kind = string(kind)
 
@@ -66,7 +67,7 @@ func (g *Gateway) projectBackendStatus(plugin *registry.Plugin, now time.Time) b
 	// An unmet activation prerequisite is a steady state, distinct from the
 	// transient traffic gate. Report it ahead of maintenance so the frontend can
 	// render the missing prerequisite rather than a generic "under maintenance".
-	if g.activationGates != nil && plugin.Manifest.IsService() {
+	if g.activationGates != nil && plugin.Manifest.Backend.Kind == manifest.BackendKindService {
 		if blockers := g.activationGates.Evaluate(plugin.Name, plugin.Manifest.Capabilities); len(blockers) > 0 {
 			response.State = "blocked"
 			response.Blockers = make([]backendStatusBlocker, 0, len(blockers))
@@ -90,27 +91,23 @@ func (g *Gateway) projectBackendStatus(plugin *registry.Plugin, now time.Time) b
 		return response
 	}
 
-	if plugin.Manifest.IsExec() {
+	if plugin.Manifest.Backend.Kind == manifest.BackendKindExec {
 		response.State = "ready"
 
 		return response
 	}
 
-	if !plugin.Manifest.IsService() || g.runtime == nil {
+	if plugin.Manifest.Backend.Kind != manifest.BackendKindService || g.runtime == nil {
 		response.State = "unavailable"
 
 		return response
 	}
 
-	requiredProtocol := 0
-
-	if plugin.Manifest.Backend.ProtocolVersion != nil {
-		requiredProtocol = *plugin.Manifest.Backend.ProtocolVersion
-	}
+	requiredProtocol := plugin.Manifest.Backend.ProtocolVersion
 
 	supportedProtocols := g.runtime.SupportedProtocols()
 
-	if plugin.Manifest.Backend.ProtocolVersion == nil || !g.runtime.SupportsProtocol(requiredProtocol) {
+	if requiredProtocol <= 0 || !g.runtime.SupportsProtocol(requiredProtocol) {
 		response.State = "incompatible"
 		response.RequiredProtocol = intPointer(requiredProtocol)
 		response.SupportedProtocols = &supportedProtocols
@@ -152,7 +149,7 @@ func (g *Gateway) handleStatus(writer http.ResponseWriter, request *http.Request
 
 	plugin, found := g.registry.Resolve(request.PathValue("name"))
 
-	if !found || !plugin.Manifest.HasBackendKind() {
+	if !found || plugin.Manifest == nil || plugin.Manifest.Backend.Kind == manifest.BackendKindNone {
 		g.writeError(writer, httpx.NewError(http.StatusNotFound, httpx.CodeRouteNotFound, "no such backend route"))
 
 		return

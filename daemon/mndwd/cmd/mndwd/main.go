@@ -31,6 +31,7 @@ import (
 	"mndwd/internal/initd"
 	"mndwd/internal/listen"
 	daemonlogging "mndwd/internal/logging"
+	"mndwd/internal/manifest"
 	"mndwd/internal/mgmt"
 	"mndwd/internal/opkg"
 	"mndwd/internal/palette"
@@ -613,7 +614,7 @@ func diagnosticsPlugins(reg *registry.Registry, runtime *backend.Runtime) []diag
 	plugins := make([]diagnostics.Plugin, 0)
 
 	for _, plugin := range reg.AllBackendPlugins() {
-		if !plugin.Manifest.IsService() {
+		if plugin.Manifest == nil || plugin.Manifest.Backend.Kind != manifest.BackendKindService {
 			continue
 		}
 

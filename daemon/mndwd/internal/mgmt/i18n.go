@@ -14,7 +14,7 @@ import (
 // values. ICU grammar remains a CLI concern; the daemon only protects archive
 // shape, declared paths, and bounded reads.
 func (h *pluginsAPI) validateCatalogArchive(zr *zip.Reader, m *manifest.Manifest) error {
-	if m == nil || m.I18n == nil {
+	if m == nil || m.I18n.DefaultLocale == "" {
 		return nil
 	}
 

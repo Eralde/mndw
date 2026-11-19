@@ -28,7 +28,7 @@ func (h *pluginsAPI) handleRestart(w http.ResponseWriter, r *http.Request) {
 
 	plugin, ok := h.resolveRuntimePlugin(name)
 
-	if !ok || !plugin.Manifest.IsService() {
+	if !ok || plugin.Manifest == nil || plugin.Manifest.Backend.Kind != manifest.BackendKindService {
 		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "restart applies only to service backends"))
 
 		return

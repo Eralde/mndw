@@ -16,6 +16,10 @@ const loadFixtures = (kind: 'valid' | 'invalid'): Array<{name: string; data: unk
     });
 };
 
+const loadFixture = (kind: 'valid' | 'invalid', name: string): unknown => {
+  return JSON.parse(readFileSync(resolve(fixturesRoot, kind, name), 'utf8'));
+};
+
 describe('manifest fixture corpus', () => {
   const validFixtures = loadFixtures('valid');
   const invalidFixtures = loadFixtures('invalid');
@@ -56,6 +60,29 @@ describe('validateManifest behavior', () => {
 
   it('accepts a SemVer version with prerelease and build metadata', () => {
     expect(() => validateManifest({...base, version: '1.2.3-alpha.1+build.5'})).not.toThrow();
+  });
+
+  it('strips fields that belong to the other manifest type', () => {
+    for (
+      const name of [
+        'foreign-page-size-empty.json',
+        'foreign-page-size-partial.json',
+        'foreign-page-size-string.json',
+        'foreign-page-fixed-height-string.json',
+        'foreign-page-size-nested-invalid.json',
+      ]
+    ) {
+      const page = validateManifest(loadFixture('valid', name));
+
+      expect(page).not.toHaveProperty('size');
+      expect(page).not.toHaveProperty('fixedHeight');
+    }
+
+    const widget = validateManifest(loadFixture('valid', 'foreign-widget-route.json'));
+    const widgetWithIncompatibleRoute = validateManifest(loadFixture('valid', 'foreign-widget-route-object.json'));
+
+    expect(widget).not.toHaveProperty('route');
+    expect(widgetWithIncompatibleRoute).not.toHaveProperty('route');
   });
 
   it('reports clear grid-column bounds and empty-route errors', () => {

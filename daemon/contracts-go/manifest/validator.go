@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/text/language"
+	wire "mndw.local/contracts/manifest/internal/wire"
 )
 
 type Type string
@@ -38,15 +39,16 @@ func IsCapability(capability string) bool {
 }
 
 type Size struct {
-	W    *float64 `json:"w"`
-	H    *float64 `json:"h"`
-	MinW *float64 `json:"minW,omitempty"`
-	MinH *float64 `json:"minH,omitempty"`
+	W    float64 `json:"w"`
+	H    float64 `json:"h"`
+	MinW float64 `json:"minW,omitempty"`
+	MinH float64 `json:"minH,omitempty"`
 }
 
 type BackendKind string
 
 const (
+	BackendKindNone    BackendKind = ""
 	BackendKindExec    BackendKind = "exec"
 	BackendKindService BackendKind = "service"
 )
@@ -62,33 +64,34 @@ type BackendRoute struct {
 }
 
 type Backend struct {
-	Kind            *BackendKind   `json:"kind,omitempty"`
-	ProtocolVersion *int           `json:"protocolVersion,omitempty"`
-	Command         *string        `json:"command,omitempty"`
+	Kind            BackendKind    `json:"kind,omitempty"`
+	ProtocolVersion int            `json:"protocolVersion,omitempty"`
+	Command         string         `json:"command,omitempty"`
 	Args            []string       `json:"args,omitempty"`
 	Packages        []string       `json:"packages,omitempty"`
 	Routes          []BackendRoute `json:"routes,omitempty"`
 }
 
 type I18n struct {
-	DefaultLocale *string           `json:"defaultLocale"`
+	DefaultLocale string            `json:"defaultLocale"`
 	Locales       map[string]string `json:"locales"`
 }
 
 type Manifest struct {
-	ManifestVersion *int     `json:"manifestVersion"`
-	Name            *string  `json:"name"`
-	Version         *string  `json:"version"`
-	Type            *string  `json:"type"`
-	Label           *string  `json:"label"`
-	Description     *string  `json:"description,omitempty"`
-	Entry           *string  `json:"entry"`
-	Capabilities    []string `json:"capabilities,omitempty"`
-	Size            *Size    `json:"size,omitempty"`
-	FixedHeight     *bool    `json:"fixedHeight,omitempty"`
-	Route           *string  `json:"route,omitempty"`
-	Backend         *Backend `json:"backend,omitempty"`
-	I18n            *I18n    `json:"i18n,omitempty"`
+	ManifestVersion int
+	Name            string
+	Version         string
+	Type            Type
+	Label           string
+	Description     string
+	Entry           string
+	Capabilities    []string
+	Size            Size
+	FixedHeight     bool
+	HasFixedHeight  bool
+	Route           string
+	Backend         Backend
+	I18n            I18n
 }
 
 type ValidationError struct {
@@ -111,32 +114,171 @@ const gridColumns = 12
 
 // Validate parses and validates one manifest document.
 func Validate(data []byte) (*Manifest, error) {
+	validated, _, err := ValidateCanonical(data)
+
+	return validated, err
+}
+
+// ValidateCanonical returns the validated manifest and normalized JSON bytes.
+// Canonical bytes preserve raw optional-field presence without reconstructing it
+// from the value-only public manifest.
+func ValidateCanonical(data []byte) (*Manifest, []byte, error) {
 	var fields map[string]json.RawMessage
+	manifestData := data
 
 	if err := json.Unmarshal(data, &fields); err == nil {
 		if _, legacy := fields["permissions"]; legacy {
-			return nil, &ValidationError{PluginName: pluginName(data), Reason: "permissions was renamed to capabilities in 0.3"}
+			return nil, nil, &ValidationError{PluginName: pluginName(data), Reason: "permissions was renamed to capabilities in 0.3"}
 		}
 
 		if _, legacy := fields["icon"]; legacy {
-			return nil, &ValidationError{PluginName: pluginName(data), Reason: "icon was removed in 0.3"}
+			return nil, nil, &ValidationError{PluginName: pluginName(data), Reason: "icon was removed in 0.3"}
 		}
+
+		manifestData = stripForeignFields(data, fields)
 	}
 
-	var m Manifest
+	var m wire.Manifest
 
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, &ValidationError{PluginName: pluginName(data), Reason: "manifest is not valid JSON of the expected shape: " + err.Error()}
+	if err := json.Unmarshal(manifestData, &m); err != nil {
+		return nil, nil, &ValidationError{PluginName: pluginName(data), Reason: "manifest is not valid JSON of the expected shape: " + err.Error()}
 	}
 
 	if err := validate(&m, data); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &m, nil
+	switch Type(*m.Type) {
+	case TypePage:
+		m.Size = nil
+		m.FixedHeight = nil
+	case TypeWidget:
+		m.Route = nil
+	}
+
+	canonical, err := json.Marshal(&m)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return validatedManifest(m), canonical, nil
 }
 
-func validate(m *Manifest, data []byte) error {
+func stripForeignFields(data []byte, fields map[string]json.RawMessage) []byte {
+	var manifestType Type
+
+	if err := json.Unmarshal(fields["type"], &manifestType); err != nil {
+		return data
+	}
+
+	var foreignFields []string
+
+	switch manifestType {
+	case TypePage:
+		foreignFields = []string{"size", "fixedHeight"}
+	case TypeWidget:
+		foreignFields = []string{"route"}
+	default:
+		return data
+	}
+
+	hasForeignField := false
+
+	for _, field := range foreignFields {
+		if _, exists := fields[field]; exists {
+			delete(fields, field)
+
+			hasForeignField = true
+		}
+	}
+
+	if !hasForeignField {
+		return data
+	}
+
+	stripped, err := json.Marshal(fields)
+	if err != nil {
+		return data
+	}
+
+	return stripped
+}
+
+func validatedManifest(m wire.Manifest) *Manifest {
+	manifest := &Manifest{
+		ManifestVersion: *m.ManifestVersion,
+		Name:            *m.Name,
+		Version:         *m.Version,
+		Type:            Type(*m.Type),
+		Label:           *m.Label,
+		Entry:           *m.Entry,
+		Capabilities:    m.Capabilities,
+		HasFixedHeight:  m.FixedHeight != nil,
+	}
+
+	if m.Description != nil {
+		manifest.Description = *m.Description
+	}
+
+	if m.Size != nil {
+		manifest.Size = Size{W: *m.Size.W, H: *m.Size.H}
+
+		if m.Size.MinW != nil {
+			manifest.Size.MinW = *m.Size.MinW
+		}
+
+		if m.Size.MinH != nil {
+			manifest.Size.MinH = *m.Size.MinH
+		}
+	}
+
+	if m.FixedHeight != nil {
+		manifest.FixedHeight = *m.FixedHeight
+	}
+
+	if m.Route != nil {
+		manifest.Route = *m.Route
+	}
+
+	if m.Backend != nil {
+		routes := make([]BackendRoute, len(m.Backend.Routes))
+
+		for index, route := range m.Backend.Routes {
+			routes[index] = BackendRoute{
+				ID:        route.ID,
+				Transport: route.Transport,
+				Method:    route.Method,
+				Path:      route.Path,
+				Access:    route.Access,
+				Command:   route.Command,
+				Protocols: route.Protocols,
+			}
+		}
+
+		manifest.Backend = Backend{
+			Kind:     BackendKind(*m.Backend.Kind),
+			Args:     m.Backend.Args,
+			Packages: m.Backend.Packages,
+			Routes:   routes,
+		}
+
+		if m.Backend.ProtocolVersion != nil {
+			manifest.Backend.ProtocolVersion = *m.Backend.ProtocolVersion
+		}
+
+		if m.Backend.Command != nil {
+			manifest.Backend.Command = *m.Backend.Command
+		}
+	}
+
+	if m.I18n != nil {
+		manifest.I18n = I18n{DefaultLocale: *m.I18n.DefaultLocale, Locales: m.I18n.Locales}
+	}
+
+	return manifest
+}
+
+func validate(m *wire.Manifest, data []byte) error {
 	name := ""
 
 	if m.Name != nil {
@@ -244,7 +386,7 @@ func validateI18nShape(data []byte, fail func(string) error) error {
 		}
 	}
 
-	var descriptor I18n
+	var descriptor wire.I18n
 
 	if err := json.Unmarshal(envelope.I18n, &descriptor); err != nil {
 		return fail("i18n has invalid fields: " + err.Error())
@@ -301,7 +443,7 @@ func validateI18nShape(data []byte, fail func(string) error) error {
 	return nil
 }
 
-func validateSize(size *Size, fail func(string) error) error {
+func validateSize(size *wire.Size, fail func(string) error) error {
 	if size == nil {
 		return fail("size is required for widgets")
 	}
@@ -395,7 +537,7 @@ func validateBackendShape(data []byte, fail func(string) error) error {
 	return nil
 }
 
-func validateBackend(b *Backend, fail func(string) error) error {
+func validateBackend(b *wire.Backend, fail func(string) error) error {
 	if b.Kind == nil {
 		return fail("backend.kind is required")
 	}
@@ -433,7 +575,7 @@ func validateBackend(b *Backend, fail func(string) error) error {
 		}
 
 		switch *b.Kind {
-		case BackendKindExec:
+		case wire.BackendKindExec:
 			if route.Transport != "http" || route.Command == "" || !safeCommand(route.Command) {
 				return fail("exec backend routes must be HTTP routes with safe commands")
 			}
@@ -445,7 +587,7 @@ func validateBackend(b *Backend, fail func(string) error) error {
 			}
 
 			route.Method = method
-		case BackendKindService:
+		case wire.BackendKindService:
 			if route.Transport != "http" && route.Transport != "websocket" {
 				return fail("service backend route transport must be http or websocket")
 			}
@@ -495,11 +637,11 @@ func validateBackend(b *Backend, fail func(string) error) error {
 	}
 
 	switch *b.Kind {
-	case BackendKindExec:
+	case wire.BackendKindExec:
 		if b.ProtocolVersion != nil || b.Command != nil || len(b.Args) > 0 {
 			return fail("exec backend cannot declare service process fields")
 		}
-	case BackendKindService:
+	case wire.BackendKindService:
 		if b.ProtocolVersion == nil || *b.ProtocolVersion <= 0 {
 			return fail("service backend protocolVersion must be positive")
 		}

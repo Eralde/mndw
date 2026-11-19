@@ -34,7 +34,7 @@ func Descriptor(m *Manifest) *BackendDescriptor {
 		return &BackendDescriptor{Routes: map[string]RouteDescriptor{}}
 	}
 
-	if m.Backend == nil {
+	if m.Backend.Kind == BackendKindNone {
 		return &BackendDescriptor{Routes: map[string]RouteDescriptor{}}
 	}
 
@@ -57,12 +57,12 @@ func Descriptor(m *Manifest) *BackendDescriptor {
 // management list exposes these fields to plugins, so manifests must not put
 // secrets in arguments or package metadata.
 func Review(m *Manifest) *ApprovalReview {
-	if m == nil || m.Backend == nil {
+	if m == nil || m.Backend.Kind == BackendKindNone {
 		return nil
 	}
 
 	b := m.Backend
-	kind, _ := m.BackendKind()
+	kind := m.Backend.Kind
 
 	review := &ApprovalReview{
 		Kind:     string(kind),
@@ -77,11 +77,4 @@ func Review(m *Manifest) *ApprovalReview {
 	}
 
 	return review
-}
-
-// HasBackend reports whether the plugin declares any server-side capability.
-// Plugins without a backend skip the approval gate because they expose no
-// executable server-side capability.
-func HasBackend(m *Manifest) bool {
-	return m.HasBackend()
 }

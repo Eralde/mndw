@@ -14,8 +14,37 @@ import (
 	"time"
 
 	"mndwd/internal/backend"
+	"mndwd/internal/manifest"
+	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
+
+func TestStateForBuiltinStoresCanonicalManifestBytes(t *testing.T) {
+	source := []byte(`{"manifestVersion":1,"name":"canonical-page","version":"1.0.0","type":"page","label":"Canonical","entry":"index.js","route":"/canonical-page","size":{},"fixedHeight":true}`)
+	validated, canonical, err := manifest.ValidateCanonical(source)
+	if err != nil {
+		t.Fatalf("ValidateCanonical() error = %v", err)
+	}
+
+	stored, err := stateForBuiltin(&registry.Plugin{
+		Name:         validated.Name,
+		Manifest:     validated,
+		ManifestJSON: canonical,
+	})
+	if err != nil {
+		t.Fatalf("stateForBuiltin() error = %v", err)
+	}
+
+	if string(stored.Manifest) != string(canonical) {
+		t.Fatalf("stored manifest = %s, want canonical bytes %s", stored.Manifest, canonical)
+	}
+
+	canonical[0] = ' '
+
+	if string(stored.Manifest) == string(canonical) {
+		t.Fatal("stored manifest aliases plugin canonical bytes")
+	}
+}
 
 func TestBackendUploadUsesStoppedInstallLifecycleWithoutStarting(t *testing.T) {
 	runtime := &lifecycleTestRuntime{}

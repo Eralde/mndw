@@ -384,23 +384,36 @@ func (h *pluginsAPI) buildList() ([]ListEntry, *httpx.APIError) {
 // including its always-present depsStatus.
 func (h *pluginsAPI) entryFrom(m *manifest.Manifest, source state.Source, approval state.Approval, enabled bool, dir string) ListEntry {
 	e := ListEntry{
-		Name:        m.NameValue(),
-		Type:        m.TypeValue(),
-		Version:     m.VersionValue(),
-		Label:       m.LabelValue(),
-		Description: m.DescriptionValue(),
-		Entry:       m.EntryValue(),
+		Name:        m.Name,
+		Type:        string(m.Type),
+		Version:     m.Version,
+		Label:       m.Label,
+		Description: m.Description,
+		Entry:       m.Entry,
 		Source:      source,
 		Approval:    approval,
 		Enabled:     enabled,
-		Size:        m.Size,
-		FixedHeight: m.FixedHeight,
-		Route:       m.RouteValue(),
-		I18n:        m.I18n,
+		Route:       m.Route,
 		Backend:     manifest.Descriptor(m),
 		Review:      manifest.Review(m),
 		Lock:        readPluginLock(dir),
 	}
+
+	if m.Type == manifest.TypeWidget {
+		size := m.Size
+		e.Size = &size
+	}
+
+	if m.HasFixedHeight {
+		fixedHeight := m.FixedHeight
+		e.FixedHeight = &fixedHeight
+	}
+
+	if m.I18n.DefaultLocale != "" {
+		i18n := m.I18n
+		e.I18n = &i18n
+	}
+
 	e.DepsStatus = "ready"
 
 	for _, capability := range m.Capabilities {
@@ -423,7 +436,7 @@ func (h *pluginsAPI) entryFrom(m *manifest.Manifest, source state.Source, approv
 		}
 	}
 
-	if m.HasBackendKind() {
+	if m.Backend.Kind != manifest.BackendKindNone {
 		status := h.runtime.Status(e.Name)
 		e.Runtime = &status
 	}

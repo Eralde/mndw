@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "name": "foreign-page-size-string",
+  "version": "1.0.0",
+  "type": "page",
+  "label": "Foreign size string",
+  "entry": "index.js",
+  "route": "/foreign-size-string",
+  "size": "ignored"
+}

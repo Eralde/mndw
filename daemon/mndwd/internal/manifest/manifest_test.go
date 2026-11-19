@@ -23,7 +23,7 @@ func TestValidateAcceptsManifestVersionOne(t *testing.T) {
 		t.Fatalf("Validate version one manifest: %v", err)
 	}
 
-	if parsed.ManifestVersion == nil || *parsed.ManifestVersion != 1 {
+	if parsed.ManifestVersion != 1 {
 		t.Fatalf("ManifestVersion = %v, want 1", parsed.ManifestVersion)
 	}
 }
@@ -93,7 +93,7 @@ func TestValidateFixedHeightRoundTrips(t *testing.T) {
 		t.Fatalf("Validate fixedHeight manifest: %v", err)
 	}
 
-	if manifest.FixedHeight == nil || !*manifest.FixedHeight {
+	if !manifest.HasFixedHeight || !manifest.FixedHeight {
 		t.Fatalf("FixedHeight = %v, want non-nil true", manifest.FixedHeight)
 	}
 }
@@ -153,11 +153,11 @@ func TestValidateExecAndDescriptorHideRuntimeDetails(t *testing.T) {
 		t.Fatalf("Validate exec manifest: %v", err)
 	}
 
-	if parsed.ManifestVersion == nil || *parsed.ManifestVersion != 1 {
+	if parsed.ManifestVersion != 1 {
 		t.Fatalf("ManifestVersion = %v, want 1", parsed.ManifestVersion)
 	}
 
-	if parsed.Backend == nil || parsed.Backend.Kind == nil || *parsed.Backend.Kind != BackendKindExec {
+	if parsed.Backend.Kind != BackendKindExec {
 		t.Fatalf("Backend.Kind = %#v, want exec", parsed.Backend)
 	}
 

@@ -49,6 +49,192 @@ func TestFixtureCorpusParity(t *testing.T) {
 	}
 }
 
+func TestValidatePreservesUnmarshalErrorText(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+		want string
+	}{
+		{
+			name: "size shape",
+			data: `{"manifestVersion":1,"name":"bad-size","version":"1.0.0","type":"widget","label":"Bad size","entry":"index.js","size":"wrong"}`,
+			want: `invalid manifest for "bad-size": manifest is not valid JSON of the expected shape: json: cannot unmarshal string into Go struct field Manifest.size of type manifest.Size`,
+		},
+		{
+			name: "backend shape",
+			data: `{"manifestVersion":1,"name":"bad-backend","version":"1.0.0","type":"widget","label":"Bad backend","entry":"index.js","size":{"w":4,"h":3},"backend":"wrong"}`,
+			want: `invalid manifest for "bad-backend": manifest is not valid JSON of the expected shape: json: cannot unmarshal string into Go struct field Manifest.backend of type manifest.Backend`,
+		},
+		{
+			name: "i18n shape",
+			data: `{"manifestVersion":1,"name":"bad-i18n","version":"1.0.0","type":"widget","label":"Bad i18n","entry":"index.js","size":{"w":4,"h":3},"i18n":"wrong"}`,
+			want: `invalid manifest for "bad-i18n": manifest is not valid JSON of the expected shape: json: cannot unmarshal string into Go struct field Manifest.i18n of type manifest.I18n`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := Validate([]byte(test.data))
+			if err == nil || err.Error() != test.want {
+				t.Fatalf("Validate() error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestValidateReturnsValueManifestWithDefaults(t *testing.T) {
+	tests := []struct {
+		name               string
+		backend            string
+		fixedHeight        string
+		wantKind           BackendKind
+		wantProtocol       int
+		wantCommand        string
+		wantI18n           bool
+		wantDefaultLocale  string
+		wantHasFixedHeight bool
+	}{
+		{
+			name: "no backend",
+		},
+		{
+			name:               "exec backend and explicit false fixedHeight",
+			backend:            `,"backend":{"kind":"exec","routes":[{"id":"echo","transport":"http","method":"GET","path":"echo","command":"backend/echo.sh"}]}`,
+			fixedHeight:        `,"fixedHeight":false`,
+			wantKind:           BackendKindExec,
+			wantHasFixedHeight: true,
+		},
+		{
+			name:              "service backend and i18n",
+			backend:           `,"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]},"i18n":{"defaultLocale":"en","locales":{"en":"i18n/en.json"}}`,
+			wantKind:          BackendKindService,
+			wantProtocol:      1,
+			wantCommand:       "backend/server",
+			wantI18n:          true,
+			wantDefaultLocale: "en",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			data := []byte(`{"manifestVersion":1,"name":"defaults","version":"1.0.0","type":"widget","label":"Defaults","entry":"index.js","size":{"w":4,"h":3}` + test.fixedHeight + test.backend + `}`)
+
+			got, err := Validate(data)
+			if err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+
+			if got.ManifestVersion != 1 || got.Name != "defaults" || got.Version != "1.0.0" || got.Type != TypeWidget || got.Label != "Defaults" || got.Entry != "index.js" {
+				t.Fatalf("validated required fields = %+v", got)
+			}
+
+			if got.Size != (Size{W: 4, H: 3}) {
+				t.Errorf("validated size = %+v, want {W:4 H:3}", got.Size)
+			}
+
+			if got.Backend.Kind != test.wantKind || got.Backend.ProtocolVersion != test.wantProtocol || got.Backend.Command != test.wantCommand {
+				t.Errorf("validated backend = %+v, want kind=%q protocol=%d command=%q", got.Backend, test.wantKind, test.wantProtocol, test.wantCommand)
+			}
+
+			if got.HasFixedHeight != test.wantHasFixedHeight || got.FixedHeight {
+				t.Errorf("validated fixedHeight = %t (present=%t), want false (present=%t)", got.FixedHeight, got.HasFixedHeight, test.wantHasFixedHeight)
+			}
+
+			if (got.I18n.DefaultLocale != "") != test.wantI18n || got.I18n.DefaultLocale != test.wantDefaultLocale {
+				t.Errorf("validated i18n = %+v, want present=%t defaultLocale=%q", got.I18n, test.wantI18n, test.wantDefaultLocale)
+			}
+		})
+	}
+}
+
+func TestValidateDropsForeignTypeFieldsAndReturnsCanonicalJSON(t *testing.T) {
+	tests := []struct {
+		name          string
+		fixture       string
+		manifestType  Type
+		wantCanonical string
+		wantRoute     string
+	}{
+		{
+			name:          "page with empty foreign size and fixedHeight",
+			fixture:       "foreign-page-size-empty.json",
+			manifestType:  TypePage,
+			wantRoute:     "/foreign-empty",
+			wantCanonical: `{"manifestVersion":1,"name":"foreign-page-empty","version":"1.0.0","type":"page","label":"Foreign empty","entry":"index.js","route":"/foreign-empty"}`,
+		},
+		{
+			name:          "page with partial foreign size and invalid minimums",
+			fixture:       "foreign-page-size-partial.json",
+			manifestType:  TypePage,
+			wantRoute:     "/foreign-partial",
+			wantCanonical: `{"manifestVersion":1,"name":"foreign-page-partial","version":"1.0.0","type":"page","label":"Foreign partial","entry":"index.js","route":"/foreign-partial"}`,
+		},
+		{
+			name:          "widget with foreign route",
+			fixture:       "foreign-widget-route.json",
+			manifestType:  TypeWidget,
+			wantCanonical: `{"manifestVersion":1,"name":"foreign-widget-route","version":"1.0.0","type":"widget","label":"Foreign route","entry":"index.js","size":{"w":4,"h":3}}`,
+		},
+		{
+			name:          "page with incompatible foreign size",
+			fixture:       "foreign-page-size-string.json",
+			manifestType:  TypePage,
+			wantRoute:     "/foreign-size-string",
+			wantCanonical: `{"manifestVersion":1,"name":"foreign-page-size-string","version":"1.0.0","type":"page","label":"Foreign size string","entry":"index.js","route":"/foreign-size-string"}`,
+		},
+		{
+			name:          "page with incompatible foreign fixedHeight",
+			fixture:       "foreign-page-fixed-height-string.json",
+			manifestType:  TypePage,
+			wantRoute:     "/foreign-fixed-height-string",
+			wantCanonical: `{"manifestVersion":1,"name":"foreign-page-fixed-height-string","version":"1.0.0","type":"page","label":"Foreign fixed height string","entry":"index.js","route":"/foreign-fixed-height-string"}`,
+		},
+		{
+			name:          "page with nested incompatible foreign size",
+			fixture:       "foreign-page-size-nested-invalid.json",
+			manifestType:  TypePage,
+			wantRoute:     "/foreign-size-nested-invalid",
+			wantCanonical: `{"manifestVersion":1,"name":"foreign-page-size-nested-invalid","version":"1.0.0","type":"page","label":"Foreign nested size","entry":"index.js","route":"/foreign-size-nested-invalid"}`,
+		},
+		{
+			name:          "widget with incompatible foreign route",
+			fixture:       "foreign-widget-route-object.json",
+			manifestType:  TypeWidget,
+			wantCanonical: `{"manifestVersion":1,"name":"foreign-widget-route-object","version":"1.0.0","type":"widget","label":"Foreign route object","entry":"index.js","size":{"w":4,"h":3}}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join("..", "fixtures", "manifests", "valid", test.fixture))
+			if err != nil {
+				t.Fatalf("read fixture: %v", err)
+			}
+
+			validated, canonical, err := ValidateCanonical(data)
+			if err != nil {
+				t.Fatalf("ValidateCanonical() error = %v", err)
+			}
+
+			if validated.Type != test.manifestType || validated.Route != test.wantRoute {
+				t.Fatalf("validated type/route = %q/%q, want %q/%q", validated.Type, validated.Route, test.manifestType, test.wantRoute)
+			}
+
+			if test.manifestType == TypePage {
+				if validated.Size != (Size{}) || validated.HasFixedHeight || validated.FixedHeight {
+					t.Errorf("page retained foreign size/fixedHeight: %+v", validated)
+				}
+			} else if validated.Route != "" {
+				t.Errorf("widget retained foreign route %q", validated.Route)
+			}
+
+			if string(canonical) != test.wantCanonical {
+				t.Errorf("canonical JSON = %s, want %s", canonical, test.wantCanonical)
+			}
+		})
+	}
+}
+
 func TestPersistentRCICapabilities(t *testing.T) {
 	base := `{"manifestVersion":1,"name":"capable","version":"1.0.0","type":"widget","label":"Capable","entry":"index.js","size":{"w":2,"h":2},"capabilities":%s}`
 

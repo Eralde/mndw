@@ -66,7 +66,7 @@ func (h *pluginsAPI) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := m.NameValue()
+	name := m.Name
 	previous, exists := h.store.Get(name)
 
 	if !exists || previous.Source == state.SourceBuiltin {
@@ -81,7 +81,7 @@ func (h *pluginsAPI) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if m.HasBackend() {
+	if m.Backend.Kind != manifest.BackendKindNone {
 		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusConflict, httpx.CodeApprovalRequired,
 			"updates that declare a backend require approval; delete the plugin and upload the new version"))
 
@@ -108,7 +108,7 @@ func (h *pluginsAPI) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.events.publish("plugin.installed", func(publisher ManagementEventPublisher) error {
-		return publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: name, Version: m.VersionValue()})
+		return publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: name, Version: m.Version})
 	})
 
 	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, previous.Source, state.ApprovalApproved, true, activeDir))
@@ -133,18 +133,14 @@ func safeVersion(version string) string {
 }
 
 func validateCommands(dir string, m *manifest.Manifest) *httpx.APIError {
-	if m == nil || !m.HasBackend() {
-		return nil
-	}
-
-	if _, ok := m.BackendKind(); !ok {
+	if m == nil || m.Backend.Kind == manifest.BackendKindNone {
 		return nil
 	}
 
 	commands := make([]string, 0, len(m.Backend.Routes)+1)
 
-	if m.Backend.Command != nil {
-		commands = append(commands, *m.Backend.Command)
+	if m.Backend.Command != "" {
+		commands = append(commands, m.Backend.Command)
 	}
 
 	for _, route := range m.Backend.Routes {
@@ -250,11 +246,11 @@ func (h *pluginsAPI) executeUpdate(
 		}
 
 		record.Manifest = append(json.RawMessage(nil), manifestBytes...)
-		record.Version = m.VersionValue()
-		record.Label = m.LabelValue()
-		record.Type = m.TypeValue()
-		record.InstalledVersion = m.VersionValue()
-		record.ActiveVersion = m.VersionValue()
+		record.Version = m.Version
+		record.Label = m.Label
+		record.Type = string(m.Type)
+		record.InstalledVersion = m.Version
+		record.ActiveVersion = m.Version
 		record.ActiveVersionDir = activeDir
 		record.InstalledAt = time.Now().UTC()
 		record.RemovalPending = false

@@ -1,0 +1,11 @@
+{
+  "manifestVersion": 1,
+  "name": "foreign-page-empty",
+  "version": "1.0.0",
+  "type": "page",
+  "label": "Foreign empty",
+  "entry": "index.js",
+  "route": "/foreign-empty",
+  "size": {},
+  "fixedHeight": true
+}

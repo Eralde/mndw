@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"mndwd/internal/backend"
+	"mndwd/internal/manifest"
 	"mndwd/internal/opkg"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
@@ -67,6 +68,59 @@ func TestNewPanicsWithoutRuntime(t *testing.T) {
 	}()
 
 	New(Config{})
+}
+
+func TestListEntryOmitsForeignManifestFields(t *testing.T) {
+	tests := []struct {
+		name       string
+		data       string
+		absentKeys []string
+		presentKey string
+	}{
+		{
+			name:       "page",
+			data:       `{"manifestVersion":1,"name":"foreign-page","version":"1.0.0","type":"page","label":"Page","entry":"index.js","route":"/foreign-page","size":{},"fixedHeight":true}`,
+			absentKeys: []string{"size", "fixedHeight"},
+			presentKey: "route",
+		},
+		{
+			name:       "widget",
+			data:       `{"manifestVersion":1,"name":"foreign-widget","version":"1.0.0","type":"widget","label":"Widget","entry":"index.js","size":{"w":4,"h":3},"route":"/foreign-widget"}`,
+			absentKeys: []string{"route"},
+			presentKey: "size",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			m, err := manifest.Validate([]byte(test.data))
+			if err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+
+			entry := (&pluginsAPI{}).entryFrom(m, state.SourceBuiltin, state.ApprovalApproved, true, t.TempDir())
+			encoded, err := json.Marshal(entry)
+			if err != nil {
+				t.Fatalf("marshal ListEntry: %v", err)
+			}
+
+			var fields map[string]json.RawMessage
+
+			if err := json.Unmarshal(encoded, &fields); err != nil {
+				t.Fatalf("unmarshal ListEntry: %v", err)
+			}
+
+			for _, key := range test.absentKeys {
+				if _, exists := fields[key]; exists {
+					t.Errorf("ListEntry contains foreign field %q: %s", key, encoded)
+				}
+			}
+
+			if _, exists := fields[test.presentKey]; !exists {
+				t.Errorf("ListEntry omits required field %q: %s", test.presentKey, encoded)
+			}
+		})
+	}
 }
 
 type capabilityTestController struct {
@@ -119,7 +173,7 @@ func (c *lifecycleTestControl) StartPlugin(plugin *registry.Plugin) error {
 	c.runtime.events = append(c.runtime.events, fmt.Sprintf("start:stored=%s/%t:requested=%s/%t", storedApproval, storedEnabled, plugin.Approval, plugin.Enabled))
 
 	if plugin.Manifest != nil {
-		c.runtime.startVersions = append(c.runtime.startVersions, plugin.Manifest.VersionValue())
+		c.runtime.startVersions = append(c.runtime.startVersions, plugin.Manifest.Version)
 	}
 
 	if len(c.runtime.startErrors) > 0 {

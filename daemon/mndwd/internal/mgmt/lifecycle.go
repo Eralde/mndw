@@ -2,7 +2,6 @@ package mgmt
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -55,7 +54,7 @@ func (h *pluginsAPI) installDeps(parent context.Context, m *manifest.Manifest) *
 	defer cancel()
 
 	if err := h.opkg.Install(ctx, packages); err != nil {
-		h.logger.Error("opkg dependency install failed", "plugin", m.NameValue(), "packages", packages, "error", err)
+		h.logger.Error("opkg dependency install failed", "plugin", m.Name, "packages", packages, "error", err)
 
 		if errors.Is(err, opkg.ErrBusy) {
 			return httpx.NewError(http.StatusConflict, httpx.CodeOpkgBusy, "package manager is busy")
@@ -68,7 +67,7 @@ func (h *pluginsAPI) installDeps(parent context.Context, m *manifest.Manifest) *
 }
 
 func backendPackages(m *manifest.Manifest) []string {
-	if m == nil || m.Backend == nil {
+	if m == nil || m.Backend.Kind == manifest.BackendKindNone {
 		return nil
 	}
 
@@ -262,27 +261,26 @@ func (h *pluginsAPI) lookupBuiltin(name string) (*registry.Plugin, *httpx.APIErr
 		return nil, nil
 	}
 
-	m, err := manifest.Validate(data)
+	m, manifestJSON, err := manifest.ValidateCanonical(data)
 	if err != nil {
 		return nil, nil
 	}
 
 	return &registry.Plugin{
-		Name: name, Dir: filepath.Join(h.builtinPluginsDir, name), Manifest: m,
+		Name: name, Dir: filepath.Join(h.builtinPluginsDir, name), Manifest: m, ManifestJSON: manifestJSON,
 		Source: state.SourceBuiltin, Approval: state.ApprovalApproved, Enabled: true,
 	}, nil
 }
 
 func stateForBuiltin(plugin *registry.Plugin) (*state.Plugin, error) {
-	manifestJSON, err := json.Marshal(plugin.Manifest)
-	if err != nil {
-		return nil, err
+	if len(plugin.ManifestJSON) == 0 {
+		return nil, errors.New("builtin manifest JSON is missing")
 	}
 
 	return &state.Plugin{
-		Name: plugin.Name, Source: state.SourceBuiltin, Type: plugin.Manifest.TypeValue(),
-		Version: plugin.Manifest.VersionValue(), Label: plugin.Manifest.LabelValue(),
-		Approval: state.ApprovalApproved, Enabled: true, Manifest: manifestJSON, InstalledAt: time.Now().UTC(),
+		Name: plugin.Name, Source: state.SourceBuiltin, Type: string(plugin.Manifest.Type),
+		Version: plugin.Manifest.Version, Label: plugin.Manifest.Label,
+		Approval: state.ApprovalApproved, Enabled: true, Manifest: append([]byte(nil), plugin.ManifestJSON...), InstalledAt: time.Now().UTC(),
 	}, nil
 }
 
@@ -471,14 +469,14 @@ func (h *pluginsAPI) dropRecord(name, action, detail string) *httpx.APIError {
 // markCommandsExecutable applies +x to every declared backend command.
 // A declared-but-absent file is a packaging error and fails approval.
 func markCommandsExecutable(installPath string, m *manifest.Manifest) *httpx.APIError {
-	if m.Backend == nil {
+	if m == nil || m.Backend.Kind == manifest.BackendKindNone {
 		return nil
 	}
 
 	paths := make([]string, 0, len(m.Backend.Routes)+1)
 
-	if m.Backend.Command != nil {
-		paths = append(paths, *m.Backend.Command)
+	if m.Backend.Command != "" {
+		paths = append(paths, m.Backend.Command)
 	}
 
 	for _, route := range m.Backend.Routes {

@@ -152,7 +152,7 @@ func (g *Gateway) resolveAuthorizedRoute(writer http.ResponseWriter, request *ht
 
 	plugin, found := g.registry.Resolve(request.PathValue("name"))
 
-	if !found || !plugin.Manifest.HasBackendKind() {
+	if !found || plugin.Manifest == nil || plugin.Manifest.Backend.Kind == manifest.BackendKindNone {
 		if !g.authenticate(writer, request) {
 			return routeDecision{}, false
 		}
@@ -239,7 +239,7 @@ func (g *Gateway) handle(writer http.ResponseWriter, request *http.Request) {
 		}
 	}
 
-	kind, _ := plugin.Manifest.BackendKind()
+	kind := plugin.Manifest.Backend.Kind
 
 	switch kind {
 	case manifest.BackendKindExec:
@@ -349,7 +349,7 @@ func (g *Gateway) serveService(writer http.ResponseWriter, request *http.Request
 		return
 	}
 
-	if plugin.Manifest.Backend.ProtocolVersion == nil || !g.runtime.SupportsProtocol(*plugin.Manifest.Backend.ProtocolVersion) {
+	if plugin.Manifest.Backend.ProtocolVersion <= 0 || !g.runtime.SupportsProtocol(plugin.Manifest.Backend.ProtocolVersion) {
 		g.writeError(writer, httpx.NewError(http.StatusServiceUnavailable, httpx.CodeBackendIncompatible, "service backend protocol is unsupported"))
 
 		return
@@ -525,13 +525,13 @@ func (g *Gateway) pluginTrafficBlocked(pluginID string) bool {
 // activationBlockers returns the unmet activation prerequisites for a plugin's
 // declared capabilities, in manifest order, or nil when all are satisfied.
 func (g *Gateway) activationBlockers(plugin *registry.Plugin) []ActivationBlocker {
-	if g.activationGates == nil || plugin == nil || !plugin.Manifest.HasBackend() {
+	if g.activationGates == nil || plugin == nil || plugin.Manifest == nil || plugin.Manifest.Backend.Kind == manifest.BackendKindNone {
 		return nil
 	}
 
 	// Activation gates are enforced only for service backends (see serviceSpec);
 	// exec backends are never gated, so never report them as blocked.
-	if !plugin.Manifest.IsService() {
+	if plugin.Manifest.Backend.Kind != manifest.BackendKindService {
 		return nil
 	}
 
@@ -613,7 +613,7 @@ func (g *Gateway) writeBlocked(writer http.ResponseWriter, blockers []Activation
 }
 
 func resolveRoute(m *manifest.Manifest, method, path string) (manifest.BackendRoute, bool) {
-	if m == nil || m.Backend == nil {
+	if m == nil || m.Backend.Kind == manifest.BackendKindNone {
 		return manifest.BackendRoute{}, false
 	}
 
@@ -629,7 +629,7 @@ func resolveRoute(m *manifest.Manifest, method, path string) (manifest.BackendRo
 }
 
 func resolveWebSocketRoute(m *manifest.Manifest, path string) (manifest.BackendRoute, bool) {
-	if m == nil || m.Backend == nil {
+	if m == nil || m.Backend.Kind == manifest.BackendKindNone {
 		return manifest.BackendRoute{}, false
 	}
 

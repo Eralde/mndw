@@ -63,7 +63,7 @@ func publishActivePluginEvents(reg *registry.Registry, store *state.Store, publi
 			continue
 		}
 
-		if err := publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: name, Version: plugin.Manifest.VersionValueOr("unknown")}); err != nil {
+		if err := publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: name, Version: plugin.Manifest.Version}); err != nil {
 			logger.Warn("plugin.installed publish failed", "plugin", name, "error", err)
 		}
 	}
@@ -80,7 +80,7 @@ func publishActivePluginEvents(reg *registry.Registry, store *state.Store, publi
 			continue
 		}
 
-		if err := publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: plugin.Name, Version: plugin.Manifest.VersionValueOr("unknown")}); err != nil {
+		if err := publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: plugin.Name, Version: plugin.Manifest.Version}); err != nil {
 			logger.Warn("plugin.installed publish failed", "plugin", plugin.Name, "error", err)
 		}
 	}

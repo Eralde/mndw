@@ -1,0 +1,13 @@
+{
+  "manifestVersion": 1,
+  "name": "foreign-page-size-nested-invalid",
+  "version": "1.0.0",
+  "type": "page",
+  "label": "Foreign nested size",
+  "entry": "index.js",
+  "route": "/foreign-size-nested-invalid",
+  "size": {
+    "w": "ignored",
+    "h": 3
+  }
+}

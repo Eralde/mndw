@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "name": "foreign-page-fixed-height-string",
+  "version": "1.0.0",
+  "type": "page",
+  "label": "Foreign fixed height string",
+  "entry": "index.js",
+  "route": "/foreign-fixed-height-string",
+  "fixedHeight": "ignored"
+}

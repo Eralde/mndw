@@ -15,6 +15,7 @@ const (
 	TypePage                            = contractmanifest.TypePage
 	PersistentRCISessionReadCapability  = contractmanifest.PersistentRCISessionReadCapability
 	PersistentRCISessionWriteCapability = contractmanifest.PersistentRCISessionWriteCapability
+	BackendKindNone                     = contractmanifest.BackendKindNone
 	BackendKindExec                     = contractmanifest.BackendKindExec
 	BackendKindService                  = contractmanifest.BackendKindService
 )
@@ -43,12 +44,19 @@ const supportedManifestVersion = 1
 
 // Validate checks supported manifest version before applying contract validation.
 func Validate(data []byte) (*Manifest, error) {
+	validated, _, err := ValidateCanonical(data)
+
+	return validated, err
+}
+
+// ValidateCanonical validates a manifest and returns its normalized source JSON.
+func ValidateCanonical(data []byte) (*Manifest, []byte, error) {
 	var envelope struct {
 		ManifestVersion *int `json:"manifestVersion"`
 	}
 
 	if err := json.Unmarshal(data, &envelope); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if envelope.ManifestVersion == nil || *envelope.ManifestVersion != supportedManifestVersion {
@@ -58,8 +66,8 @@ func Validate(data []byte) (*Manifest, error) {
 			version = *envelope.ManifestVersion
 		}
 
-		return nil, &UnsupportedVersionError{Version: version}
+		return nil, nil, &UnsupportedVersionError{Version: version}
 	}
 
-	return contractmanifest.Validate(data)
+	return contractmanifest.ValidateCanonical(data)
 }

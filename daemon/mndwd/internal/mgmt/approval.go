@@ -75,7 +75,7 @@ func (h *pluginsAPI) executeApprove(name string) (*manifest.Manifest, *httpx.API
 				rec.Approval = state.ApprovalApproved
 				rec.Enabled = true
 				rec.RemovalPending = false
-				rec.ActiveVersion = m.VersionValue()
+				rec.ActiveVersion = m.Version
 				rec.ActiveVersionDir = installPath
 
 				st.AppendAudit("approve", name, "backend approved and activated")
@@ -90,10 +90,10 @@ func (h *pluginsAPI) executeApprove(name string) (*manifest.Manifest, *httpx.API
 			}
 
 			h.events.publish("plugin.installed", func(publisher ManagementEventPublisher) error {
-				return publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: name, Version: m.VersionValue()})
+				return publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: name, Version: m.Version})
 			})
 			h.events.publish("plugin.approved", func(publisher ManagementEventPublisher) error {
-				return publisher.PublishPluginApproved(contractEvents.PluginApprovedPayload{Name: name, Version: m.VersionValue()})
+				return publisher.PublishPluginApproved(contractEvents.PluginApprovedPayload{Name: name, Version: m.Version})
 			})
 
 			return nil

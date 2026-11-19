@@ -68,7 +68,7 @@ func (h *pluginsAPI) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := m.NameValue()
+	name := m.Name
 
 	if apiErr := h.ensureNameFree(name); apiErr != nil {
 		httpx.WriteError(w, h.logger, apiErr)
@@ -86,7 +86,7 @@ func (h *pluginsAPI) handleUpload(w http.ResponseWriter, r *http.Request) {
 	auditDetail := "no backend — installed without approval"
 	auditAction := "install"
 
-	if m.HasBackend() {
+	if m.Backend.Kind != manifest.BackendKindNone {
 		intent = backend.IntentStop
 		approval = state.ApprovalPending
 		enabled = false
@@ -142,7 +142,7 @@ func (h *pluginsAPI) handleUpload(w http.ResponseWriter, r *http.Request) {
 			record.RemovalPending = false
 
 			if installed {
-				record.ActiveVersion = m.VersionValue()
+				record.ActiveVersion = m.Version
 				record.ActiveVersionDir = activePath
 			}
 
@@ -160,7 +160,7 @@ func (h *pluginsAPI) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 			if installed {
 				h.events.publish("plugin.installed", func(publisher ManagementEventPublisher) error {
-					return publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: name, Version: m.VersionValue()})
+					return publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: name, Version: m.Version})
 				})
 			}
 
@@ -189,7 +189,7 @@ func (h *pluginsAPI) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.logger.Info("plugin upload completed", "plugin", name, "backend", m.HasBackend())
+	h.logger.Info("plugin upload completed", "plugin", name, "backend", m.Backend.Kind != manifest.BackendKindNone)
 
 	pluginDir := activePath
 
@@ -261,15 +261,15 @@ func (h *pluginsAPI) restoreUploadRecord(name string, previous *state.Plugin, ha
 // newRecord builds the durable state record from a validated manifest.
 func newRecord(m *manifest.Manifest, manifestBytes []byte, approval state.Approval, enabled bool) *state.Plugin {
 	return &state.Plugin{
-		Name:             m.NameValue(),
+		Name:             m.Name,
 		Source:           state.SourceUpload,
-		Type:             m.TypeValue(),
-		Version:          m.VersionValue(),
-		Label:            m.LabelValue(),
+		Type:             string(m.Type),
+		Version:          m.Version,
+		Label:            m.Label,
 		Approval:         approval,
 		Enabled:          enabled,
 		Manifest:         slices.Clone(manifestBytes),
 		InstalledAt:      time.Now().UTC(),
-		InstalledVersion: m.VersionValue(),
+		InstalledVersion: m.Version,
 	}
 }

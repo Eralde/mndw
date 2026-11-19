@@ -25,6 +25,8 @@ type Plugin struct {
 	Dir string
 	// Manifest is the re-validated manifest, the source of endpoint/ws routes.
 	Manifest *manifest.Manifest
+	// ManifestJSON is the normalized source JSON for builtins persisted to state.
+	ManifestJSON []byte
 	// Source is builtin or user (state.Source*).
 	Source state.Source
 	// Approval and Enabled are the runtime gate; only approved+enabled plugins serve.
@@ -108,18 +110,19 @@ func (r *Registry) resolveBuiltin(name string, enabled bool) (*Plugin, bool) {
 		return nil, false
 	}
 
-	m, err := manifest.Validate(data)
+	m, manifestJSON, err := manifest.ValidateCanonical(data)
 	if err != nil {
 		return nil, false
 	}
 
 	return &Plugin{
-		Name:     name,
-		Dir:      dir,
-		Manifest: m,
-		Source:   state.SourceBuiltin,
-		Approval: state.ApprovalApproved,
-		Enabled:  enabled,
+		Name:         name,
+		Dir:          dir,
+		Manifest:     m,
+		ManifestJSON: manifestJSON,
+		Source:       state.SourceBuiltin,
+		Approval:     state.ApprovalApproved,
+		Enabled:      enabled,
 	}, true
 }
 
@@ -171,7 +174,7 @@ func (r *Registry) ListBuiltins() ([]*Plugin, error) {
 			continue
 		}
 
-		m, verr := manifest.Validate(data)
+		m, manifestJSON, verr := manifest.ValidateCanonical(data)
 
 		if verr != nil {
 			r.logger.Warn("builtin plugin has invalid manifest, skipping", "plugin", name, "error", verr)
@@ -186,12 +189,13 @@ func (r *Registry) ListBuiltins() ([]*Plugin, error) {
 		}
 
 		plugins = append(plugins, &Plugin{
-			Name:     name,
-			Dir:      pluginDir,
-			Manifest: m,
-			Source:   state.SourceBuiltin,
-			Approval: state.ApprovalApproved,
-			Enabled:  enabled,
+			Name:         name,
+			Dir:          pluginDir,
+			Manifest:     m,
+			ManifestJSON: manifestJSON,
+			Source:       state.SourceBuiltin,
+			Approval:     state.ApprovalApproved,
+			Enabled:      enabled,
 		})
 	}
 
@@ -224,7 +228,7 @@ func (r *Registry) AllBackendPlugins() []*Plugin {
 
 		plugin, ok := r.Resolve(name)
 
-		if !ok || !manifest.HasBackend(plugin.Manifest) {
+		if !ok || plugin.Manifest.Backend.Kind == manifest.BackendKindNone {
 			continue
 		}
 
@@ -236,7 +240,7 @@ func (r *Registry) AllBackendPlugins() []*Plugin {
 	slices.SortFunc(builtins, func(left, right *Plugin) int { return strings.Compare(left.Name, right.Name) })
 
 	for _, plugin := range builtins {
-		if _, exists := reserved[plugin.Name]; exists || !plugin.Enabled || !manifest.HasBackend(plugin.Manifest) {
+		if _, exists := reserved[plugin.Name]; exists || !plugin.Enabled || plugin.Manifest.Backend.Kind == manifest.BackendKindNone {
 			continue
 		}
 

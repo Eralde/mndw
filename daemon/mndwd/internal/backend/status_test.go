@@ -310,10 +310,11 @@ func statusTestRegistry(t *testing.T) (*registry.Registry, *state.Store) {
 func statusTestStorePlugin(t *testing.T, store *state.Store, plugin *registry.Plugin) {
 	t.Helper()
 
-	data, err := json.Marshal(plugin.Manifest)
-	if err != nil {
-		t.Fatalf("marshal status manifest: %v", err)
+	if len(plugin.ManifestJSON) == 0 {
+		t.Fatal("status test plugin has no source manifest JSON")
 	}
+
+	data := plugin.ManifestJSON
 
 	if err := store.Mutate(func(st *state.State) error {
 		st.Plugins[plugin.Name] = &state.Plugin{
@@ -365,12 +366,12 @@ func statusTestBackendlessPlugin(t *testing.T, name string) *registry.Plugin {
 	t.Helper()
 
 	data := []byte(fmt.Sprintf(`{"manifestVersion":1,"name":"%s","version":"1.0.0","type":"page","label":"%s","entry":"index.js","route":"/%s"}`, name, name, name))
-	parsed, err := manifest.Validate(data)
+	parsed, canonical, err := manifest.ValidateCanonical(data)
 	if err != nil {
 		t.Fatalf("validate backendless status plugin: %v", err)
 	}
 
-	return &registry.Plugin{Name: name, Dir: t.TempDir(), Manifest: parsed, Approval: state.ApprovalApproved, Enabled: true}
+	return &registry.Plugin{Name: name, Dir: t.TempDir(), Manifest: parsed, ManifestJSON: canonical, Approval: state.ApprovalApproved, Enabled: true}
 }
 
 func statusTestPlugin(t *testing.T, name string, kind manifest.BackendKind, protocol int, approval state.Approval, enabled bool, capabilities []string) *registry.Plugin {
@@ -389,12 +390,12 @@ func statusTestPlugin(t *testing.T, name string, kind manifest.BackendKind, prot
 	}
 
 	data := []byte(fmt.Sprintf(`{"manifestVersion":1,"name":"%s","version":"1.0.0","type":"page","label":"%s","entry":"index.js","route":"/%s","capabilities":%s,"backend":{%s}}`, name, name, name, capabilityJSON, backend))
-	parsed, err := manifest.Validate(data)
+	parsed, canonical, err := manifest.ValidateCanonical(data)
 	if err != nil {
 		t.Fatalf("validate status plugin: %v", err)
 	}
 
-	return &registry.Plugin{Name: name, Dir: t.TempDir(), Manifest: parsed, Approval: approval, Enabled: enabled}
+	return &registry.Plugin{Name: name, Dir: t.TempDir(), Manifest: parsed, ManifestJSON: canonical, Approval: approval, Enabled: enabled}
 }
 
 func intPtr(value int) *int { return &value }

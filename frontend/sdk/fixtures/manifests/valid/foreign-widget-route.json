@@ -1,0 +1,13 @@
+{
+  "manifestVersion": 1,
+  "name": "foreign-widget-route",
+  "version": "1.0.0",
+  "type": "widget",
+  "label": "Foreign route",
+  "entry": "index.js",
+  "size": {
+    "w": 4,
+    "h": 3
+  },
+  "route": "/foreign-widget"
+}

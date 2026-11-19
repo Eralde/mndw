@@ -130,7 +130,7 @@ func (c *Coordinator) serviceLogger() *slog.Logger {
 }
 
 func isService(m *manifest.Manifest) bool {
-	return m.IsService() && m.Backend.ProtocolVersion != nil && *m.Backend.ProtocolVersion == 1
+	return m != nil && m.Backend.Kind == manifest.BackendKindService && m.Backend.ProtocolVersion == 1
 }
 
 func hasPersistentRCICapability(m *manifest.Manifest) bool {

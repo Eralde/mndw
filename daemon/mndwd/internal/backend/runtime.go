@@ -294,20 +294,14 @@ func (r *Runtime) LiveDiagnostics(ctx context.Context, pluginID string) ([]byte,
 }
 
 func serviceSpec(plugin *registry.Plugin, gates *ActivationGateRegistry) (ServiceSpec, bool) {
-	if plugin == nil || !plugin.Manifest.HasBackend() {
+	if plugin == nil || plugin.Manifest == nil || plugin.Manifest.Backend.Kind == manifest.BackendKindNone {
 		return ServiceSpec{}, false
 	}
 
 	backend := plugin.Manifest.Backend
 
-	if !backend.IsService() || backend.Command == nil {
+	if backend.Kind != manifest.BackendKindService || backend.Command == "" {
 		return ServiceSpec{}, false
-	}
-
-	protocolVersion := 1
-
-	if backend.ProtocolVersion != nil {
-		protocolVersion = *backend.ProtocolVersion
 	}
 
 	enabled := plugin.Enabled && plugin.Approval == state.ApprovalApproved && !plugin.RemovalPending
@@ -319,9 +313,9 @@ func serviceSpec(plugin *registry.Plugin, gates *ActivationGateRegistry) (Servic
 	return ServiceSpec{
 		PluginID:        plugin.Name,
 		Dir:             plugin.Dir,
-		Command:         *backend.Command,
+		Command:         backend.Command,
 		Args:            slices.Clone(backend.Args),
-		ProtocolVersion: protocolVersion,
+		ProtocolVersion: backend.ProtocolVersion,
 		Builtin:         plugin.Source == state.SourceBuiltin,
 		Enabled:         enabled,
 		RemovalPending:  plugin.RemovalPending,

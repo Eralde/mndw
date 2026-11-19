@@ -123,7 +123,7 @@ func TestResolveBuiltin(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := `{"manifestVersion":1,"name":"core","version":"2.0.0","type":"page","label":"C","entry":"index.js","route":"/core"}`
+	m := `{"manifestVersion":1,"name":"core","version":"2.0.0","type":"page","label":"C","entry":"index.js","route":"/core","size":{},"fixedHeight":true,"unknown":"ignored"}`
 
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(m), 0o644); err != nil {
 		t.Fatal(err)
@@ -141,6 +141,10 @@ func TestResolveBuiltin(t *testing.T) {
 
 	if p.Dir != dir {
 		t.Errorf("dir = %q, want %q", p.Dir, dir)
+	}
+
+	if want := `{"manifestVersion":1,"name":"core","version":"2.0.0","type":"page","label":"C","entry":"index.js","route":"/core"}`; string(p.ManifestJSON) != want {
+		t.Errorf("canonical manifest JSON = %s, want %s", p.ManifestJSON, want)
 	}
 }
 
@@ -185,7 +189,7 @@ func TestResolveDisabledBuiltinUsesShippedManifestAndDirectory(t *testing.T) {
 		t.Fatalf("resolved dir = %q, want shipped builtin dir %q", plugin.Dir, dir)
 	}
 
-	if got := *plugin.Manifest.Version; got != "2.0.0" {
+	if got := plugin.Manifest.Version; got != "2.0.0" {
 		t.Fatalf("resolved version = %q, want current shipped version", got)
 	}
 }
@@ -245,6 +249,10 @@ func TestListBuiltins(t *testing.T) {
 
 		m := fmt.Sprintf(`{"manifestVersion":1,"name":"%s","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`, name)
 
+		if name == "alpha" {
+			m = `{"manifestVersion":1,"name":"alpha","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3},"route":"/ignored","backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"health","transport":"http","method":"get","path":"health"}]},"unknown":"ignored"}`
+		}
+
 		if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(m), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -266,6 +274,14 @@ func TestListBuiltins(t *testing.T) {
 
 		if p.Source != state.SourceBuiltin || p.Approval != state.ApprovalApproved || !p.Enabled {
 			t.Errorf("builtin %s has wrong state: source=%s approval=%s enabled=%v", p.Name, p.Source, p.Approval, p.Enabled)
+		}
+
+		if p.Name == "alpha" {
+			want := `{"manifestVersion":1,"name":"alpha","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3},"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"health","transport":"http","method":"GET","path":"health","access":"session"}]}}`
+
+			if string(p.ManifestJSON) != want {
+				t.Errorf("canonical manifest JSON = %s, want %s", p.ManifestJSON, want)
+			}
 		}
 	}
 

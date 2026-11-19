@@ -136,13 +136,18 @@ describe('MwsGraphComponent', () => {
     ]);
     expect([name, model, status].map((text) => text?.getAttribute('x'))).toEqual(['-78', '-78', '-78']);
     expect([name, model, status].map((text) => text?.getAttribute('y'))).toEqual(['-11', '5', '20']);
-    expect(graphStyles).toMatch(
-      /\.name\s*\{[^}]*font-size:\s*0\.8125rem;[^}]*font-weight:\s*600;[^}]*fill:\s*var\(--mndw-text\);/s,
-    );
-    expect(graphStyles).toMatch(/\.model\s*\{[^}]*font-size:\s*0\.6875rem;[^}]*fill:\s*var\(--mndw-text-subtle\);/s);
-    expect(graphStyles).toMatch(
-      /\.status-line\s*\{[^}]*font-size:\s*0\.6875rem;[^}]*fill:\s*var\(--mndw-text-subtle\);/s,
-    );
+
+    const nameRule = graphStyles.match(/(?:&)?\.name\s*\{([^}]*)\}/s)?.[1] ?? '';
+    const modelRule = graphStyles.match(/(?:&)?\.model\s*\{([^}]*)\}/s)?.[1] ?? '';
+    const statusRule = graphStyles.match(/(?:&)?\.status-line\s*\{([^}]*)\}/s)?.[1] ?? '';
+
+    expect(nameRule).toContain('font-size: 0.8125rem;');
+    expect(nameRule).toContain('font-weight: 600;');
+    expect(nameRule).toContain('fill: var(--mndw-text);');
+    expect(modelRule).toContain('font-size: 0.6875rem;');
+    expect(modelRule).toContain('fill: var(--mndw-text-subtle);');
+    expect(statusRule).toContain('font-size: 0.6875rem;');
+    expect(statusRule).toContain('fill: var(--mndw-text-subtle);');
   });
 
   it('refreshes imperative SVG translations after a locale switch', () => {

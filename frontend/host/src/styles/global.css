@@ -81,8 +81,8 @@ body {
 
 .mndw-app-shell {
   display: flex;
-  flex-direction: column;
   flex: 1;
+  flex-direction: column;
   min-height: 0;
 }
 
@@ -335,9 +335,9 @@ body {
 .mndw-loading {
   display: flex;
   flex: 1;
-  min-height: 0;
   justify-content: center;
   align-items: center;
+  min-height: 0;
   color: var(--mndw-text-subtle);
 }
 
@@ -420,8 +420,8 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .mndw-grid-tile--newly-added {
-    animation: none;
     box-shadow: inset 0 0 0 2px var(--mndw-accent);
+    animation: none;
   }
 }
 
@@ -594,12 +594,12 @@ body {
   z-index: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
   gap: 0.625rem;
+  justify-content: center;
+  align-items: center;
   padding: 1.5rem;
-  text-align: center;
   background: var(--mndw-bg);
+  text-align: center;
 }
 
 .mndw-empty-state__title {
@@ -745,14 +745,15 @@ body {
 .mndw-page-plugin__notice {
   position: absolute;
   inset: 0;
+
+  /* Above positioned elements in the plugin's partial DOM, which comes later in tree order. */
+  z-index: 1;
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 1rem;
   text-align: center;
   opacity: 0.7;
-  /* Above positioned elements in the plugin's partial DOM, which comes later in tree order. */
-  z-index: 1;
 }
 
 /* Opaque surface so panel copy never overlaps a plugin's partial DOM (loading/slow). */

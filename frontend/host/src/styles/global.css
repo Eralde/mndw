@@ -398,12 +398,19 @@ body {
 
 /* Host-owned tile frame: title, plugin body, and remove control. */
 .mndw-grid-tile {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
 }
 
-.mndw-grid-tile--newly-added {
+.mndw-grid-tile--newly-added::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
   animation: mndw-newly-added-highlight 1.6s ease-out;
 }
 
@@ -419,7 +426,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mndw-grid-tile--newly-added {
+  .mndw-grid-tile--newly-added::after {
     box-shadow: inset 0 0 0 2px var(--mndw-accent);
     animation: none;
   }

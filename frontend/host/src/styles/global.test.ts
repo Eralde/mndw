@@ -41,3 +41,26 @@ it('gives the tile close button a visible 44px target on touch and mobile layout
     /@media \(pointer: coarse\) \{[\s\S]*?\.mndw-grid-tile__title \{[\s\S]*?padding-right: 3rem;/u,
   );
 });
+
+it('paints the new tile highlight above content while keeping the close button above it', async () => {
+  const source = await readFile(globalCss, 'utf8');
+  const highlightRule = source.match(/\.mndw-grid-tile--newly-added::after\s*\{([^}]*)\}/u)?.[1] ?? '';
+  const reducedMotionRule =
+    source.match(/@media \(prefers-reduced-motion: reduce\) \{\s*\.mndw-grid-tile--newly-added::after\s*\{([^}]*)\}/u)
+      ?.[1]
+      ?? '';
+
+  expect(source).toMatch(/\.mndw-grid-tile\s*\{[^}]*position: relative;/u);
+  expect(highlightRule).toContain('content: \'\';');
+  expect(highlightRule).toContain('position: absolute;');
+  expect(highlightRule).toContain('inset: 0;');
+  expect(highlightRule).toContain('z-index: 1;');
+  expect(highlightRule).toContain('pointer-events: none;');
+  expect(highlightRule).toContain('border-radius: inherit;');
+  expect(highlightRule).toContain('animation: mndw-newly-added-highlight 1.6s ease-out;');
+  expect(reducedMotionRule).toContain('box-shadow: inset 0 0 0 2px var(--mndw-accent);');
+  expect(reducedMotionRule).toContain('animation: none;');
+  expect(source).toMatch(
+    /\.mndw-grid-tile__close\s*\{[^}]*position: absolute;[^}]*top: 0\.25rem;[^}]*right: 0\.25rem;[^}]*z-index: 2;/u,
+  );
+});

@@ -299,7 +299,6 @@ const widgetManifestSchema = z.object({
   ...baseFields,
   type: z.literal('widget'),
   size: sizeSchema,
-  fixedHeight: z.boolean().optional(),
 });
 
 const pageManifestSchema = z.object({

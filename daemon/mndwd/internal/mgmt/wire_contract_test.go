@@ -187,7 +187,7 @@ func TestWireGoldenFixtures(t *testing.T) {
 		}
 	}
 
-	writeBuiltinFixture(t, cfg, "zeta-builtin", true)
+	writeBuiltinFixture(t, cfg, "zeta-builtin")
 
 	if err := store.SetCapabilityGrant("delta-rci", "persistent-rci-session:read", true); err != nil {
 		t.Fatalf("grant: %v", err)

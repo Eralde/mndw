@@ -87,8 +87,6 @@ type Manifest struct {
 	Entry           string
 	Capabilities    []string
 	Size            Size
-	FixedHeight     bool
-	HasFixedHeight  bool
 	Route           string
 	Backend         Backend
 	I18n            I18n
@@ -97,6 +95,15 @@ type Manifest struct {
 type ValidationError struct {
 	PluginName string
 	Reason     string
+}
+
+var removedManifestFields = []struct {
+	key    string
+	reason string
+}{
+	{key: "permissions", reason: "permissions was renamed to capabilities in 0.3"},
+	{key: "icon", reason: "icon was removed in 0.3"},
+	{key: "fixedHeight", reason: "fixedHeight was removed in 0.3"},
 }
 
 func (e *ValidationError) Error() string {
@@ -127,12 +134,10 @@ func ValidateCanonical(data []byte) (*Manifest, []byte, error) {
 	manifestData := data
 
 	if err := json.Unmarshal(data, &fields); err == nil {
-		if _, legacy := fields["permissions"]; legacy {
-			return nil, nil, &ValidationError{PluginName: pluginName(data), Reason: "permissions was renamed to capabilities in 0.3"}
-		}
-
-		if _, legacy := fields["icon"]; legacy {
-			return nil, nil, &ValidationError{PluginName: pluginName(data), Reason: "icon was removed in 0.3"}
+		for _, removed := range removedManifestFields {
+			if _, legacy := fields[removed.key]; legacy {
+				return nil, nil, &ValidationError{PluginName: pluginName(data), Reason: removed.reason}
+			}
 		}
 
 		manifestData = stripForeignFields(data, fields)
@@ -151,7 +156,6 @@ func ValidateCanonical(data []byte) (*Manifest, []byte, error) {
 	switch Type(*m.Type) {
 	case TypePage:
 		m.Size = nil
-		m.FixedHeight = nil
 	case TypeWidget:
 		m.Route = nil
 	}
@@ -175,7 +179,7 @@ func stripForeignFields(data []byte, fields map[string]json.RawMessage) []byte {
 
 	switch manifestType {
 	case TypePage:
-		foreignFields = []string{"size", "fixedHeight"}
+		foreignFields = []string{"size"}
 	case TypeWidget:
 		foreignFields = []string{"route"}
 	default:
@@ -213,7 +217,6 @@ func validatedManifest(m wire.Manifest) *Manifest {
 		Label:           *m.Label,
 		Entry:           *m.Entry,
 		Capabilities:    m.Capabilities,
-		HasFixedHeight:  m.FixedHeight != nil,
 	}
 
 	if m.Description != nil {
@@ -230,10 +233,6 @@ func validatedManifest(m wire.Manifest) *Manifest {
 		if m.Size.MinH != nil {
 			manifest.Size.MinH = *m.Size.MinH
 		}
-	}
-
-	if m.FixedHeight != nil {
-		manifest.FixedHeight = *m.FixedHeight
 	}
 
 	if m.Route != nil {

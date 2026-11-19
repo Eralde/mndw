@@ -38,7 +38,7 @@ export type PluginBackend = PluginExecBackend | PluginServiceBackend;
 export type WidgetSize = WidgetSizeOutput;
 
 export type PluginManifestBase =
-  & Omit<Extract<PluginManifestOutput, {type: 'widget'}>, 'type' | 'size' | 'fixedHeight' | 'backend'>
+  & Omit<Extract<PluginManifestOutput, {type: 'widget'}>, 'type' | 'size' | 'backend'>
   & {
     type: 'widget' | 'page';
     backend?: PluginBackend;

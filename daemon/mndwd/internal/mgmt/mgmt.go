@@ -276,7 +276,6 @@ type ListEntry struct {
 	Capabilities     []string        `json:"capabilities,omitempty"`
 	CapabilityGrants map[string]bool `json:"capabilityGrants,omitempty"`
 	Size             *manifest.Size  `json:"size,omitempty"`
-	FixedHeight      *bool           `json:"fixedHeight,omitempty"`
 	Route            string          `json:"route,omitempty"`
 	I18n             *manifest.I18n  `json:"i18n,omitempty"`
 	// DepsStatus is always "ready" at daemon startup. Package installation is an
@@ -402,11 +401,6 @@ func (h *pluginsAPI) entryFrom(m *manifest.Manifest, source state.Source, approv
 	if m.Type == manifest.TypeWidget {
 		size := m.Size
 		e.Size = &size
-	}
-
-	if m.HasFixedHeight {
-		fixedHeight := m.FixedHeight
-		e.FixedHeight = &fixedHeight
 	}
 
 	if m.I18n.DefaultLocale != "" {

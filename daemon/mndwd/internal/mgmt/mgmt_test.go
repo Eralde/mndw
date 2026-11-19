@@ -79,8 +79,8 @@ func TestListEntryOmitsForeignManifestFields(t *testing.T) {
 	}{
 		{
 			name:       "page",
-			data:       `{"manifestVersion":1,"name":"foreign-page","version":"1.0.0","type":"page","label":"Page","entry":"index.js","route":"/foreign-page","size":{},"fixedHeight":true}`,
-			absentKeys: []string{"size", "fixedHeight"},
+			data:       `{"manifestVersion":1,"name":"foreign-page","version":"1.0.0","type":"page","label":"Page","entry":"index.js","route":"/foreign-page","size":{}}`,
+			absentKeys: []string{"size"},
 			presentKey: "route",
 		},
 		{
@@ -438,7 +438,7 @@ func newTestServerWithOpkg(t *testing.T, opkgMgr opkg.Manager) (*httptest.Server
 }
 
 // writeBuiltinFixture drops a minimal valid widget manifest into the builtin dir.
-func writeBuiltinFixture(t *testing.T, cfg Config, name string, fixedHeight bool) {
+func writeBuiltinFixture(t *testing.T, cfg Config, name string) {
 	t.Helper()
 
 	dir := filepath.Join(cfg.BuiltinPluginsDir, name)
@@ -447,13 +447,7 @@ func writeBuiltinFixture(t *testing.T, cfg Config, name string, fixedHeight bool
 		t.Fatal(err)
 	}
 
-	fixedHeightField := ""
-
-	if fixedHeight {
-		fixedHeightField = `,"fixedHeight":true`
-	}
-
-	manifest := `{"manifestVersion":1,"name":"` + name + `","version":"0.1.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3}` + fixedHeightField + `}`
+	manifest := `{"manifestVersion":1,"name":"` + name + `","version":"0.1.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3}}`
 
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
@@ -1080,7 +1074,7 @@ func TestStatePluginNameReservesBuiltinInList(t *testing.T) {
 		t.Fatalf("seed state: %v", err)
 	}
 
-	writeBuiltinFixture(t, cfg, "core-demo", false)
+	writeBuiltinFixture(t, cfg, "core-demo")
 
 	cfg.Store = store
 	cfg.OpkgManager = opkg.NewStub(discardLogger())

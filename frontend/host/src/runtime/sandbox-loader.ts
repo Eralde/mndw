@@ -125,7 +125,6 @@ export function manifestToListEntry(manifest: PluginManifest, catalogBaseUrl?: s
       ...base,
       type: 'widget',
       size: manifest.size,
-      ...(manifest.fixedHeight === true ? {fixedHeight: true} : {}),
     };
   }
 

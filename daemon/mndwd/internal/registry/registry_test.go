@@ -123,7 +123,7 @@ func TestResolveBuiltin(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := `{"manifestVersion":1,"name":"core","version":"2.0.0","type":"page","label":"C","entry":"index.js","route":"/core","size":{},"fixedHeight":true,"unknown":"ignored"}`
+	m := `{"manifestVersion":1,"name":"core","version":"2.0.0","type":"page","label":"C","entry":"index.js","route":"/core","size":{},"unknown":"ignored"}`
 
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(m), 0o644); err != nil {
 		t.Fatal(err)

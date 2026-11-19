@@ -85,16 +85,11 @@ func TestInvalidFixturesRejected(t *testing.T) {
 	}
 }
 
-func TestValidateFixedHeightRoundTrips(t *testing.T) {
+func TestValidateRejectsRemovedFixedHeight(t *testing.T) {
 	data := []byte(`{"manifestVersion":1,"name":"fixed-widget","version":"0.1.0","type":"widget","label":"Fixed","entry":"index.js","size":{"w":4,"h":3},"fixedHeight":true}`)
 
-	manifest, err := Validate(data)
-	if err != nil {
-		t.Fatalf("Validate fixedHeight manifest: %v", err)
-	}
-
-	if !manifest.HasFixedHeight || !manifest.FixedHeight {
-		t.Fatalf("FixedHeight = %v, want non-nil true", manifest.FixedHeight)
+	if _, err := Validate(data); err == nil || err.Error() != `invalid manifest for "fixed-widget": fixedHeight was removed in 0.3` {
+		t.Fatalf("Validate() error = %v, want fixedHeight removal message", err)
 	}
 }
 

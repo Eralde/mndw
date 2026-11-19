@@ -6,6 +6,5 @@
   "label": "Foreign empty",
   "entry": "index.js",
   "route": "/foreign-empty",
-  "size": {},
-  "fixedHeight": true
+  "size": {}
 }

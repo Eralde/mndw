@@ -320,9 +320,6 @@
             "h"
           ],
           "additionalProperties": false
-        },
-        "fixedHeight": {
-          "type": "boolean"
         }
       },
       "required": [

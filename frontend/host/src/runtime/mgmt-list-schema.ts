@@ -94,7 +94,6 @@ const widgetListEntrySchema = z.object({
   ...baseFields,
   type: z.literal('widget'),
   size: sizeSchema,
-  fixedHeight: z.boolean().optional(),
 });
 
 const pageListEntrySchema = z.object({

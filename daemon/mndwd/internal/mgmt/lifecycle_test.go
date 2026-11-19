@@ -20,7 +20,7 @@ import (
 )
 
 func TestStateForBuiltinStoresCanonicalManifestBytes(t *testing.T) {
-	source := []byte(`{"manifestVersion":1,"name":"canonical-page","version":"1.0.0","type":"page","label":"Canonical","entry":"index.js","route":"/canonical-page","size":{},"fixedHeight":true}`)
+	source := []byte(`{"manifestVersion":1,"name":"canonical-page","version":"1.0.0","type":"page","label":"Canonical","entry":"index.js","route":"/canonical-page","size":{}}`)
 	validated, canonical, err := manifest.ValidateCanonical(source)
 	if err != nil {
 		t.Fatalf("ValidateCanonical() error = %v", err)
@@ -175,7 +175,7 @@ func TestBuiltinCanBeDisabledAndEnabledWithoutBecomingDeletable(t *testing.T) {
 	runtime := &lifecycleTestRuntime{}
 	srv, store, _, cfg := newLifecycleHarness(t, runtime, nil)
 
-	writeBuiltinFixture(t, cfg, "core-demo", false)
+	writeBuiltinFixture(t, cfg, "core-demo")
 
 	disabled := postName(t, srv, "/api/mgmt/disable", "core-demo")
 
@@ -226,7 +226,7 @@ func TestBuiltinCapabilityUsesCurrentShippedManifestAfterDisable(t *testing.T) {
 	runtime := &lifecycleTestRuntime{}
 	srv, store, _, cfg := newLifecycleHarness(t, runtime, &capabilityTestController{available: true})
 
-	writeBuiltinFixture(t, cfg, "core-demo", false)
+	writeBuiltinFixture(t, cfg, "core-demo")
 
 	disabled := postName(t, srv, "/api/mgmt/disable", "core-demo")
 

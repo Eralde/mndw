@@ -212,7 +212,6 @@
         "w": 4,
         "h": 3
       },
-      "fixedHeight": true,
       "depsStatus": "ready",
       "backend": {
         "routes": {}

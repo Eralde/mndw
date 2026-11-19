@@ -68,14 +68,12 @@ describe('validateManifest behavior', () => {
         'foreign-page-size-empty.json',
         'foreign-page-size-partial.json',
         'foreign-page-size-string.json',
-        'foreign-page-fixed-height-string.json',
         'foreign-page-size-nested-invalid.json',
       ]
     ) {
       const page = validateManifest(loadFixture('valid', name));
 
       expect(page).not.toHaveProperty('size');
-      expect(page).not.toHaveProperty('fixedHeight');
     }
 
     const widget = validateManifest(loadFixture('valid', 'foreign-widget-route.json'));
@@ -128,6 +126,17 @@ describe('validateManifest behavior', () => {
   it('rejects the removed icon field with the 0.3 removal message', () => {
     expect(() => validateManifest({...base, icon: 'shield'})).toThrow('icon was removed in 0.3');
   });
+
+  it.each([true, false, 'ignored', 0, null, [], {}])(
+    'rejects removed fixedHeight values from widgets and pages (%j)',
+    (fixedHeight) => {
+      const widget = {...base, fixedHeight};
+      const page = {...base, type: 'page' as const, route: '/test-page', fixedHeight};
+
+      expect(() => validateManifest(widget)).toThrow('fixedHeight was removed in 0.3');
+      expect(() => validateManifest(page)).toThrow('fixedHeight was removed in 0.3');
+    },
+  );
 
   it('accepts optional plain-text descriptions from 1 to 160 characters', () => {
     expect(() => validateManifest({...base, description: 'A useful plugin.'})).not.toThrow();

@@ -82,27 +82,69 @@ func TestValidatePreservesUnmarshalErrorText(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsRemovedFixedHeight(t *testing.T) {
+	tests := []struct {
+		name   string
+		type_  string
+		fields string
+	}{
+		{
+			name:   "widget boolean",
+			type_:  "widget",
+			fields: `"size":{"w":4,"h":3},"fixedHeight":true`,
+		},
+		{
+			name:   "widget object",
+			type_:  "widget",
+			fields: `"size":{"w":4,"h":3},"fixedHeight":{"value":true}`,
+		},
+		{
+			name:   "page string",
+			type_:  "page",
+			fields: `"route":"/removed","fixedHeight":"ignored"`,
+		},
+		{
+			name:   "page null",
+			type_:  "page",
+			fields: `"route":"/removed","fixedHeight":null`,
+		},
+		{
+			name:   "page array",
+			type_:  "page",
+			fields: `"route":"/removed","fixedHeight":[]`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			data := []byte(`{"manifestVersion":1,"name":"removed-fixed-height","version":"1.0.0","type":"` + test.type_ + `","label":"Removed","entry":"index.js",` + test.fields + `}`)
+			_, err := Validate(data)
+			want := `invalid manifest for "removed-fixed-height": fixedHeight was removed in 0.3`
+
+			if err == nil || err.Error() != want {
+				t.Fatalf("Validate() error = %v, want %q", err, want)
+			}
+		})
+	}
+}
+
 func TestValidateReturnsValueManifestWithDefaults(t *testing.T) {
 	tests := []struct {
-		name               string
-		backend            string
-		fixedHeight        string
-		wantKind           BackendKind
-		wantProtocol       int
-		wantCommand        string
-		wantI18n           bool
-		wantDefaultLocale  string
-		wantHasFixedHeight bool
+		name              string
+		backend           string
+		wantKind          BackendKind
+		wantProtocol      int
+		wantCommand       string
+		wantI18n          bool
+		wantDefaultLocale string
 	}{
 		{
 			name: "no backend",
 		},
 		{
-			name:               "exec backend and explicit false fixedHeight",
-			backend:            `,"backend":{"kind":"exec","routes":[{"id":"echo","transport":"http","method":"GET","path":"echo","command":"backend/echo.sh"}]}`,
-			fixedHeight:        `,"fixedHeight":false`,
-			wantKind:           BackendKindExec,
-			wantHasFixedHeight: true,
+			name:     "exec backend",
+			backend:  `,"backend":{"kind":"exec","routes":[{"id":"echo","transport":"http","method":"GET","path":"echo","command":"backend/echo.sh"}]}`,
+			wantKind: BackendKindExec,
 		},
 		{
 			name:              "service backend and i18n",
@@ -117,7 +159,7 @@ func TestValidateReturnsValueManifestWithDefaults(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			data := []byte(`{"manifestVersion":1,"name":"defaults","version":"1.0.0","type":"widget","label":"Defaults","entry":"index.js","size":{"w":4,"h":3}` + test.fixedHeight + test.backend + `}`)
+			data := []byte(`{"manifestVersion":1,"name":"defaults","version":"1.0.0","type":"widget","label":"Defaults","entry":"index.js","size":{"w":4,"h":3}` + test.backend + `}`)
 
 			got, err := Validate(data)
 			if err != nil {
@@ -136,10 +178,6 @@ func TestValidateReturnsValueManifestWithDefaults(t *testing.T) {
 				t.Errorf("validated backend = %+v, want kind=%q protocol=%d command=%q", got.Backend, test.wantKind, test.wantProtocol, test.wantCommand)
 			}
 
-			if got.HasFixedHeight != test.wantHasFixedHeight || got.FixedHeight {
-				t.Errorf("validated fixedHeight = %t (present=%t), want false (present=%t)", got.FixedHeight, got.HasFixedHeight, test.wantHasFixedHeight)
-			}
-
 			if (got.I18n.DefaultLocale != "") != test.wantI18n || got.I18n.DefaultLocale != test.wantDefaultLocale {
 				t.Errorf("validated i18n = %+v, want present=%t defaultLocale=%q", got.I18n, test.wantI18n, test.wantDefaultLocale)
 			}
@@ -156,7 +194,7 @@ func TestValidateDropsForeignTypeFieldsAndReturnsCanonicalJSON(t *testing.T) {
 		wantRoute     string
 	}{
 		{
-			name:          "page with empty foreign size and fixedHeight",
+			name:          "page with empty foreign size",
 			fixture:       "foreign-page-size-empty.json",
 			manifestType:  TypePage,
 			wantRoute:     "/foreign-empty",
@@ -181,13 +219,6 @@ func TestValidateDropsForeignTypeFieldsAndReturnsCanonicalJSON(t *testing.T) {
 			manifestType:  TypePage,
 			wantRoute:     "/foreign-size-string",
 			wantCanonical: `{"manifestVersion":1,"name":"foreign-page-size-string","version":"1.0.0","type":"page","label":"Foreign size string","entry":"index.js","route":"/foreign-size-string"}`,
-		},
-		{
-			name:          "page with incompatible foreign fixedHeight",
-			fixture:       "foreign-page-fixed-height-string.json",
-			manifestType:  TypePage,
-			wantRoute:     "/foreign-fixed-height-string",
-			wantCanonical: `{"manifestVersion":1,"name":"foreign-page-fixed-height-string","version":"1.0.0","type":"page","label":"Foreign fixed height string","entry":"index.js","route":"/foreign-fixed-height-string"}`,
 		},
 		{
 			name:          "page with nested incompatible foreign size",
@@ -221,8 +252,8 @@ func TestValidateDropsForeignTypeFieldsAndReturnsCanonicalJSON(t *testing.T) {
 			}
 
 			if test.manifestType == TypePage {
-				if validated.Size != (Size{}) || validated.HasFixedHeight || validated.FixedHeight {
-					t.Errorf("page retained foreign size/fixedHeight: %+v", validated)
+				if validated.Size != (Size{}) {
+					t.Errorf("page retained foreign size: %+v", validated)
 				}
 			} else if validated.Route != "" {
 				t.Errorf("widget retained foreign route %q", validated.Route)

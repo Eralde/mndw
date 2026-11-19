@@ -1,6 +1,12 @@
 import {type PluginManifestOutput, pluginManifestSchema} from './manifest-schema.js';
 import type {ZodIssue} from 'zod';
 
+const REMOVED_MANIFEST_KEYS: Readonly<Record<string, string>> = {
+  permissions: 'permissions was renamed to capabilities in 0.3',
+  icon: 'icon was removed in 0.3',
+  fixedHeight: 'fixedHeight was removed in 0.3',
+};
+
 export class ManifestValidationError extends Error {
   public readonly issues: readonly {path: string; message: string}[];
 
@@ -22,32 +28,19 @@ export function validateManifest(data: unknown): PluginManifestOutput {
     typeof data === 'object'
     && data !== null
     && !Array.isArray(data)
-    && Object.prototype.hasOwnProperty.call(data, 'permissions')
   ) {
     const record = data as Record<string, unknown>;
     const pluginName = typeof record.name === 'string' ? record.name : 'unknown';
 
-    throw new ManifestValidationError(pluginName, [{
-      code: 'custom',
-      path: ['permissions'],
-      message: 'permissions was renamed to capabilities in 0.3',
-    }]);
-  }
-
-  if (
-    typeof data === 'object'
-    && data !== null
-    && !Array.isArray(data)
-    && Object.prototype.hasOwnProperty.call(data, 'icon')
-  ) {
-    const record = data as Record<string, unknown>;
-    const pluginName = typeof record.name === 'string' ? record.name : 'unknown';
-
-    throw new ManifestValidationError(pluginName, [{
-      code: 'custom',
-      path: ['icon'],
-      message: 'icon was removed in 0.3',
-    }]);
+    for (const [key, message] of Object.entries(REMOVED_MANIFEST_KEYS)) {
+      if (Object.prototype.hasOwnProperty.call(record, key)) {
+        throw new ManifestValidationError(pluginName, [{
+          code: 'custom',
+          path: [key],
+          message,
+        }]);
+      }
+    }
   }
 
   const result = pluginManifestSchema.safeParse(data);

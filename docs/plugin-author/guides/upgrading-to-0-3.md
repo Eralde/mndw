@@ -225,3 +225,6 @@ missing, the host uses the manifest values.
 
 The `icon` field is removed. Delete it from `manifest.json`; an old manifest fails validation with
 `icon was removed in 0.3`.
+
+The `fixedHeight` field is removed. Delete it from `manifest.json`; an old manifest fails validation with
+`fixedHeight was removed in 0.3`.

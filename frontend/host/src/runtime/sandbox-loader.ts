@@ -6,6 +6,7 @@ import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import type {LoadedPlugin} from './plugin-registry.js';
 import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
 import type {PluginContextServices} from './plugin-context.js';
+import {pluginStylesheets} from './plugin-stylesheets.js';
 import {
   applyPluginListSnapshot,
   getPluginLoadState,
@@ -404,10 +405,12 @@ export async function reloadSandboxPlugin(deps: SandboxLoaderDeps): Promise<Sand
 
   const priorRun = activeSandboxRun;
   let restored: LoadedPlugin;
+  const priorStylesheetHold = pluginStylesheets.retain(name, prior.entry.version);
 
   try {
     restored = registry.replace(candidate);
   } catch (err) {
+    priorStylesheetHold.release();
     console.error(`[mndw] Sandbox reload needs a restart of \`mndw dev\`: ${(err as Error).message}`);
 
     return 'restart-required';
@@ -442,11 +445,17 @@ export async function reloadSandboxPlugin(deps: SandboxLoaderDeps): Promise<Sand
       return 'failed';
     }
 
-    registry.replace(restored);
+    const restoredWithStylesheet = {
+      ...restored,
+      stylesheetLease: pluginStylesheets.retain(name, restored.entry.version),
+    };
+    registry.replace(restoredWithStylesheet);
     activeSandboxRun = priorRun;
     console.error(`[mndw] Sandbox reload failed, kept previous plugin "${name}":`, err);
 
     return 'failed';
+  } finally {
+    priorStylesheetHold.release();
   }
 }
 

@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
+import type {PluginContext} from '@mndw/sdk';
 
 const {pristineFetch} = vi.hoisted(() => ({
   pristineFetch: vi.fn<typeof globalThis.fetch>(),
@@ -27,6 +28,10 @@ import {createPluginCatalogService, getPluginManifestPresentation} from '../serv
 import {toast} from '../services/toast/toast.svelte.js';
 import {buildPluginRoutes} from '../router/create-app-router.js';
 import {getPagePluginCandidates} from './page-plugin-candidates.js';
+import {mountPluginWithContext} from './plugin-lifecycle.js';
+
+(window as unknown as {happyDOM: {settings: {disableCSSFileLoading: boolean}}})
+  .happyDOM.settings.disableCSSFileLoading = true;
 
 const emptyBackend: PluginBackendDescriptor = {
   routes: {},
@@ -68,14 +73,54 @@ function page(name: string, route: string, over: Partial<PluginListEntry> = {}):
 
 const goodModule = {createInstance: () => ({unmount: () => {}})};
 
+function emptyStylesheetLease(): {loaded: Promise<void>; release: () => void} {
+  return {loaded: Promise.resolve(), release: () => {}};
+}
+
 function harness(entries: PluginListEntry[], modules: Record<string, unknown> = {}) {
   const importModule = vi.fn((url: string): Promise<unknown> => Promise.resolve(modules[url] ?? goodModule));
-  const loadStylesheet = vi.fn((): Promise<void> => Promise.resolve());
+  const acquireStylesheet = vi.fn(() => emptyStylesheetLease());
   const fetchList = vi.fn((): Promise<PluginListEntry[]> => Promise.resolve(entries));
   const checkVersions = vi.fn((): string[] => []);
   const catalogService = createPluginCatalogService({fetchCatalog: () => Promise.resolve({})});
 
-  return {importModule, loadStylesheet, fetchList, checkVersions, catalogService};
+  return {importModule, acquireStylesheet, fetchList, checkVersions, catalogService};
+}
+
+function pluginStylesheet(name: string, version: string): HTMLLinkElement | null {
+  return [...document.head.querySelectorAll<HTMLLinkElement>('link[data-plugin-style]')]
+    .find((link) => link.dataset.pluginStyle === name && link.href.includes(`v=${version}`)) ?? null;
+}
+
+async function finishPluginStylesheet(
+  name: string,
+  version: string,
+  event: 'load' | 'error' = 'load',
+): Promise<HTMLLinkElement> {
+  await vi.waitFor(() => expect(pluginStylesheet(name, version)).not.toBeNull());
+
+  const link = pluginStylesheet(name, version);
+
+  if (link === null) {
+    throw new Error(`Stylesheet for ${name}@${version} was not added`);
+  }
+
+  link.dispatchEvent(new Event(event));
+
+  return link;
+}
+
+async function loadWithDefaultStylesheet(entry: PluginListEntry): Promise<void> {
+  const deps = harness([entry]);
+  const loading = loadPlugins({
+    fetchList: deps.fetchList,
+    importModule: deps.importModule,
+    checkVersions: deps.checkVersions,
+    catalogService: deps.catalogService,
+  });
+
+  await finishPluginStylesheet(entry.name, entry.version);
+  await loading;
 }
 
 afterEach(() => {
@@ -86,6 +131,7 @@ afterEach(() => {
   setPluginLoadListOutcome('pending');
   replaceDepsStatuses([]);
   appState.pluginLoadError = null;
+  document.head.querySelectorAll('link[data-plugin-style]').forEach((link) => link.remove());
   vi.restoreAllMocks();
 });
 
@@ -144,7 +190,7 @@ describe('loadPlugins', () => {
       const pending = loadPlugins({
         fetchList: () => Promise.resolve(entries),
         importModule,
-        loadStylesheet: () => Promise.resolve(),
+        acquireStylesheet: emptyStylesheetLease,
         checkVersions: () => [],
         loadTimeoutMs: 10,
       });
@@ -230,7 +276,7 @@ describe('loadPlugins', () => {
     await loadPlugins({
       fetchList: () => Promise.resolve([widget('retry')]),
       importModule: () => Promise.resolve(goodModule),
-      loadStylesheet: () => Promise.resolve(),
+      acquireStylesheet: emptyStylesheetLease,
       checkVersions: () => [],
     });
     finishRetry(goodModule);
@@ -257,7 +303,7 @@ describe('loadPlugins', () => {
 
     await loadPlugins(h);
 
-    expect(h.loadStylesheet).toHaveBeenCalledWith('/user-plugins/alpha/index.css?v=1.0.0', 'alpha');
+    expect(h.acquireStylesheet).toHaveBeenCalledWith('/user-plugins/alpha/index.css?v=1.0.0', 'alpha', '1.0.0');
   });
 
   it('version-qualifies plugin assets so updated bundles bypass browser cache', async () => {
@@ -265,8 +311,221 @@ describe('loadPlugins', () => {
 
     await loadPlugins(h);
 
-    expect(h.loadStylesheet).toHaveBeenCalledWith('/user-plugins/alpha/index.css?v=1.2.3', 'alpha');
+    expect(h.acquireStylesheet).toHaveBeenCalledWith('/user-plugins/alpha/index.css?v=1.2.3', 'alpha', '1.2.3');
     expect(h.importModule).toHaveBeenCalledWith('/user-plugins/alpha/index.js?v=1.2.3');
+  });
+
+  it('keeps a disabled plugin stylesheet until the mounted tile finishes unmounting', async () => {
+    const entry = widget('css-disabled');
+
+    await loadWithDefaultStylesheet(entry);
+
+    const plugin = pluginRegistry.get(entry.name);
+
+    if (plugin === undefined) {
+      throw new Error(`Plugin ${entry.name} was not registered`);
+    }
+
+    let finishUnmount: () => void = () => {};
+    const unmounting = new Promise<void>((resolve) => {
+      finishUnmount = resolve;
+    });
+    const unmount = vi.fn(() => unmounting);
+    const updated = {...plugin, module: {createInstance: () => ({unmount})}};
+    const container = document.createElement('div');
+    const handle = mountPluginWithContext(container, updated, {
+      context: {} as PluginContext,
+      dispose: (): void => {},
+    });
+
+    const syncing = syncPlugins([widget(entry.name, {enabled: false})]);
+
+    expect(pluginStylesheet(entry.name, entry.version)).not.toBeNull();
+
+    handle.dispose();
+    expect(unmount).toHaveBeenCalledOnce();
+    expect(pluginStylesheet(entry.name, entry.version)).not.toBeNull();
+
+    await syncing;
+
+    expect(pluginStylesheet(entry.name, entry.version)).not.toBeNull();
+
+    finishUnmount();
+    await vi.waitFor(() => expect(pluginStylesheet(entry.name, entry.version)).toBeNull());
+
+    expect(pluginStylesheet(entry.name, entry.version)).toBeNull();
+  });
+
+  it('replaces an upgraded stylesheet with the new version', async () => {
+    const entry = widget('css-upgrade');
+
+    await loadWithDefaultStylesheet(entry);
+
+    const upgraded = widget(entry.name, {version: '2.0.0'});
+    const deps = harness([upgraded]);
+    const loading = loadPlugins({
+      fetchList: deps.fetchList,
+      importModule: deps.importModule,
+      checkVersions: deps.checkVersions,
+      catalogService: deps.catalogService,
+    });
+
+    await finishPluginStylesheet(upgraded.name, upgraded.version);
+    await loading;
+
+    const links = [...document.head.querySelectorAll<HTMLLinkElement>('link[data-plugin-style]')]
+      .filter((link) => link.dataset.pluginStyle === entry.name);
+
+    expect(links).toHaveLength(1);
+    expect(links[0]?.href).toContain('index.css?v=2.0.0');
+  });
+
+  it('remounting the same plugin version keeps its stylesheet without reloading', async () => {
+    const entry = widget('css-remount');
+
+    await loadWithDefaultStylesheet(entry);
+
+    const existing = pluginStylesheet(entry.name, entry.version);
+    const plugin = pluginRegistry.get(entry.name);
+    const container = document.createElement('div');
+    const context = {} as PluginContext;
+
+    if (plugin === undefined) {
+      throw new Error(`Plugin ${entry.name} was not registered`);
+    }
+
+    const firstMount = mountPluginWithContext(container, plugin, {
+      context,
+      dispose: (): void => {},
+    });
+
+    firstMount.dispose();
+
+    const secondMount = mountPluginWithContext(container, plugin, {
+      context,
+      dispose: (): void => {},
+    });
+
+    secondMount.dispose();
+
+    const links = [...document.head.querySelectorAll<HTMLLinkElement>('link[data-plugin-style]')]
+      .filter((link) => link.dataset.pluginStyle === entry.name);
+
+    expect(links).toHaveLength(1);
+    expect(links[0]).toBe(existing);
+  });
+
+  it('removes all registered plugin stylesheets when the registry is cleared', async () => {
+    const first = widget('css-clear-a');
+    const second = widget('css-clear-b');
+    const deps = harness([first, second]);
+    const loading = loadPlugins({
+      fetchList: deps.fetchList,
+      importModule: deps.importModule,
+      checkVersions: deps.checkVersions,
+      catalogService: deps.catalogService,
+    });
+
+    await Promise.all([
+      finishPluginStylesheet(first.name, first.version),
+      finishPluginStylesheet(second.name, second.version),
+    ]);
+    await loading;
+
+    pluginRegistry.clear();
+
+    expect(document.head.querySelectorAll('link[data-plugin-style]')).toHaveLength(0);
+  });
+
+  it('resolves plugin loading when its optional stylesheet is missing', async () => {
+    const entry = widget('css-missing');
+    const deps = harness([entry]);
+    const loading = loadPlugins({
+      fetchList: deps.fetchList,
+      importModule: deps.importModule,
+      checkVersions: deps.checkVersions,
+      catalogService: deps.catalogService,
+    });
+
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await finishPluginStylesheet(entry.name, entry.version, 'error');
+    await expect(loading).resolves.toBeUndefined();
+
+    expect(pluginRegistry.get(entry.name)).toBeDefined();
+  });
+
+  it('releases stylesheet ownership when the plugin module fails to load', async () => {
+    const entry = widget('css-import-failure');
+    const deps = harness([entry]);
+    let rejectImport: (reason?: unknown) => void = () => {};
+    let markImportStarted: () => void = () => {};
+    const importStarted = new Promise<void>((resolve) => {
+      markImportStarted = resolve;
+    });
+    const loading = loadPlugins({
+      fetchList: deps.fetchList,
+      importModule: vi.fn(() => {
+        markImportStarted();
+
+        return new Promise((_resolve, reject) => {
+          rejectImport = reject;
+        });
+      }),
+      checkVersions: deps.checkVersions,
+      catalogService: deps.catalogService,
+    });
+
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await importStarted;
+    expect(pluginStylesheet(entry.name, entry.version)).not.toBeNull();
+    rejectImport(new Error('broken plugin module'));
+    await loading;
+
+    expect(pluginStylesheet(entry.name, entry.version)).toBeNull();
+  });
+
+  it('keeps the current same-version stylesheet when an older load attempt settles late', async () => {
+    const entry = widget('css-stale-attempt');
+    let resolveFirstImport: (module: unknown) => void = () => {};
+    let markFirstImportStarted: () => void = () => {};
+    const firstImportStarted = new Promise<void>((resolve) => {
+      markFirstImportStarted = resolve;
+    });
+    let importCount = 0;
+    const firstLoad = loadPlugins({
+      fetchList: () => Promise.resolve([entry]),
+      importModule: () => {
+        importCount += 1;
+
+        if (importCount === 1) {
+          markFirstImportStarted();
+
+          return new Promise((resolve) => {
+            resolveFirstImport = resolve;
+          });
+        }
+
+        return Promise.resolve(goodModule);
+      },
+      checkVersions: () => [],
+    });
+
+    await finishPluginStylesheet(entry.name, entry.version);
+    await firstImportStarted;
+
+    const secondLoad = loadPlugins({
+      fetchList: () => Promise.resolve([entry]),
+      importModule: () => Promise.resolve(goodModule),
+      checkVersions: () => [],
+    });
+
+    await secondLoad;
+    expect(pluginRegistry.get(entry.name)).toBeDefined();
+
+    resolveFirstImport(goodModule);
+    await firstLoad;
+
+    expect(pluginStylesheet(entry.name, entry.version)).not.toBeNull();
   });
 
   it('loads enabled catalogs before importing plugins and reuses them after registration', async () => {
@@ -301,9 +560,11 @@ describe('loadPlugins', () => {
     expect(events[0]).toContain('catalog:');
     expect(events[1]).toContain('module:');
     expect(events.filter((event) => event.startsWith('catalog:'))).toHaveLength(1);
+
     const loadState = getPluginLoadState('localized');
 
     expect(loadState).toMatchObject({label: 'Manifest label', description: 'Manifest description'});
+
     if (loadState === undefined) {
       throw new Error('localized plugin load state should exist');
     }
@@ -354,6 +615,7 @@ describe('loadPlugins', () => {
     expect(catalogRequests.some((url) => url.includes('/broken/'))).toBe(true);
     expect(catalogRequests.some((url) => url.includes('/off/'))).toBe(false);
     expect(catalogRequests.some((url) => url.includes('/pending/'))).toBe(false);
+
     const brokenState = getPluginLoadState('broken');
 
     if (brokenState === undefined) {
@@ -484,11 +746,12 @@ describe('loadPlugins', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const h = harness([widget('good'), widget('stuck')]);
-    const loadStylesheet = vi.fn((_href: string, name: string): Promise<void> => {
-      return name === 'stuck' ? new Promise(() => {}) : Promise.resolve();
-    });
+    const acquireStylesheet = vi.fn((_href: string, name: string) => ({
+      loaded: name === 'stuck' ? new Promise<void>(() => {}) : Promise.resolve(),
+      release: () => {},
+    }));
 
-    await loadPlugins({...h, loadStylesheet, loadTimeoutMs: 20});
+    await loadPlugins({...h, acquireStylesheet, loadTimeoutMs: 20});
 
     expect(pluginRegistry.getAll().map((p) => p.entry.name)).toEqual(['good']);
   });
@@ -515,7 +778,7 @@ describe('loadPlugins', () => {
   it('sets pluginLoadError when the list fetch fails', async () => {
     const fetchList = vi.fn((): Promise<PluginListEntry[]> => Promise.reject(new Error('network down')));
 
-    await loadPlugins({fetchList, importModule: vi.fn(), loadStylesheet: vi.fn()});
+    await loadPlugins({fetchList, importModule: vi.fn()});
 
     expect(appState.pluginLoadError).toBe('list');
     expect(getPluginLoadListOutcome()).toBe('failed');
@@ -548,7 +811,7 @@ describe('loadPlugins', () => {
     const fetchList = vi.fn((): Promise<PluginListEntry[]> => new Promise(() => {}));
 
     try {
-      const pending = loadPlugins({fetchList, importModule: vi.fn(), loadStylesheet: vi.fn()});
+      const pending = loadPlugins({fetchList, importModule: vi.fn()});
 
       await vi.advanceTimersByTimeAsync(14_999);
       expect(appState.pluginLoadError).toBeNull();
@@ -571,7 +834,7 @@ describe('loadPlugins', () => {
         }),
       registry,
       importModule: vi.fn(() => Promise.resolve(goodModule)),
-      loadStylesheet: vi.fn(() => Promise.resolve()),
+      acquireStylesheet: emptyStylesheetLease,
       checkVersions: () => [],
     });
 
@@ -579,7 +842,7 @@ describe('loadPlugins', () => {
       fetchList: () => Promise.resolve([widget('current')]),
       registry,
       importModule: vi.fn(() => Promise.resolve(goodModule)),
-      loadStylesheet: vi.fn(() => Promise.resolve()),
+      acquireStylesheet: emptyStylesheetLease,
       checkVersions: () => [],
     });
 
@@ -596,7 +859,7 @@ describe('loadPlugins', () => {
   it('fails closed when the default list fetch receives a malformed payload', async () => {
     pristineFetch.mockResolvedValue(new Response(JSON.stringify({plugins: [{}]}), {status: 200}));
 
-    await loadPlugins({importModule: vi.fn(), loadStylesheet: vi.fn()});
+    await loadPlugins({importModule: vi.fn()});
 
     expect(pristineFetch).toHaveBeenCalledWith(
       '/api/mgmt/list',
@@ -624,7 +887,7 @@ describe('syncPlugins', () => {
     await loadPlugins({
       fetchList: () => Promise.resolve([entry]),
       importModule: () => Promise.resolve(goodModule),
-      loadStylesheet: () => Promise.resolve(),
+      acquireStylesheet: emptyStylesheetLease,
       checkVersions: () => [],
       catalogService,
       registry,
@@ -696,7 +959,7 @@ describe('loadPlugins version checks', () => {
           widget('b'),
         ]),
       importModule: () => Promise.resolve({createInstance: () => ({unmount() {}})}),
-      loadStylesheet: () => Promise.resolve(),
+      acquireStylesheet: emptyStylesheetLease,
       checkVersions: (entry, dir) => {
         calls.push({name: entry.name, dir});
 
@@ -722,7 +985,7 @@ describe('loadPlugins version checks', () => {
           widget('b', {source: 'builtin'}),
         ]),
       importModule: () => Promise.resolve({createInstance: () => ({unmount() {}})}),
-      loadStylesheet: () => Promise.resolve(),
+      acquireStylesheet: emptyStylesheetLease,
       checkVersions: (entry) => {
         if (entry.name === 'a') {
           return Promise.reject(new Error('boom'));

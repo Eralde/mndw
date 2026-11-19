@@ -51,7 +51,7 @@ function loaderDeps(fetchList: (signal: AbortSignal) => Promise<PluginListEntry[
     fetchList,
     registry,
     importModule: vi.fn(() => Promise.resolve({createInstance: () => ({unmount() {}})})),
-    loadStylesheet: vi.fn(() => Promise.resolve()),
+    acquireStylesheet: () => ({loaded: Promise.resolve(), release: () => {}}),
     catalogService: createPluginCatalogService({fetchCatalog: () => Promise.resolve({})}),
   };
 }
@@ -78,10 +78,11 @@ describe('plugin load generation', () => {
       const createRouter = vi.fn();
       const services = createHostServices();
       const pending = initAuthenticated(services, {
-        loadPlugins: (deps) => loadPlugins({
-          ...deps,
-          fetchList: () => new Promise(() => {}),
-        }),
+        loadPlugins: (deps) =>
+          loadPlugins({
+            ...deps,
+            fetchList: () => new Promise(() => {}),
+          }),
         createRouter,
       });
 
@@ -100,9 +101,10 @@ describe('plugin load generation', () => {
     const registry = new PluginRegistry();
     let finishList: (entries: PluginListEntry[]) => void = () => {};
     const pending = loadPlugins(
-      loaderDeps(() => new Promise((resolve) => {
-        finishList = resolve;
-      }), registry),
+      loaderDeps(() =>
+        new Promise((resolve) => {
+          finishList = resolve;
+        }), registry),
     );
 
     await initAuthenticated(createHostServices(), {
@@ -122,13 +124,15 @@ describe('plugin load generation', () => {
     let finishList: (entries: PluginListEntry[]) => void = () => {};
     const services = createHostServices();
     const pending = initAuthenticated(services, {
-      loadPlugins: (deps) => loadPlugins({
-        ...deps,
-        fetchList: (signal) => new Promise((resolve) => {
-          requestSignal = signal;
-          finishList = resolve;
+      loadPlugins: (deps) =>
+        loadPlugins({
+          ...deps,
+          fetchList: (signal) =>
+            new Promise((resolve) => {
+              requestSignal = signal;
+              finishList = resolve;
+            }),
         }),
-      }),
       createRouter: () => undefined,
     });
 
@@ -149,9 +153,10 @@ describe('plugin load generation', () => {
     const registry = new PluginRegistry();
     let failList: (error: Error) => void = () => {};
     const pending = loadPlugins(
-      loaderDeps(() => new Promise((_resolve, reject) => {
-        failList = reject;
-      }), registry),
+      loaderDeps(() =>
+        new Promise((_resolve, reject) => {
+          failList = reject;
+        }), registry),
     );
 
     await initAuthenticated(createHostServices(), {
@@ -169,10 +174,11 @@ describe('plugin load generation', () => {
     let requestSignal: AbortSignal | undefined;
     let finishList: (entries: PluginListEntry[]) => void = () => {};
     const pending = loadPlugins(
-      loaderDeps((signal) => new Promise((resolve) => {
-        requestSignal = signal;
-        finishList = resolve;
-      }), registry),
+      loaderDeps((signal) =>
+        new Promise((resolve) => {
+          requestSignal = signal;
+          finishList = resolve;
+        }), registry),
     );
 
     resetToLogin();
@@ -199,13 +205,15 @@ describe('plugin load generation', () => {
     let finishList: (entries: PluginListEntry[]) => void = () => {};
     const services = createHostServices();
     const pending = initAuthenticated(services, {
-      loadPlugins: (deps) => loadPlugins({
-        ...deps,
-        fetchList: (signal) => new Promise((resolve) => {
-          requestSignal = signal;
-          finishList = resolve;
+      loadPlugins: (deps) =>
+        loadPlugins({
+          ...deps,
+          fetchList: (signal) =>
+            new Promise((resolve) => {
+              requestSignal = signal;
+              finishList = resolve;
+            }),
         }),
-      }),
       createRouter: () => undefined,
     });
 
@@ -230,13 +238,15 @@ describe('plugin load generation', () => {
     const services = createHostServices();
     const pending = initAuthenticated(services, {
       preservePluginLoadError: true,
-      loadPlugins: (deps) => loadPlugins({
-        ...deps,
-        fetchList: (signal) => new Promise((resolve) => {
-          requestSignal = signal;
-          finishList = resolve;
+      loadPlugins: (deps) =>
+        loadPlugins({
+          ...deps,
+          fetchList: (signal) =>
+            new Promise((resolve) => {
+              requestSignal = signal;
+              finishList = resolve;
+            }),
         }),
-      }),
       createRouter: () => undefined,
     });
 

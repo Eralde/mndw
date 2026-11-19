@@ -11,6 +11,7 @@ import {
 } from '../services/plugin-catalog.service.js';
 import {checkPluginVersions, readPluginLock} from './plugin-lock.js';
 import {type PluginRegistry, pluginRegistry} from './plugin-registry.js';
+import {type PluginStylesheetLease, pluginStylesheets} from './plugin-stylesheets.js';
 import {decodeMgmtList} from './mgmt-list-schema.js';
 import type {PluginListEntry} from './plugin-types.js';
 import {clearPluginVersionWarnings, setPluginVersionWarnings} from './plugin-version-warnings.svelte.js';
@@ -40,7 +41,7 @@ import {
 export interface LoaderDeps {
   fetchList?: (signal: AbortSignal) => Promise<PluginListEntry[]>;
   importModule?: (url: string) => Promise<unknown>;
-  loadStylesheet?: (href: string, pluginName: string) => Promise<void>;
+  acquireStylesheet?: (href: string, pluginName: string, version: string) => PluginStylesheetLease;
   checkVersions?: (entry: PluginListEntry, dir: string) => string[] | Promise<string[]>;
   catalogService?: PluginCatalogService;
   registry?: Pick<PluginRegistry, 'register' | 'clear' | 'get' | 'remove'>;
@@ -61,49 +62,8 @@ let activePluginLoadToastAuthBinding: {
  */
 export const PLUGIN_LOAD_TIMEOUT_MS = 15_000;
 
-const loadedPluginStylesheets = new Set<string>();
-
 function versionedAssetUrl(dir: string, asset: string, version: string): string {
   return `${dir}/${asset}?v=${encodeURIComponent(version)}`;
-}
-
-/**
- * Injects a plugin's optional stylesheet once. A missing stylesheet is not an error
- * (plugins may ship none) — it resolves either way.
- */
-async function ensurePluginStylesheet(href: string, pluginName: string): Promise<void> {
-  if (loadedPluginStylesheets.has(href)) {
-    return;
-  }
-
-  await new Promise<void>((resolve) => {
-    const existing = document.querySelector(`link[data-plugin-style="${pluginName}"][href="${href}"]`);
-
-    if (existing) {
-      loadedPluginStylesheets.add(href);
-      resolve();
-
-      return;
-    }
-
-    const link = document.createElement('link');
-
-    link.rel = 'stylesheet';
-    link.href = href;
-    link.dataset.pluginStyle = pluginName;
-
-    link.onload = () => {
-      loadedPluginStylesheets.add(href);
-      resolve();
-    };
-
-    link.onerror = () => {
-      console.warn(`[mndw] No stylesheet for plugin "${pluginName}" at ${href}`);
-      resolve();
-    };
-
-    document.head.appendChild(link);
-  });
 }
 
 function validateModule(module: unknown, name: string): MndwPlugin {
@@ -182,7 +142,7 @@ function dedupe(entries: PluginListEntry[]): PluginListEntry[] {
 
 interface ResolvedLoaderDeps {
   importModule: (url: string) => Promise<unknown>;
-  loadStylesheet: (href: string, pluginName: string) => Promise<void>;
+  acquireStylesheet: (href: string, pluginName: string, version: string) => PluginStylesheetLease;
   checkVersions: (entry: PluginListEntry, dir: string) => string[] | Promise<string[]>;
   catalogService: PluginCatalogService;
   registry: Pick<PluginRegistry, 'register' | 'clear' | 'get' | 'remove'>;
@@ -217,6 +177,9 @@ async function loadOne(
   const base = entry.source === 'builtin' ? PLUGIN_SOURCE_PATHS.builtin : PLUGIN_SOURCE_PATHS.user;
   const dir = `${base}${entry.name}`;
   const assetUrl = (asset: string): string => versionedAssetUrl(dir, asset, entry.version);
+  let stylesheetLease: PluginStylesheetLease | undefined;
+  let transferred = false;
+  let abortStylesheetLoad: (() => void) | undefined;
 
   try {
     const source = createPluginCatalogSource(
@@ -228,6 +191,7 @@ async function loadOne(
     const catalog = source === undefined
       ? undefined
       : deps.catalogService.createPluginCatalogCell(source, deps.getLocale());
+
     setPluginLoadCatalog(entry.name, catalog);
 
     if (catalog !== undefined) {
@@ -238,7 +202,15 @@ async function loadOne(
       return {loaded: false};
     }
 
-    await deps.loadStylesheet(assetUrl('index.css'), entry.name);
+    stylesheetLease = deps.acquireStylesheet(assetUrl('index.css'), entry.name, entry.version);
+    abortStylesheetLoad = (): void => stylesheetLease?.release();
+    signal.addEventListener('abort', abortStylesheetLoad, {once: true});
+
+    if (signal.aborted) {
+      abortStylesheetLoad();
+    }
+
+    await stylesheetLease.loaded;
 
     if (!isCurrent() || signal.aborted) {
       return {loaded: false};
@@ -253,7 +225,13 @@ async function loadOne(
       return {loaded: false};
     }
 
-    deps.registry.register({entry, module: pluginModule, ...(catalog === undefined ? {} : {catalog})});
+    deps.registry.register({
+      entry,
+      module: pluginModule,
+      ...(catalog === undefined ? {} : {catalog}),
+      stylesheetLease,
+    });
+    transferred = true;
     console.log(`[mndw] Loaded plugin: ${entry.name} (${entry.source})`);
 
     void Promise.resolve()
@@ -272,6 +250,14 @@ async function loadOne(
     console.error(`[mndw] Failed to load plugin "${entry.name}":`, err);
 
     return {loaded: false, failureKind: 'error'};
+  } finally {
+    if (abortStylesheetLoad !== undefined) {
+      signal.removeEventListener('abort', abortStylesheetLoad);
+    }
+
+    if (!transferred) {
+      stylesheetLease?.release();
+    }
   }
 }
 
@@ -460,7 +446,8 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
   const fetchList = deps.fetchList ?? defaultFetchList;
   const resolved: ResolvedLoaderDeps = {
     importModule: deps.importModule ?? ((url) => import(/* @vite-ignore */ url)),
-    loadStylesheet: deps.loadStylesheet ?? ensurePluginStylesheet,
+    acquireStylesheet: deps.acquireStylesheet
+      ?? ((href, pluginName, version) => pluginStylesheets.acquire(pluginName, version, href)),
     checkVersions: deps.checkVersions ?? defaultCheckVersions,
     catalogService: deps.catalogService ?? pluginCatalogService,
     registry: deps.registry ?? pluginRegistry,

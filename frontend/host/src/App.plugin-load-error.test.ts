@@ -106,7 +106,7 @@ describe('plugin list failure alert', () => {
         catalogService: retryServices.catalog,
         getLocale: () => retryServices.locale.getLocale(),
         importModule: () => Promise.resolve({createInstance: () => ({unmount() {}})}),
-        loadStylesheet: async () => {},
+        acquireStylesheet: () => ({loaded: Promise.resolve(), release: () => {}}),
         checkVersions: () => [],
       });
 
@@ -251,7 +251,7 @@ describe('plugin list failure alert', () => {
                 backend: {routes: {}},
               } as PluginListEntry]),
             importModule: () => Promise.resolve({createInstance: createPageInstance}),
-            loadStylesheet: async () => {},
+            acquireStylesheet: () => ({loaded: Promise.resolve(), release: () => {}}),
             checkVersions: () => [],
           });
         },
@@ -365,7 +365,7 @@ describe('plugin list failure alert', () => {
               ...loaderDeps,
               fetchList: () => Promise.resolve([]),
               importModule: () => Promise.resolve({createInstance: () => ({unmount() {}})}),
-              loadStylesheet: async () => {},
+              acquireStylesheet: () => ({loaded: Promise.resolve(), release: () => {}}),
               checkVersions: () => [],
             });
           },

@@ -13,6 +13,7 @@ import {createHostServices} from '../host-services.js';
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus, replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import {getPagePluginCandidates} from './page-plugin-candidates.js';
+import {pluginStylesheets} from './plugin-stylesheets.js';
 import {
   applyPluginListSnapshot,
   getPluginLoadListOutcome,
@@ -80,6 +81,8 @@ function deps(overrides: Partial<SandboxLoaderDeps> = {}): SandboxLoaderDeps {
 let errorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
+  (window as unknown as {happyDOM: {settings: {disableCSSFileLoading: boolean}}})
+    .happyDOM.settings.disableCSSFileLoading = true;
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'log').mockImplementation(() => {});
   replacePluginLoadStates([]);
@@ -455,5 +458,54 @@ describe('reloadSandboxPlugin', () => {
     expect(result).toBe('failed');
     expect(registry.get('sandbox-widget')?.module).toBe(prior.module);
     expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it('keeps prior version CSS through failed reload and rollback', async () => {
+    const registry = new PluginRegistry();
+    const priorEntry = manifestToListEntry({...widgetManifest, version: '0.0.1'} as never);
+    const priorStylesheet = pluginStylesheets.acquire(
+      priorEntry.name,
+      priorEntry.version,
+      `/plugins/${priorEntry.name}/index.css?v=${priorEntry.version}`,
+    );
+    const priorLink = document.head.querySelector<HTMLLinkElement>(
+      `link[data-plugin-style="${priorEntry.name}"]`,
+    );
+
+    if (priorLink === null) {
+      throw new Error('Prior stylesheet was not added');
+    }
+
+    priorLink.dispatchEvent(new Event('load'));
+    registry.register({
+      entry: priorEntry,
+      module: {createInstance: () => ({unmount: () => {}})},
+      stylesheetLease: priorStylesheet,
+    });
+
+    let finishRemount: (success: boolean) => void = () => {};
+    const remounting = new Promise<boolean>((resolve) => {
+      finishRemount = resolve;
+    });
+    const transaction = reloadSandboxPlugin(deps({
+      registry: registry as never,
+      importManifestModule: () => Promise.resolve({default: {...widgetManifest, version: '0.0.2'}}),
+      remountWidgets: () => remounting,
+    }));
+
+    try {
+      await vi.waitFor(() => expect(registry.get('sandbox-widget')?.entry.version).toBe('0.0.2'));
+      expect(priorLink.isConnected).toBe(true);
+
+      finishRemount(false);
+      await expect(transaction).resolves.toBe('failed');
+
+      expect(registry.get('sandbox-widget')?.module).not.toBe(sandboxModule);
+      expect(registry.get('sandbox-widget')?.entry.version).toBe('0.0.1');
+      expect(priorLink.isConnected).toBe(true);
+    } finally {
+      finishRemount(false);
+      registry.clear();
+    }
   });
 });

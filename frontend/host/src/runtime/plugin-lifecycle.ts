@@ -2,6 +2,7 @@ import type {PluginContext, PluginInstance} from '@mndw/sdk';
 import {clearInstanceStorage} from '../services/storage.service.js';
 import type {OverlayDispose, PluginContextHandle} from './plugin-context.js';
 import type {LoadedPlugin} from './plugin-registry.js';
+import {type PluginStylesheetLease, pluginStylesheets} from './plugin-stylesheets.js';
 
 export type OverlayTeardownReason = 'plugin-unmount' | 'host-navigation';
 
@@ -9,6 +10,7 @@ export interface MountedPlugin {
   pluginName: string;
   instanceId: string;
   instance: PluginInstance;
+  stylesheetLease?: PluginStylesheetLease;
   /**
    * Disposes this instance's context, including its overlays. Runs before
    * `instance.unmount()` so overlay `closed` reasons reflect teardown cause.
@@ -50,6 +52,7 @@ export function mountPlugin(
   options?: PluginMountOptions,
 ): Promise<MountedPlugin | null> | MountedPlugin | null {
   const name = plugin.entry.name;
+  const stylesheetLease = pluginStylesheets.retain(name, plugin.entry.version);
 
   try {
     const result = plugin.module.createInstance(container, context);
@@ -60,10 +63,12 @@ export function mountPlugin(
           pluginName: name,
           instanceId: context.instanceId,
           instance,
+          stylesheetLease,
           disposeOverlayService,
         }))
         .catch((err: unknown) => {
           console.error(`[mndw] Plugin "${name}" createInstance failed:`, err);
+          stylesheetLease.release();
 
           // Nothing mounted, but the overlay service was created with the context.
           disposeOverlayService('plugin-unmount');
@@ -80,10 +85,12 @@ export function mountPlugin(
       pluginName: name,
       instanceId: context.instanceId,
       instance: result,
+      stylesheetLease,
       disposeOverlayService,
     };
   } catch (err) {
     console.error(`[mndw] Plugin "${name}" createInstance failed:`, err);
+    stylesheetLease.release();
 
     disposeOverlayService('plugin-unmount');
 
@@ -111,14 +118,24 @@ function cleanupMountedPlugin(
     }
   }
 
+  let unmountResult: void | Promise<void>;
+
   try {
-    // Teardown remains synchronous from the host's perspective, but rejected async
-    // unmounts still need to be observed to avoid an unhandled rejection.
-    void mounted.instance.unmount()?.catch((err: unknown) => {
-      console.error(`[mndw] Plugin "${mounted.pluginName}" unmount failed:`, err);
-    });
+    unmountResult = mounted.instance.unmount();
   } catch (err) {
     console.error(`[mndw] Plugin "${mounted.pluginName}" unmount failed:`, err);
+    mounted.stylesheetLease?.release();
+    unmountResult = undefined;
+  }
+
+  if (isPromiseLike(unmountResult)) {
+    void Promise.resolve(unmountResult)
+      .catch((err: unknown) => {
+        console.error(`[mndw] Plugin "${mounted.pluginName}" unmount failed:`, err);
+      })
+      .finally(() => mounted.stylesheetLease?.release());
+  } else {
+    mounted.stylesheetLease?.release();
   }
 
   if (options?.clearStorage !== false) {
@@ -126,20 +143,6 @@ function cleanupMountedPlugin(
   }
 
   container.innerHTML = '';
-}
-
-export function unmountPlugin(
-  mounted: MountedPlugin | null,
-  container: HTMLElement,
-  options?: PluginUnmountOptions,
-): void {
-  if (mounted === null) {
-    container.innerHTML = '';
-
-    return;
-  }
-
-  cleanupMountedPlugin(mounted, container, options, true);
 }
 
 /** Mounts a plugin and owns context disposal across both pending and completed mounts. */

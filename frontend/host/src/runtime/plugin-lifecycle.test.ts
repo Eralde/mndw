@@ -1,10 +1,25 @@
 // @vitest-environment happy-dom
+import 'zone.js';
+import '@angular/compiler';
+import {Component} from '@angular/core';
 import {type PluginContext, type PluginInstance} from '@mndw/sdk';
+import {createAngularPluginInstance} from '@mndw/sdk/angular';
 import {createTestPluginContext} from '@mndw/sdk/testing';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {mountPlugin, mountPluginWithContext, unmountPlugin} from './plugin-lifecycle.js';
+import {mountPlugin, mountPluginWithContext} from './plugin-lifecycle.js';
 import type {PluginContextHandle} from './plugin-context.js';
 import type {LoadedPlugin} from './plugin-registry.js';
+import {pluginStylesheets} from './plugin-stylesheets.js';
+
+@Component({selector: 'throwing-angular-root', standalone: true, template: ''})
+class ThrowingAngularRootComponent {
+  constructor() {
+    throw new Error('angular mount failed');
+  }
+}
+
+@Component({selector: 'late-angular-root', standalone: true, template: 'mounted'})
+class LateAngularRootComponent {}
 
 vi.mock('../services/storage.service.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../services/storage.service.js')>();
@@ -13,6 +28,8 @@ vi.mock('../services/storage.service.js', async (importOriginal) => {
 });
 
 beforeEach(async () => {
+  (window as unknown as {happyDOM: {settings: {disableCSSFileLoading: boolean}}})
+    .happyDOM.settings.disableCSSFileLoading = true;
   const {clearInstanceStorage} = await import('../services/storage.service.js');
 
   vi.mocked(clearInstanceStorage).mockClear();
@@ -50,6 +67,19 @@ function mockContext(instanceId = 'test:1'): PluginContext {
 
 function mockContextHandle(instanceId = 'test:1'): PluginContextHandle {
   return {context: mockContext(instanceId), dispose: vi.fn()};
+}
+
+function loadedStylesheet(): {link: HTMLLinkElement; release: () => void} {
+  const lease = pluginStylesheets.acquire('test-plugin', '1.0.0', '/test-plugin.css?v=1.0.0');
+  const link = document.head.querySelector<HTMLLinkElement>('link[data-plugin-style="test-plugin"]');
+
+  if (link === null) {
+    throw new Error('Test stylesheet was not added');
+  }
+
+  link.dispatchEvent(new Event('load'));
+
+  return {link, release: () => lease.release()};
 }
 
 describe('mountPlugin', () => {
@@ -95,14 +125,12 @@ describe('mountPlugin', () => {
     } as unknown as Promise<PluginInstance>));
 
     const container = document.createElement('div');
-    const result = mountPlugin(container, plugin, mockContext(), noopDispose);
+    const handle = mountPluginWithContext(container, plugin, mockContextHandle());
 
-    expect(result).toBeInstanceOf(Promise);
+    await expect(handle.whenReady()).resolves.toBe(true);
 
-    const mounted = await result;
-
-    expect(mounted?.instance).toBe(instance);
-    unmountPlugin(mounted, container);
+    expect(handle.getMounted()?.instance).toBe(instance);
+    handle.dispose();
     expect(unmountSpy).toHaveBeenCalledOnce();
   });
 
@@ -131,6 +159,60 @@ describe('mountPlugin', () => {
 
     expect(mounted).toBeNull();
     expect(container.textContent).toBe('Error loading widget');
+  });
+
+  it('shows the host plugin error state when an Angular mount rejects', async () => {
+    const plugin = mockPlugin(Promise.resolve(mockInstance().instance));
+    const container = document.createElement('div');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    plugin.module.createInstance = (el) =>
+      createAngularPluginInstance(el, {
+        rootComponent: ThrowingAngularRootComponent,
+        providers: [],
+      });
+
+    const result = mountPlugin(container, plugin, mockContext(), noopDispose, {errorText: 'Error loading widget'});
+
+    expect(result).toBeInstanceOf(Promise);
+
+    const mounted = await result;
+
+    expect(mounted).toBeNull();
+    expect(container.textContent).toBe('Error loading widget');
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[mndw] Plugin "test-plugin" createInstance failed:',
+      expect.any(Error),
+    );
+  });
+
+  it('unmounts an Angular instance that resolves after host disposal', async () => {
+    const plugin = mockPlugin(Promise.resolve(mockInstance().instance));
+    const container = document.createElement('div');
+    const componentDestroy = vi.fn();
+
+    plugin.module.createInstance = (el) =>
+      createAngularPluginInstance(el, {
+        rootComponent: LateAngularRootComponent,
+        providers: [],
+        configure: ({component}) => {
+          const destroy = component.destroy.bind(component);
+
+          vi.spyOn(component, 'destroy').mockImplementation(() => {
+            componentDestroy();
+            destroy();
+          });
+        },
+      });
+
+    const handle = mountPluginWithContext(container, plugin, mockContextHandle());
+
+    handle.dispose();
+    await handle.whenReady();
+
+    expect(handle.getMounted()).toBeNull();
+    expect(componentDestroy).toHaveBeenCalledOnce();
+    expect(container.childNodes.length).toBe(0);
   });
 
   it('disposes the overlay service when sync createInstance throws', () => {
@@ -187,14 +269,16 @@ describe('mountPlugin', () => {
   });
 });
 
-describe('unmountPlugin', () => {
+describe('PluginMountHandle.dispose', () => {
   it('calls instance.unmount() and clears DOM', () => {
     const {instance, unmountSpy} = mockInstance();
     const container = document.createElement('div');
 
     container.innerHTML = '<div>content</div>';
 
-    unmountPlugin({pluginName: 'test', instanceId: 'test:1', instance}, container);
+    const handle = mountPluginWithContext(container, mockPlugin(instance), mockContextHandle());
+
+    handle.dispose();
 
     expect(unmountSpy).toHaveBeenCalledTimes(1);
     expect(container.innerHTML).toBe('');
@@ -203,43 +287,47 @@ describe('unmountPlugin', () => {
   it('clears storage by default', async () => {
     const {clearInstanceStorage} = await import('../services/storage.service.js');
     const {instance} = mockInstance();
+    const handle = mountPluginWithContext(document.createElement('div'), mockPlugin(instance), mockContextHandle());
 
-    unmountPlugin({pluginName: 'test', instanceId: 'test:1', instance}, document.createElement('div'));
+    handle.dispose();
 
-    expect(clearInstanceStorage).toHaveBeenCalledWith('test', 'test:1');
+    expect(clearInstanceStorage).toHaveBeenCalledWith('test-plugin', 'test:1');
   });
 
   it('does not clear storage when clearStorage: false', async () => {
     const {clearInstanceStorage} = await import('../services/storage.service.js');
     const {instance} = mockInstance();
+    const handle = mountPluginWithContext(document.createElement('div'), mockPlugin(instance), mockContextHandle());
 
-    unmountPlugin(
-      {pluginName: 'test', instanceId: 'test:1', instance},
-      document.createElement('div'),
-      {clearStorage: false},
-    );
+    handle.dispose({clearStorage: false});
 
     expect(clearInstanceStorage).not.toHaveBeenCalled();
   });
 
-  it('handles null mounted by clearing the container', () => {
+  it('clears the container when disposed while createInstance is pending', async () => {
+    let finishMount: (instance: PluginInstance) => void = () => {};
+    const pending = new Promise<PluginInstance>((resolve) => {
+      finishMount = resolve;
+    });
     const container = document.createElement('div');
+    const handle = mountPluginWithContext(container, mockPlugin(pending), mockContextHandle());
 
     container.innerHTML = '<div>content</div>';
-
-    unmountPlugin(null, container);
+    handle.dispose();
 
     expect(container.innerHTML).toBe('');
+
+    finishMount(mockInstance().instance);
+    await handle.whenReady();
   });
 
   it('closes plugin-owned overlays before unmounting the instance', () => {
     const closeAll = vi.fn();
     const {instance, unmountSpy} = mockInstance();
+    const contextHandle: PluginContextHandle = {context: mockContext(), dispose: closeAll};
+    const handle = mountPluginWithContext(document.createElement('div'), mockPlugin(instance), contextHandle);
 
-    unmountPlugin(
-      {pluginName: 'test', instanceId: 'test:1', instance, disposeOverlayService: closeAll},
-      document.createElement('div'),
-    );
+    handle.dispose();
 
     expect(closeAll).toHaveBeenCalledTimes(1);
     expect(unmountSpy).toHaveBeenCalledTimes(1);
@@ -253,8 +341,9 @@ describe('unmountPlugin', () => {
       throw new Error('unmount failed');
     };
 
-    expect(() => unmountPlugin({pluginName: 'test', instanceId: 'test:1', instance}, document.createElement('div'))).not
-      .toThrow();
+    const handle = mountPluginWithContext(document.createElement('div'), mockPlugin(instance), mockContextHandle());
+
+    expect(() => handle.dispose()).not.toThrow();
   });
 
   it('logs when async instance.unmount() rejects while cleanup remains synchronous', async () => {
@@ -264,17 +353,20 @@ describe('unmountPlugin', () => {
     const closeAll = vi.fn();
     const container = document.createElement('div');
     const instance: PluginInstance = {unmount: vi.fn(() => Promise.reject(error))};
+    const contextHandle: PluginContextHandle = {context: mockContext(), dispose: closeAll};
 
     container.innerHTML = '<div>content</div>';
 
-    unmountPlugin({pluginName: 'test', instanceId: 'test:1', instance, disposeOverlayService: closeAll}, container);
+    const handle = mountPluginWithContext(container, mockPlugin(instance), contextHandle);
+
+    handle.dispose();
 
     expect(closeAll).toHaveBeenCalledTimes(1);
-    expect(clearInstanceStorage).toHaveBeenCalledWith('test', 'test:1');
+    expect(clearInstanceStorage).toHaveBeenCalledWith('test-plugin', 'test:1');
     expect(container.innerHTML).toBe('');
 
     await vi.waitFor(() => {
-      expect(consoleError).toHaveBeenCalledWith('[mndw] Plugin "test" unmount failed:', error);
+      expect(consoleError).toHaveBeenCalledWith('[mndw] Plugin "test-plugin" unmount failed:', error);
     });
 
     consoleError.mockRestore();
@@ -282,6 +374,80 @@ describe('unmountPlugin', () => {
 });
 
 describe('mountPluginWithContext', () => {
+  it('holds stylesheet through async unmount after registry removal', async () => {
+    const stylesheet = loadedStylesheet();
+    let finishUnmount: () => void = () => {};
+    const unmounting = new Promise<void>((resolve) => {
+      finishUnmount = resolve;
+    });
+    const plugin = mockPlugin({unmount: () => unmounting});
+    const handle = mountPluginWithContext(document.createElement('div'), plugin, mockContextHandle());
+
+    stylesheet.release();
+    expect(stylesheet.link.isConnected).toBe(true);
+
+    handle.dispose();
+    expect(stylesheet.link.isConnected).toBe(true);
+
+    finishUnmount();
+    await vi.waitFor(() => expect(stylesheet.link.isConnected).toBe(false));
+  });
+
+  it('releases stylesheet when async createInstance rejects', async () => {
+    const stylesheet = loadedStylesheet();
+    let rejectMount: (error: Error) => void = () => {};
+    const mounting = new Promise<PluginInstance>((_resolve, reject) => {
+      rejectMount = reject;
+    });
+    const result = mountPlugin(
+      document.createElement('div'),
+      mockPlugin(mounting),
+      mockContext(),
+      () => {},
+    );
+
+    if (!(result instanceof Promise)) {
+      throw new Error('Expected asynchronous plugin mount');
+    }
+
+    stylesheet.release();
+    expect(stylesheet.link.isConnected).toBe(true);
+
+    rejectMount(new Error('async mount failed'));
+    await expect(result).resolves.toBeNull();
+
+    expect(stylesheet.link.isConnected).toBe(false);
+  });
+
+  it('keeps stylesheet for a late mount until its cleanup settles', async () => {
+    const stylesheet = loadedStylesheet();
+    let finishMount: (instance: PluginInstance) => void = () => {};
+    let finishUnmount: () => void = () => {};
+    const mounting = new Promise<PluginInstance>((resolve) => {
+      finishMount = resolve;
+    });
+    const unmounting = new Promise<void>((resolve) => {
+      finishUnmount = resolve;
+    });
+    const handle = mountPluginWithContext(
+      document.createElement('div'),
+      mockPlugin(mounting),
+      mockContextHandle(),
+    );
+
+    handle.dispose();
+    stylesheet.release();
+    expect(stylesheet.link.isConnected).toBe(true);
+
+    finishMount({unmount: () => unmounting});
+    await handle.whenReady();
+
+    expect(stylesheet.link.isConnected).toBe(true);
+
+    finishUnmount();
+    await vi.waitFor(() => expect(stylesheet.link.isConnected).toBe(false));
+  });
+
   it('clears failed mount storage on explicit disposal without touching other storage', async () => {
     const {clearInstanceStorage} = await import('../services/storage.service.js');
     const plugin = mockPlugin(mockInstance().instance);

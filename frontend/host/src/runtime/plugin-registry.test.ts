@@ -1,7 +1,9 @@
+// @vitest-environment happy-dom
 import {beforeEach, describe, expect, it} from 'vitest';
 import {type LoadedPlugin, PluginRegistry} from './plugin-registry.js';
 import type {PluginCatalogCell} from '../services/plugin-catalog.service.js';
 import type {PluginBackendDescriptor} from './plugin-types.js';
+import {pluginStylesheets} from './plugin-stylesheets.js';
 
 const emptyBackend: PluginBackendDescriptor = {
   routes: {},
@@ -48,6 +50,8 @@ function pagePlugin(name: string, route: string): LoadedPlugin {
 let registry: PluginRegistry;
 
 beforeEach(() => {
+  (window as unknown as {happyDOM: {settings: {disableCSSFileLoading: boolean}}})
+    .happyDOM.settings.disableCSSFileLoading = true;
   registry = new PluginRegistry();
 });
 
@@ -229,5 +233,73 @@ describe('PluginRegistry', () => {
       expect(() => registry.replace(next)).not.toThrow();
       expect(registry.get('docs')).toBe(next);
     });
+  });
+});
+
+describe('PluginRegistry stylesheet ownership', () => {
+  function loadedStylesheet(
+    name: string,
+    version = '1.0.0',
+  ): {link: HTMLLinkElement; lease: ReturnType<typeof pluginStylesheets.acquire>} {
+    const lease = pluginStylesheets.acquire(name, version, `/${name}.css?v=${version}`);
+    const link = document.head.querySelector<HTMLLinkElement>(`link[data-plugin-style="${name}"]`);
+
+    if (link === null) {
+      throw new Error(`Stylesheet for ${name} was not added`);
+    }
+
+    link.dispatchEvent(new Event('load'));
+
+    return {link, lease};
+  }
+
+  it('releases the removed plugin stylesheet', () => {
+    const {link, lease} = loadedStylesheet('removed');
+
+    registry.register({...widgetPlugin('removed'), stylesheetLease: lease});
+    registry.remove('removed');
+
+    expect(link.isConnected).toBe(false);
+  });
+
+  it('releases every registered plugin stylesheet when cleared', () => {
+    const first = loadedStylesheet('clear-first');
+    const second = loadedStylesheet('clear-second');
+
+    registry.register({...widgetPlugin('clear-first'), stylesheetLease: first.lease});
+    registry.register({...widgetPlugin('clear-second'), stylesheetLease: second.lease});
+    registry.clear();
+
+    expect(first.link.isConnected).toBe(false);
+    expect(second.link.isConnected).toBe(false);
+  });
+
+  it('releases the prior stylesheet when the plugin version changes', () => {
+    const {link: priorLink, lease} = loadedStylesheet('versioned');
+    const prior = widgetPlugin('versioned');
+    const next = widgetPlugin('versioned');
+
+    prior.stylesheetLease = lease;
+    next.entry.version = '2.0.0';
+
+    registry.register(prior);
+    registry.replace(next);
+
+    expect(priorLink.isConnected).toBe(false);
+  });
+
+  it('keeps same-version stylesheet ownership through replacement', () => {
+    const {link, lease} = loadedStylesheet('same-version');
+    const prior = widgetPlugin('same-version');
+
+    prior.stylesheetLease = lease;
+    registry.register(prior);
+    registry.replace(widgetPlugin('same-version'));
+
+    expect(link.isConnected).toBe(true);
+
+    registry.remove('same-version');
+
+    expect(link.isConnected).toBe(false);
   });
 });

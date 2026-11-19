@@ -5,6 +5,7 @@ import {
   type PluginCatalogService,
   pluginCatalogService,
 } from '../services/plugin-catalog.service.js';
+import type {PluginStylesheetLease} from './plugin-stylesheets.js';
 import type {PageListEntry, PluginListEntry, WidgetListEntry} from './plugin-types.js';
 
 /** A plugin whose module has been imported and registered, keyed by its list entry. */
@@ -12,6 +13,7 @@ export interface LoadedPlugin {
   entry: PluginListEntry;
   module: MndwPlugin;
   catalog?: PluginCatalogCell;
+  stylesheetLease?: PluginStylesheetLease;
 }
 
 export interface LoadedWidget extends LoadedPlugin {
@@ -28,15 +30,15 @@ export type RegistryCatalog = Pick<
 >;
 
 export interface PluginRegistryDeps {
-  catalog: RegistryCatalog;
+  catalog?: RegistryCatalog;
 }
 
 export class PluginRegistry {
   private plugins = new SvelteMap<string, LoadedPlugin>();
   private readonly catalog: RegistryCatalog;
 
-  constructor(deps: PluginRegistryDeps = {catalog: pluginCatalogService}) {
-    this.catalog = deps.catalog;
+  constructor(deps: PluginRegistryDeps = {}) {
+    this.catalog = deps.catalog ?? pluginCatalogService;
   }
 
   public register(plugin: LoadedPlugin): void {
@@ -82,6 +84,16 @@ export class PluginRegistry {
       );
     }
 
+    if (prior.entry.version === plugin.entry.version) {
+      if (plugin.stylesheetLease === undefined && prior.stylesheetLease !== undefined) {
+        plugin.stylesheetLease = prior.stylesheetLease;
+      } else if (plugin.stylesheetLease !== prior.stylesheetLease) {
+        prior.stylesheetLease?.release();
+      }
+    } else {
+      prior.stylesheetLease?.release();
+    }
+
     this.plugins.set(plugin.entry.name, plugin);
 
     if (prior.catalog !== undefined) {
@@ -107,6 +119,7 @@ export class PluginRegistry {
     }
 
     this.plugins.delete(name);
+    plugin.stylesheetLease?.release();
 
     if (plugin.catalog !== undefined) {
       this.catalog.unregisterPluginCatalogCell(plugin.catalog);
@@ -129,6 +142,8 @@ export class PluginRegistry {
 
   public clear(): void {
     for (const plugin of this.plugins.values()) {
+      plugin.stylesheetLease?.release();
+
       if (plugin.catalog !== undefined) {
         this.catalog.unregisterPluginCatalogCell(plugin.catalog);
       }

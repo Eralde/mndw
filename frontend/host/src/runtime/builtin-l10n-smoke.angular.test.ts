@@ -16,7 +16,7 @@ import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import {pluginRegistry} from './plugin-registry.js';
 import {createTestPluginContext} from './test-plugin-context.js';
 import {decidePackedSmoke} from './packed-smoke-gate.js';
-import {mountPlugin, unmountPlugin} from './plugin-lifecycle.js';
+import {mountPluginWithContext} from './plugin-lifecycle.js';
 import type {PageListEntry, PluginListEntry, WidgetListEntry} from './plugin-types.js';
 
 const pageContexts = vi.hoisted(() => new Map<string, PluginContext>());
@@ -369,11 +369,9 @@ smoke('packed Angular built-in l10n smoke', () => {
     document.body.append(target);
 
     const context = createSmokeContext(testI18n, (title) => tileTitles.set('mws-page', title));
-    const mounted = mountPlugin(target, loaded, context, (): void => {});
+    const handle = mountPluginWithContext(target, loaded, {context, dispose: (): void => {}});
 
-    if (mounted === null || mounted instanceof Promise) {
-      throw new Error('MWS packed smoke mount did not settle synchronously');
-    }
+    expect(await handle.whenReady()).toBe(true);
 
     await stabilizeAngular(4);
 
@@ -388,7 +386,7 @@ smoke('packed Angular built-in l10n smoke', () => {
     expect(controls?.getAttribute('aria-label')).toBe(ruValue);
     expect(tileTitles.get('mws-page')).toBe(ru.title);
 
-    unmountPlugin(mounted, target);
+    handle.dispose();
     expect(target.childElementCount).toBe(0);
   });
 });

@@ -15,7 +15,7 @@ import (
 
 	mwsmembers "mndw.local/mws-members"
 	rci "mndw.local/rci"
-	rcidefaults "mndwd/internal/rcisession/defaults"
+	"mndwd/internal/rcisession/model"
 	"mndwd/internal/rcisession/status"
 )
 
@@ -239,7 +239,7 @@ func (s HTTPSource) Enumerate(ctx context.Context) ([]Member, error) {
 	limit := s.MaxResponseBytes
 
 	if limit <= 0 {
-		limit = rcidefaults.MaxResponseBytes
+		limit = model.MaxResponseBytes
 	}
 
 	options := []rci.HTTPOption{rci.WithMaxResponseBytes(limit)}

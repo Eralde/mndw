@@ -3,7 +3,6 @@ package coordinator
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"mndwd/internal/backend"
 	"mndwd/internal/manifest"
@@ -24,11 +23,11 @@ func (c *Coordinator) reconcileSockets(pokeActivation bool) {
 	c.mu.Unlock()
 
 	if err != nil {
-		c.serviceLogger().Error("persistent RCI socket reconciliation failed", "reason", "reconcile", "error", err)
+		c.logger.Error("persistent RCI socket reconciliation failed", "reason", "reconcile", "error", err)
 	}
 
 	for plugin := range report.StartErrors {
-		c.serviceLogger().Error("persistent RCI socket start failed", "plugin", plugin, "reason", "reconcile")
+		c.logger.Error("persistent RCI socket start failed", "plugin", plugin, "reason", "reconcile")
 	}
 
 	if pokeActivation && changed && poke != nil {
@@ -123,10 +122,6 @@ func (c *Coordinator) reconcileSocketsLocked() (rcisessionsocket.ReconcileReport
 	changed := c.publishActivationSnapshotLocked(present)
 
 	return report, changed, err
-}
-
-func (c *Coordinator) serviceLogger() *slog.Logger {
-	return c.logger
 }
 
 func isService(m *manifest.Manifest) bool {

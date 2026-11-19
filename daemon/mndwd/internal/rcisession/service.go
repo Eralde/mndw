@@ -13,7 +13,6 @@ import (
 
 	rci "mndw.local/rci"
 	"mndw.local/rcisock"
-	rcidefaults "mndwd/internal/rcisession/defaults"
 	"mndwd/internal/rcisession/enumeration"
 	"mndwd/internal/rcisession/establisher"
 	"mndwd/internal/rcisession/model"
@@ -21,7 +20,7 @@ import (
 	"mndwd/internal/rcisession/sessionmanager"
 )
 
-const DefaultMaxResponseBytes = rcidefaults.MaxResponseBytes
+const DefaultMaxResponseBytes = model.MaxResponseBytes
 
 var (
 	ErrControllerInvalid = errors.New("controller session invalid")
@@ -72,6 +71,7 @@ type Service struct {
 	proxy            *proxy.Proxy
 	onMutation       []*mutationObserver
 	mu               sync.RWMutex
+	controllerMu     sync.Mutex
 	controllerURL    string
 	allowInsecure    bool
 	controllerClient *http.Client
@@ -185,15 +185,17 @@ func (s *Service) DetectAuthMode(ctx context.Context) AuthMode {
 	shouldNotify := false
 
 	if mode != AuthModeUnknown {
-		s.mu.Lock()
+		s.controllerMu.Lock()
 
 		if !s.authModeNotified {
 			s.authModeNotified = true
-			s.controllerEpoch++
+
+			s.bumpControllerEpochLocked()
+
 			shouldNotify = true
 		}
 
-		s.mu.Unlock()
+		s.controllerMu.Unlock()
 	}
 
 	if shouldNotify {
@@ -301,11 +303,16 @@ func (s *Service) SetTokenlessEnabled(ctx context.Context, tester ControllerTest
 		}
 	}
 
+	s.controllerMu.Lock()
+
 	if err := enabledStore.SetPersistentRCIEnabled(enabled); err != nil {
+		s.controllerMu.Unlock()
+
 		return ControllerUnreachable, err
 	}
 
-	s.bumpControllerEpoch()
+	s.bumpControllerEpochLocked()
+	s.controllerMu.Unlock()
 
 	if !enabled {
 		if manager := s.SessionManager(); manager != nil {
@@ -459,17 +466,15 @@ func (s *Service) notifyMutation(reason string) {
 func (s *Service) InvalidateController(capturedEpoch uint64) {
 	mode := s.AuthMode()
 
-	s.mu.Lock()
+	s.controllerMu.Lock()
 
 	if capturedEpoch != s.controllerEpoch {
-		s.mu.Unlock()
+		s.controllerMu.Unlock()
 
 		return
 	}
 
-	s.controllerEpoch++
-
-	s.mu.Unlock()
+	s.bumpControllerEpochLocked()
 
 	if mode != AuthModeNone {
 		document, err := s.store.Snapshot()
@@ -479,6 +484,8 @@ func (s *Service) InvalidateController(capturedEpoch uint64) {
 			_ = s.store.ReplaceController(record)
 		}
 	}
+
+	s.controllerMu.Unlock()
 
 	if s.enumerator != nil {
 		s.enumerator.Invalidate()
@@ -492,9 +499,9 @@ func (s *Service) InvalidateController(capturedEpoch uint64) {
 }
 
 func (s *Service) ControllerEpoch() uint64 {
-	s.mu.RLock()
+	s.controllerMu.Lock()
 
-	defer s.mu.RUnlock()
+	defer s.controllerMu.Unlock()
 
 	return s.controllerEpoch
 }
@@ -511,19 +518,19 @@ func (s *Service) CaptureController() enumeration.ControllerSnapshot {
 }
 
 func (s *Service) captureController() (enumeration.ControllerSnapshot, model.Support, error) {
-	s.mu.RLock()
+	mode := s.AuthMode()
 
-	epoch := s.controllerEpoch
+	s.controllerMu.Lock()
 
-	s.mu.RUnlock()
+	defer s.controllerMu.Unlock()
 
-	snapshot := enumeration.ControllerSnapshot{BaseURL: s.controllerURL, Epoch: epoch}
+	snapshot := enumeration.ControllerSnapshot{BaseURL: s.controllerURL, Epoch: s.controllerEpoch}
 
-	switch s.AuthMode() {
+	switch mode {
 	case AuthModeNone:
 		support := model.SupportUnknown
 
-		if s.Enabled() {
+		if s.persistentRCIEnabledLocked(false) {
 			support = model.SupportSupported
 			snapshot.Active = true
 		}
@@ -536,7 +543,7 @@ func (s *Service) captureController() (enumeration.ControllerSnapshot, model.Sup
 		}
 
 		if document.Controller == nil {
-			if s.Enabled() {
+			if s.persistentRCIEnabledLocked(false) {
 				return snapshot, model.SupportNeedsToken, nil
 			}
 
@@ -544,12 +551,27 @@ func (s *Service) captureController() (enumeration.ControllerSnapshot, model.Sup
 		}
 
 		snapshot.Token = document.Controller.Token
-		snapshot.Active = s.Enabled() && snapshot.Token != "" && document.Controller.Support == model.SupportSupported
+		enabled := s.persistentRCIEnabledLocked(snapshot.Token != "")
+		snapshot.Active = enabled && snapshot.Token != "" && document.Controller.Support == model.SupportSupported
 
 		return snapshot, document.Controller.Support, nil
 	default:
 		return snapshot, model.SupportUnknown, nil
 	}
+}
+
+func (s *Service) persistentRCIEnabledLocked(defaultEnabled bool) bool {
+	if s.enabledStore == nil {
+		return defaultEnabled
+	}
+
+	enabled, set := s.enabledStore.PersistentRCIEnabled()
+
+	if set {
+		return enabled
+	}
+
+	return defaultEnabled
 }
 
 // AuthURL mints one controller-mediated extender relay URL. Returned errors

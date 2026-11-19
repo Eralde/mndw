@@ -1,3 +1,4 @@
+// Package status defines categories consumed by cmd/generate-rci-session-contract.
 package status
 
 type Category string

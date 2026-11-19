@@ -1,7 +1,5 @@
-// Package target resolves a discovery.Member into a concrete, safe dial target:
-// the controller-reported FQDN (preferred, resolved via the controller's DNS
-// proxy) or a vetted private/link-local IP. It also validates outbound RCI
-// request paths, refusing traversal or absolute paths before a request is sent.
+// Package target classifies and validates outbound RCI request paths and
+// normalizes hostnames reported for mesh members.
 package target
 
 import (

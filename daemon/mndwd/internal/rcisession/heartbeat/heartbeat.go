@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	rcidefaults "mndwd/internal/rcisession/defaults"
+	"mndwd/internal/rcisession/model"
 )
 
 type Result struct {
@@ -56,7 +56,7 @@ func (p Probe) Run(ctx context.Context, client *http.Client, baseURL string) Res
 	}
 
 	if p.MaxResponseBytes <= 0 {
-		p.MaxResponseBytes = rcidefaults.MaxResponseBytes
+		p.MaxResponseBytes = model.MaxResponseBytes
 	}
 
 	requestContext, cancel := context.WithTimeout(ctx, p.Timeout)

@@ -57,7 +57,6 @@ type transition struct {
 	operation   Operation
 	priorIntent Intent
 	run         *operationRun
-	phaseSince  time.Time
 }
 
 type lifecycleReadinessMarker interface {
@@ -398,7 +397,6 @@ func setSupervisorTransitionLockedForTest(s *Supervisor, pluginID string, fixtur
 			record.operation = OpNone
 			record.priorIntent = IntentRun
 			record.run = nil
-			record.phaseSince = time.Time{}
 
 			s.prunePluginRecordLocked(pluginID)
 		}
@@ -412,7 +410,6 @@ func setSupervisorTransitionLockedForTest(s *Supervisor, pluginID string, fixtur
 	record.operation = fixture.operation
 	record.priorIntent = fixture.priorIntent
 	record.run = fixture.run
-	record.phaseSince = fixture.phaseSince
 }
 
 func setSupervisorTransitionForTest(s *Supervisor, pluginID string, record *transition) {

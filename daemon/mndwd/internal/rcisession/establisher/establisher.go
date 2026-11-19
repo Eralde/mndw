@@ -13,8 +13,8 @@ import (
 
 	rci "mndw.local/rci"
 	"mndwd/internal/httpx"
-	rcidefaults "mndwd/internal/rcisession/defaults"
 	"mndwd/internal/rcisession/enumeration"
+	"mndwd/internal/rcisession/model"
 	"mndwd/internal/target"
 )
 
@@ -134,7 +134,7 @@ func (e *Establisher) Establish(ctx context.Context, member enumeration.Member) 
 	limit := e.MaxResponseBytes
 
 	if limit <= 0 {
-		limit = rcidefaults.MaxResponseBytes
+		limit = model.MaxResponseBytes
 	}
 
 	body, err := io.ReadAll(io.LimitReader(response.Body, limit+1))

@@ -406,10 +406,6 @@ func (m *Manager) DiscardAll() {
 	m.epoch++
 }
 
-func (m *Manager) BumpForControllerTokenChange() {
-	m.DiscardAll()
-}
-
 func (m *Manager) Snapshot() Snapshot {
 	m.mu.Lock()
 

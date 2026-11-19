@@ -37,6 +37,7 @@ func isNilTransport(transport Transport) bool {
 	}
 }
 
+// Execute is the single-query helper for plugin callers; daemon code uses ExecuteRaw.
 func (c *Client) Execute(ctx context.Context, query Query) (json.RawMessage, error) {
 	values, err := c.ExecuteMany(ctx, query)
 	if err != nil {

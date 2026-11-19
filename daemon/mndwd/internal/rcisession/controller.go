@@ -129,6 +129,10 @@ func (s *Service) TestController(ctx context.Context, tester ControllerTester, t
 	}
 
 	if err == nil && verdict == ControllerValid {
+		recovered := false
+
+		s.controllerMu.Lock()
+
 		document, snapshotErr := s.store.Snapshot()
 
 		if snapshotErr == nil && document.Controller != nil && document.Controller.Token == token && document.Controller.Support == model.SupportInvalid {
@@ -136,9 +140,16 @@ func (s *Service) TestController(ctx context.Context, tester ControllerTester, t
 			record.Support = model.SupportSupported
 
 			if replaceErr := s.store.ReplaceController(record); replaceErr == nil {
-				s.bumpControllerEpoch()
-				s.notifyMutation("controller-token-recovered")
+				s.bumpControllerEpochLocked()
+
+				recovered = true
 			}
+		}
+
+		s.controllerMu.Unlock()
+
+		if recovered {
+			s.notifyMutation("controller-token-recovered")
 		}
 	}
 
@@ -163,6 +174,10 @@ func (s *Service) SaveController(ctx context.Context, tester ControllerTester, t
 		return verdict, err
 	}
 
+	checked := s.now().UTC()
+
+	s.controllerMu.Lock()
+
 	document, snapshotErr := s.store.Snapshot()
 	previousToken := ""
 
@@ -170,39 +185,45 @@ func (s *Service) SaveController(ctx context.Context, tester ControllerTester, t
 		previousToken = document.Controller.Token
 	}
 
-	checked := s.now().UTC()
-
 	if err := s.store.ReplaceController(model.TokenRecord{
 		Token:         token,
 		Support:       model.SupportSupported,
 		LastCheckedAt: &checked,
 	}); err != nil {
+		s.controllerMu.Unlock()
+
 		return ControllerUnreachable, err
 	}
 
 	changed := previousToken != token
 
 	if changed {
-		s.bumpControllerEpoch()
-
-		if manager := s.SessionManager(); manager != nil {
-			manager.BumpForControllerTokenChange()
-		}
+		s.bumpControllerEpochLocked()
 	}
+
+	var enabledErr error
 
 	if enabledStore := s.enabledStore; enabledStore != nil {
 		enabled, set := enabledStore.PersistentRCIEnabled()
 
 		if set && !enabled {
-			if err := enabledStore.SetPersistentRCIEnabled(true); err != nil {
-				s.notifyMutation("controller-token-saved")
+			enabledErr = enabledStore.SetPersistentRCIEnabled(true)
+		}
+	}
 
-				return ControllerUnreachable, err
-			}
+	s.controllerMu.Unlock()
+
+	if changed {
+		if manager := s.SessionManager(); manager != nil {
+			manager.DiscardAll()
 		}
 	}
 
 	s.notifyMutation("controller-token-saved")
+
+	if enabledErr != nil {
+		return ControllerUnreachable, enabledErr
+	}
 
 	return verdict, nil
 }
@@ -220,8 +241,12 @@ func (s *Service) logControllerTesterFailure(operation string, verdict Controlle
 func (s *Service) DeleteController() error {
 	mode := s.AuthMode()
 
+	s.controllerMu.Lock()
+
 	if enabledStore := s.enabledStore; enabledStore != nil {
 		if err := enabledStore.SetPersistentRCIEnabled(false); err != nil {
+			s.controllerMu.Unlock()
+
 			return err
 		}
 	}
@@ -232,23 +257,22 @@ func (s *Service) DeleteController() error {
 		deleteErr = s.store.DeleteController()
 	}
 
-	s.bumpControllerEpoch()
+	s.bumpControllerEpochLocked()
+	s.controllerMu.Unlock()
 
 	if manager := s.SessionManager(); manager != nil {
 		manager.DiscardAll()
 	}
 
-	s.enumerator.Invalidate()
+	if s.enumerator != nil {
+		s.enumerator.Invalidate()
+	}
 
 	s.notifyMutation("controller-token-deleted")
 
 	return deleteErr
 }
 
-func (s *Service) bumpControllerEpoch() {
-	s.mu.Lock()
-
+func (s *Service) bumpControllerEpochLocked() {
 	s.controllerEpoch++
-
-	s.mu.Unlock()
 }

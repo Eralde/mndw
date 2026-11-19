@@ -108,7 +108,6 @@ type pluginRecord struct {
 	operation         Operation
 	priorIntent       Intent
 	run               *operationRun
-	phaseSince        time.Time
 
 	serviceHeld        bool
 	reservationPending bool
@@ -445,7 +444,6 @@ func (s *Supervisor) beginLocked(name string, op Operation, want Intent) beginOu
 			record.operation = op
 			record.priorIntent = priorIntent
 			record.run = run
-			record.phaseSince = s.now()
 
 			return beginOutcome{run: run, supersededWorkDone: oldRun.workDone}
 		}
@@ -469,7 +467,6 @@ func (s *Supervisor) beginLocked(name string, op Operation, want Intent) beginOu
 	record.operation = op
 	record.priorIntent = priorIntent
 	record.run = run
-	record.phaseSince = s.now()
 
 	return beginOutcome{run: run}
 }
@@ -570,7 +567,6 @@ func (s *Supervisor) terminalizeLocked(run *operationRun, intent Intent, err err
 	record := s.transitionRecordLocked(run.name)
 	record.intent = intent
 	record.operation = OpNone
-	record.phaseSince = s.now()
 	run.result = err
 	run.completed = true
 
@@ -1114,10 +1110,8 @@ func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) reconci
 			transitionRecord = s.ensureTransitionRecordLocked(spec.PluginID)
 			transitionRecord.intent = want
 			transitionRecord.operation = OpNone
-			transitionRecord.phaseSince = s.now()
 		} else if transitionRecord.operation == OpNone && transitionRecord.intent != IntentRemove {
 			transitionRecord.intent = want
-			transitionRecord.phaseSince = s.now()
 		}
 
 		if transitionRecord.operation != OpNone {
@@ -1180,10 +1174,8 @@ func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) reconci
 			transitionRecord = s.ensureTransitionRecordLocked(pluginID)
 			transitionRecord.intent = IntentRemove
 			transitionRecord.operation = OpNone
-			transitionRecord.phaseSince = s.now()
 		} else {
 			transitionRecord.intent = IntentRemove
-			transitionRecord.phaseSince = s.now()
 		}
 
 		plan.removeIDs = append(plan.removeIDs, pluginID)

@@ -3,6 +3,8 @@ package model
 
 import "time"
 
+const MaxResponseBytes int64 = 1 << 20
+
 type StoreState string
 
 const (

@@ -73,6 +73,127 @@ func TestServiceSaveAndDeleteControllerBumpRuntimeTrust(t *testing.T) {
 	}
 }
 
+func TestServiceInvalidateDoesNotInvalidateNewlySavedController(t *testing.T) {
+	store := &controllerRaceStore{
+		document:              model.Document{Controller: &model.TokenRecord{Token: "old", Support: model.SupportSupported}},
+		firstSnapshotEntered:  make(chan struct{}),
+		releaseFirstSnapshot:  make(chan struct{}),
+		secondSnapshotEntered: make(chan struct{}),
+		releaseSecondSnapshot: make(chan struct{}),
+		newControllerWritten:  make(chan struct{}),
+	}
+	service := newTestService(t, ServiceConfig{Store: store})
+	var releaseOnce sync.Once
+	releaseSnapshots := func() {
+		releaseOnce.Do(func() {
+			store.releaseFirstSnapshotOnce()
+			store.releaseSecondSnapshotOnce()
+		})
+	}
+
+	defer releaseSnapshots()
+
+	invalidated := make(chan struct{})
+
+	go func() {
+		service.InvalidateController(0)
+		close(invalidated)
+	}()
+
+	select {
+	case <-store.firstSnapshotEntered:
+	case <-time.After(time.Second):
+		t.Fatal("invalidation did not reach controller snapshot")
+	}
+
+	serialized := !service.controllerMu.TryLock()
+
+	if !serialized {
+		service.controllerMu.Unlock()
+	}
+
+	testerEntered := make(chan struct{})
+	saveDone := make(chan error, 1)
+
+	go func() {
+		_, err := service.SaveController(context.Background(), serviceTestTesterFunc(func(context.Context, string) (ControllerVerdict, error) {
+			close(testerEntered)
+
+			return ControllerValid, nil
+		}), "new")
+		saveDone <- err
+	}()
+
+	select {
+	case <-testerEntered:
+	case <-time.After(time.Second):
+		t.Fatal("save did not reach controller tester")
+	}
+
+	var saveErr error
+
+	if serialized {
+		store.releaseFirstSnapshotOnce()
+
+		select {
+		case <-invalidated:
+		case <-time.After(time.Second):
+			t.Fatal("controller invalidation did not finish")
+		}
+
+		select {
+		case <-store.secondSnapshotEntered:
+		case <-time.After(time.Second):
+			t.Fatal("save did not reach controller snapshot after invalidation")
+		}
+
+		store.releaseSecondSnapshotOnce()
+	} else {
+		select {
+		case <-store.secondSnapshotEntered:
+		case <-time.After(time.Second):
+			t.Fatal("save did not reach controller snapshot")
+		}
+
+		store.releaseSecondSnapshotOnce()
+
+		select {
+		case <-store.newControllerWritten:
+		case <-time.After(time.Second):
+			t.Fatal("save did not write the new controller")
+		}
+	}
+
+	select {
+	case saveErr = <-saveDone:
+	case <-time.After(time.Second):
+		t.Fatal("save controller did not finish")
+	}
+
+	if !serialized {
+		store.releaseFirstSnapshotOnce()
+
+		select {
+		case <-invalidated:
+		case <-time.After(time.Second):
+			t.Fatal("controller invalidation did not finish")
+		}
+	}
+
+	if saveErr != nil {
+		t.Fatalf("save controller: %v", saveErr)
+	}
+
+	document, err := store.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if document.Controller == nil || document.Controller.Token != "new" || document.Controller.Support != model.SupportSupported {
+		t.Fatalf("controller after invalidate and save = %#v, want new supported token", document.Controller)
+	}
+}
+
 func TestControllerTesterErrorsAreLoggedWithoutToken(t *testing.T) {
 	for _, operation := range []struct {
 		name string
@@ -585,6 +706,79 @@ func TestServiceDeleteControllerTokenDeleteFailureFailsClosed(t *testing.T) {
 type testServiceStore struct {
 	document  model.Document
 	deleteErr error
+}
+
+type controllerRaceStore struct {
+	mu                     sync.Mutex
+	document               model.Document
+	snapshots              int
+	firstSnapshotEntered   chan struct{}
+	releaseFirstSnapshot   chan struct{}
+	secondSnapshotEntered  chan struct{}
+	releaseSecondSnapshot  chan struct{}
+	newControllerWritten   chan struct{}
+	firstReleaseOnce       sync.Once
+	secondReleaseOnce      sync.Once
+	newControllerWriteOnce sync.Once
+}
+
+func (s *controllerRaceStore) State() model.StoreState { return model.StateOK }
+func (s *controllerRaceStore) Snapshot() (model.Document, error) {
+	s.mu.Lock()
+
+	s.snapshots++
+	snapshotNumber := s.snapshots
+	var document model.Document
+
+	if s.document.Controller != nil {
+		controller := *s.document.Controller
+		document.Controller = &controller
+	}
+
+	s.mu.Unlock()
+
+	switch snapshotNumber {
+	case 1:
+		close(s.firstSnapshotEntered)
+		<-s.releaseFirstSnapshot
+	case 2:
+		close(s.secondSnapshotEntered)
+		<-s.releaseSecondSnapshot
+	}
+
+	return document, nil
+}
+
+func (s *controllerRaceStore) ReplaceController(record model.TokenRecord) error {
+	s.mu.Lock()
+
+	s.document.Controller = &record
+
+	s.mu.Unlock()
+
+	if record.Token == "new" && record.Support == model.SupportSupported {
+		s.newControllerWriteOnce.Do(func() { close(s.newControllerWritten) })
+	}
+
+	return nil
+}
+
+func (s *controllerRaceStore) DeleteController() error {
+	s.mu.Lock()
+
+	s.document.Controller = nil
+
+	s.mu.Unlock()
+
+	return nil
+}
+
+func (s *controllerRaceStore) releaseFirstSnapshotOnce() {
+	s.firstReleaseOnce.Do(func() { close(s.releaseFirstSnapshot) })
+}
+
+func (s *controllerRaceStore) releaseSecondSnapshotOnce() {
+	s.secondReleaseOnce.Do(func() { close(s.releaseSecondSnapshot) })
 }
 
 func (s *testServiceStore) State() model.StoreState { return model.StateOK }

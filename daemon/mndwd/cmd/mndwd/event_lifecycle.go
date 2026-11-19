@@ -161,6 +161,7 @@ func (l *eventLifecycle) Start(ctx context.Context) error {
 	return nil
 }
 
+// sessionPresentFunc returns nil when no session exists, avoiding a method value on a nil *Service.
 func sessionPresentFunc(session *rcisession.Service) func() bool {
 	if session == nil {
 		return nil

@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"mndwd/internal/httpx"
-	rcidefaults "mndwd/internal/rcisession/defaults"
 	"mndwd/internal/rcisession/model"
 	"mndwd/internal/target"
 )
@@ -78,7 +77,7 @@ func New(resolver Resolver, client interface {
 	}
 
 	if maxResponse <= 0 {
-		maxResponse = rcidefaults.MaxResponseBytes
+		maxResponse = model.MaxResponseBytes
 	}
 
 	return &Proxy{resolver: resolver, client: client, maxResponse: maxResponse, operationTime: operationTime}

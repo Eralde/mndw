@@ -4,9 +4,11 @@ import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
 
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
-import {setLocale} from '../../../services/locale.service.js';
+import {createTestLocaleController} from '../../../testing/test-locale.js';
 import PendingApprovals from './PendingApprovals.svelte';
 import type {PluginRowState} from './reconcile.js';
+
+const {setLocale} = createTestLocaleController();
 
 const item: PluginListEntry = {
   type: 'page',

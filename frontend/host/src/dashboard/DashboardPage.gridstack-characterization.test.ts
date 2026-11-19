@@ -14,13 +14,11 @@ import {
 } from '../runtime/plugin-load-state.svelte.js';
 import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
-import {createAppRouter} from '../router/create-app-router.js';
 import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
 import {getTileController} from './tile-controller.js';
 import {type WidgetTileHandle} from './widget-mount.js';
 import DashboardPage from './DashboardPage.svelte';
 import OverlayHost from '../components/overlay/OverlayHost.svelte';
-import {defaultOverlayRuntime} from '../services/overlay/overlay-manager.svelte.js';
 import {toast} from '../services/toast/toast.svelte.js';
 
 const disposeWidget = vi.hoisted(() => vi.fn());
@@ -241,7 +239,7 @@ function mountPage(): void {
     target: activeTarget,
     context: createHostServicesContext(services),
   });
-  activeOverlayHost = mount(OverlayHost, {target: document.body});
+  activeOverlayHost = mount(OverlayHost, {target: document.body, props: {runtime: services.overlayRuntime}});
 
   flushSync();
 }
@@ -291,7 +289,7 @@ describe('DashboardPage real GridStack persistence characterization', () => {
     }
 
     setPluginLoadListOutcome('ok');
-    createAppRouter(registry);
+    services.router.create(registry);
     localStorage.removeItem(GRID_LAYOUT_KEY);
     replaceDepsStatuses([]);
     mobileMatches = false;
@@ -310,13 +308,13 @@ describe('DashboardPage real GridStack persistence characterization', () => {
       activeComponent = undefined;
     }
 
-    for (const layer of [...defaultOverlayRuntime.store.layers]) {
+    for (const layer of [...services.overlayRuntime.store.layers]) {
       layer.close();
     }
 
     await vi.waitFor(() => {
       flushSync();
-      expect(defaultOverlayRuntime.store.layers).toHaveLength(0);
+      expect(services.overlayRuntime.store.layers).toHaveLength(0);
     });
 
     if (activeOverlayHost !== undefined) {

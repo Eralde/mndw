@@ -3,7 +3,7 @@ import {defineMndwUi} from '@mndw/ui';
 import {flushSync, mount, unmount} from 'svelte';
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {type PackageEntry, type PackageList} from '../services/opkg-client.js';
-import {setLocale} from '../services/locale.service.js';
+import {createTestLocaleController} from '../testing/test-locale.js';
 import {toast} from '../services/toast/toast.svelte.js';
 
 const mockList = vi.fn<(...args: unknown[]) => Promise<PackageList>>();
@@ -14,21 +14,26 @@ const mockUpgrade = vi.fn<(...args: unknown[]) => Promise<{message: string}>>();
 const mockInfo = vi.hoisted(() => vi.fn());
 const MockOpkgError = vi.hoisted(() => class extends Error {});
 
-vi.mock('../services/opkg-client.js', () => ({
-  OpkgError: MockOpkgError,
-  get opkgClient() {
-    return {
+vi.mock('../services/opkg-client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/opkg-client.js')>();
+
+  return {
+    ...actual,
+    OpkgError: MockOpkgError,
+    createOpkgClient: () => ({
       list: mockList,
       info: mockInfo,
       update: mockUpdate,
       install: mockInstall,
       remove: mockRemove,
       upgrade: mockUpgrade,
-    };
-  },
-}));
+    }),
+  };
+});
 
 import PackageManager from './opkg/PackageManager.svelte';
+
+const {context, setLocale} = createTestLocaleController();
 
 type MndwCheckboxHost = HTMLElement & {
   checked: boolean;
@@ -67,7 +72,7 @@ describe('PackageManager', () => {
   it('shows an empty catalog as an informational state', async () => {
     mockList.mockResolvedValue({packages: [], metadataUpdatedAt: null});
 
-    const app = mount(PackageManager, {target: host});
+    const app = mount(PackageManager, {target: host, context});
 
     flushSync();
     await vi.waitFor(() => {
@@ -82,7 +87,7 @@ describe('PackageManager', () => {
   it('updates package-manager labels after a locale commit', async () => {
     mockList.mockResolvedValue({packages: [], metadataUpdatedAt: null});
 
-    const app = mount(PackageManager, {target: host});
+    const app = mount(PackageManager, {target: host, context});
 
     try {
       flushSync();
@@ -104,7 +109,7 @@ describe('PackageManager', () => {
   it('shows a load error for a rejected list', async () => {
     mockList.mockRejectedValue(new Error('offline'));
 
-    const app = mount(PackageManager, {target: host});
+    const app = mount(PackageManager, {target: host, context});
 
     flushSync();
     await vi.waitFor(() => {
@@ -120,7 +125,7 @@ describe('PackageManager', () => {
     mockList.mockResolvedValue({packages: [], metadataUpdatedAt: null});
     mockUpdate.mockResolvedValue({message: 'Package metadata refreshed'});
 
-    const app = mount(PackageManager, {target: host});
+    const app = mount(PackageManager, {target: host, context});
 
     flushSync();
     await vi.waitFor(() => {
@@ -153,7 +158,7 @@ describe('PackageManager', () => {
 
     mockList.mockResolvedValue({packages, metadataUpdatedAt: null});
 
-    const app = mount(PackageManager, {target: host});
+    const app = mount(PackageManager, {target: host, context});
 
     flushSync();
 
@@ -226,7 +231,7 @@ describe('PackageManager', () => {
 
     mockList.mockResolvedValue({packages, metadataUpdatedAt: null});
 
-    const app = mount(PackageManager, {target: host});
+    const app = mount(PackageManager, {target: host, context});
 
     flushSync();
 
@@ -255,7 +260,7 @@ describe('PackageManager', () => {
     mockList.mockResolvedValue({packages, metadataUpdatedAt: null});
     mockInfo.mockResolvedValue(info);
 
-    const app = mount(PackageManager, {target: host});
+    const app = mount(PackageManager, {target: host, context});
 
     try {
       flushSync();
@@ -297,7 +302,7 @@ describe('PackageManager', () => {
       metadataUpdatedAt: null,
     });
 
-    const app = mount(PackageManager, {target: host});
+    const app = mount(PackageManager, {target: host, context});
 
     try {
       flushSync();
@@ -328,7 +333,7 @@ describe('PackageManager', () => {
       dependencies: [],
     });
 
-    const app = mount(PackageManager, {target: host});
+    const app = mount(PackageManager, {target: host, context});
 
     try {
       flushSync();

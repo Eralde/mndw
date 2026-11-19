@@ -4,8 +4,10 @@ import {flushSync, mount, unmount} from 'svelte';
 import {SDK_VERSION} from '@mndw/sdk';
 
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
-import {setLocale} from '../../../services/locale.service.js';
 import CapabilityReview from './CapabilityReview.svelte';
+import {createTestLocaleController} from '../../../testing/test-locale.js';
+
+const {setLocale} = createTestLocaleController();
 
 const baseEntry: PluginListEntry = {
   name: 'review-test',

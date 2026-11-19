@@ -8,10 +8,9 @@ import OverlayShell from './OverlayShell.svelte';
 import {
   type OverlayLayerView,
   type OverlayRuntime,
-  defaultOverlayRuntime,
 } from '../../services/overlay/overlay-manager.svelte.js';
 
-let {runtime = defaultOverlayRuntime}: {runtime?: OverlayRuntime} = $props();
+let {runtime}: {runtime: OverlayRuntime} = $props();
 
 const Z_BASE = 1000;
 

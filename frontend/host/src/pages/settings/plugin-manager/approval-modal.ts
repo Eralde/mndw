@@ -1,9 +1,10 @@
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
-import {hostT} from '../../../services/host-i18n.svelte.js';
 import {openHostModal} from '../../../services/overlay/host-overlay.js';
+import type {HostServices} from '../../../host-services.js';
 import BackendApprovalModal from './BackendApprovalModal.svelte';
 
 export async function openApprovalModal(
+  services: Pick<HostServices, 'locale' | 'hostOverlay'>,
   entry: PluginListEntry,
   signal?: AbortSignal,
 ): Promise<'approve' | 'deny' | undefined> {
@@ -15,9 +16,10 @@ export async function openApprovalModal(
     entry: PluginListEntry;
     close: (result: 'approve' | 'deny') => void;
   }>(
+    services.hostOverlay,
     BackendApprovalModal,
     {
-      title: hostT('settings.backend-approval-title', {label: entry.label}),
+      title: services.locale.hostT('settings.backend-approval-title', {label: entry.label}),
       props: {entry},
     },
   );

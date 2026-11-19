@@ -2,16 +2,11 @@ import type {MndwPlugin} from '@mndw/sdk';
 import {MGMT_LIST_TIMEOUT_MS, MGMT_LIST_URL, PLUGIN_SOURCE_PATHS} from '../constants.js';
 import {appState, getAuthRunGeneration, getAuthRunSignal} from '../state/app.svelte.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
-import {getLocale} from '../services/locale.service.js';
 import {pristineFetch} from '../services/pristine-fetch.js';
-import {
-  type PluginCatalogService,
-  createPluginCatalogSource,
-  pluginCatalogService,
-} from '../services/plugin-catalog.service.js';
+import {type PluginCatalogService, createPluginCatalogSource} from '../services/plugin-catalog.service.js';
 import {checkPluginVersions, readPluginLock} from './plugin-lock.js';
-import {type PluginRegistry, pluginRegistry} from './plugin-registry.js';
-import {type PluginStylesheetLease, pluginStylesheets} from './plugin-stylesheets.js';
+import type {PluginRegistry} from './plugin-registry.js';
+import {type PluginStylesheetLease, type PluginStylesheets} from './plugin-stylesheets.js';
 import {decodeMgmtList} from './mgmt-list-schema.js';
 import type {PluginListEntry} from './plugin-types.js';
 import {clearPluginVersionWarnings, setPluginVersionWarnings} from './plugin-version-warnings.svelte.js';
@@ -43,8 +38,9 @@ export interface LoaderDeps {
   importModule?: (url: string) => Promise<unknown>;
   acquireStylesheet?: (href: string, pluginName: string, version: string) => PluginStylesheetLease;
   checkVersions?: (entry: PluginListEntry, dir: string) => string[] | Promise<string[]>;
-  catalogService?: PluginCatalogService;
-  registry?: Pick<PluginRegistry, 'register' | 'clear' | 'get' | 'remove'>;
+  catalogService: PluginCatalogService;
+  registry: Pick<PluginRegistry, 'register' | 'clear' | 'get' | 'remove'>;
+  pluginStylesheets: PluginStylesheets;
   getLocale?: () => string;
   loadTimeoutMs?: number;
 }
@@ -424,7 +420,7 @@ export async function syncPlugins(entries: PluginListEntry[]): Promise<boolean> 
  * failing to import, or not loading within `loadTimeoutMs`, is logged and skipped — it
  * never aborts or stalls the rest.
  */
-export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
+export async function loadPlugins(deps: LoaderDeps): Promise<void> {
   activeListController?.abort();
 
   const generation = ++loadGeneration;
@@ -444,15 +440,17 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
 
   const isCurrent = (): boolean => generation === loadGeneration && authGeneration === getAuthRunGeneration();
   const fetchList = deps.fetchList ?? defaultFetchList;
+  const catalogService = deps.catalogService;
+  const registry = deps.registry;
   const resolved: ResolvedLoaderDeps = {
     importModule: deps.importModule ?? ((url) => import(/* @vite-ignore */ url)),
     acquireStylesheet: deps.acquireStylesheet
-      ?? ((href, pluginName, version) => pluginStylesheets.acquire(pluginName, version, href)),
+      ?? ((href, pluginName, version) => deps.pluginStylesheets.acquire(pluginName, version, href)),
     checkVersions: deps.checkVersions ?? defaultCheckVersions,
-    catalogService: deps.catalogService ?? pluginCatalogService,
-    registry: deps.registry ?? pluginRegistry,
+    catalogService,
+    registry,
     retryPlugin: retryPluginLoad,
-    getLocale: deps.getLocale ?? getLocale,
+    getLocale: deps.getLocale ?? (() => 'en'),
     loadTimeoutMs: deps.loadTimeoutMs ?? PLUGIN_LOAD_TIMEOUT_MS,
   };
 

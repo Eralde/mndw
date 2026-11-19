@@ -1,10 +1,6 @@
 import type {MndwPlugin} from '@mndw/sdk';
 import {SvelteMap} from 'svelte/reactivity';
-import {
-  type PluginCatalogCell,
-  type PluginCatalogService,
-  pluginCatalogService,
-} from '../services/plugin-catalog.service.js';
+import {type PluginCatalogCell, type PluginCatalogService} from '../services/plugin-catalog.service.js';
 import type {PluginStylesheetLease} from './plugin-stylesheets.js';
 import type {PageListEntry, PluginListEntry, WidgetListEntry} from './plugin-types.js';
 
@@ -30,15 +26,15 @@ export type RegistryCatalog = Pick<
 >;
 
 export interface PluginRegistryDeps {
-  catalog?: RegistryCatalog;
+  catalog: RegistryCatalog;
 }
 
 export class PluginRegistry {
   private plugins = new SvelteMap<string, LoadedPlugin>();
   private readonly catalog: RegistryCatalog;
 
-  constructor(deps: PluginRegistryDeps = {}) {
-    this.catalog = deps.catalog ?? pluginCatalogService;
+  constructor(deps: PluginRegistryDeps) {
+    this.catalog = deps.catalog;
   }
 
   public register(plugin: LoadedPlugin): void {
@@ -157,5 +153,3 @@ export class PluginRegistry {
 export function createPluginRegistry(deps: PluginRegistryDeps): PluginRegistry {
   return new PluginRegistry(deps);
 }
-
-export const pluginRegistry = new PluginRegistry();

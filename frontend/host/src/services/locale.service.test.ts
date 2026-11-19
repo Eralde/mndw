@@ -1,21 +1,12 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {FALLBACK_HOST_INFO, SUPPORTED_LOCALES} from '../constants.js';
-import {
-  createLocaleService,
-  getAvailableLocales,
-  getLocale,
-  hostFormatDate,
-  hostFormatNumber,
-  hostT,
-  initLocale,
-  setLocale,
-  subscribeLocale,
-} from './locale.service.js';
+import {type LocaleService, createLocaleService} from './locale.service.svelte.js';
 import {createPluginCatalogService} from './plugin-catalog.service.js';
 
 const originalLanguages = navigator.languages;
 const originalLanguage = navigator.language;
+let service: LocaleService;
 
 function setNavigatorLocales(languages: string[], language = languages[0] ?? 'en-US'): void {
   Object.defineProperty(navigator, 'languages', {configurable: true, value: languages});
@@ -23,6 +14,7 @@ function setNavigatorLocales(languages: string[], language = languages[0] ?? 'en
 }
 
 beforeEach(() => {
+  service = createLocaleService({catalog: createPluginCatalogService()});
   localStorage.clear();
   setNavigatorLocales(['en-US']);
   document.documentElement.lang = '';
@@ -42,19 +34,19 @@ describe('pseudo locale gating', () => {
     vi.stubGlobal('__MNDW_PSEUDO_LOCALE_ENABLED__', false);
     localStorage.setItem('mndw:locale', 'en-XA');
 
-    expect(initLocale()).toBe('en');
-    expect(getAvailableLocales()).toEqual(['en', 'ru']);
+    expect(service.initLocale()).toBe('en');
+    expect(service.getAvailableLocales()).toEqual(['en', 'ru']);
   });
 
   it('routes dev pseudo locale through the normal committed state', async () => {
     vi.stubGlobal('__MNDW_PSEUDO_LOCALE_ENABLED__', true);
 
-    expect(getAvailableLocales()).toEqual(['en', 'ru', 'en-XA']);
-    await setLocale('en-XA');
+    expect(service.getAvailableLocales()).toEqual(['en', 'ru', 'en-XA']);
+    await service.setLocale('en-XA');
 
-    expect(getLocale()).toBe('en-XA');
-    expect(hostT('settings.title')).toMatch(/^\[/);
-    expect(hostFormatNumber(1234.5)).toContain('1');
+    expect(service.getLocale()).toBe('en-XA');
+    expect(service.hostT('settings.title')).toMatch(/^\[/);
+    expect(service.hostFormatNumber(1234.5)).toContain('1');
   });
 });
 
@@ -69,7 +61,7 @@ describe('locale service', () => {
       },
     };
     const setUiLocale = vi.fn();
-    const service = createLocaleService({
+    const isolatedService = createLocaleService({
       catalog: createPluginCatalogService(),
       storage,
       document: isolatedDocument,
@@ -78,11 +70,11 @@ describe('locale service', () => {
 
     stored.set('mndw:locale', 'ru');
 
-    expect(service.initLocale()).toBe('ru');
+    expect(isolatedService.initLocale()).toBe('ru');
     expect(isolatedDocument.documentElement.lang).toBe('ru');
     expect(setUiLocale).toHaveBeenCalledWith('ru');
 
-    await service.setLocale('en');
+    await isolatedService.setLocale('en');
 
     expect(stored.get('mndw:locale')).toBe('en');
     expect(isolatedDocument.documentElement.lang).toBe('en');
@@ -97,8 +89,8 @@ describe('locale service', () => {
   it('prefers a supported persisted locale and updates document metadata', () => {
     localStorage.setItem('mndw:locale', 'RU');
 
-    expect(initLocale()).toBe('ru');
-    expect(getLocale()).toBe('ru');
+    expect(service.initLocale()).toBe('ru');
+    expect(service.getLocale()).toBe('ru');
     expect(document.documentElement.lang).toBe('ru');
     expect(document.documentElement.dir).toBe('ltr');
   });
@@ -107,60 +99,60 @@ describe('locale service', () => {
     localStorage.setItem('mndw:locale', 'en-XA');
     setNavigatorLocales(['ru-RU']);
 
-    expect(initLocale()).toBe('ru');
+    expect(service.initLocale()).toBe('ru');
 
     localStorage.setItem('mndw:locale', 'de');
     setNavigatorLocales(['de-DE']);
-    expect(initLocale()).toBe('en');
+    expect(service.initLocale()).toBe('en');
   });
 
   it('resolves canonical navigator language-only matches and tolerates storage failures', () => {
     setNavigatorLocales(['ru-Cyrl-RU']);
-    expect(initLocale()).toBe('ru');
+    expect(service.initLocale()).toBe('ru');
 
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('storage blocked');
     });
     setNavigatorLocales(['ru']);
-    expect(initLocale()).toBe('ru');
+    expect(service.initLocale()).toBe('ru');
   });
 
   it('translates synchronously and formats with the committed locale', async () => {
-    initLocale();
+    service.initLocale();
 
-    expect(hostT('settings.palette-import-aria-label')).toBe('Import palette JSON');
-    expect(hostT('settings.backend-capacity')).toBe('Backend capacity');
-    expect(hostT('settings.upload-plugin-zip')).toBe('Upload plugin ZIP');
+    expect(service.hostT('settings.palette-import-aria-label')).toBe('Import palette JSON');
+    expect(service.hostT('settings.backend-capacity')).toBe('Backend capacity');
+    expect(service.hostT('settings.upload-plugin-zip')).toBe('Upload plugin ZIP');
 
-    await setLocale('ru');
+    await service.setLocale('ru');
 
-    expect(hostT('app.loading')).toBe('Загрузка…');
-    expect(hostT('settings.palette-import-aria-label')).toBe('Импорт JSON-палитры');
-    expect(hostT('settings.backend-capacity')).toBe('Ёмкость серверной части');
-    expect(hostT('settings.upload-plugin-zip')).toBe('Загрузить ZIP плагина');
-    expect(hostFormatNumber(1234.5)).toContain('1');
-    expect(hostFormatNumber(1234.5)).toContain('234');
-    expect(hostFormatDate(new Date('2026-01-02T03:04:00Z'), {timeZone: 'UTC'})).toContain('2026');
+    expect(service.hostT('app.loading')).toBe('Загрузка…');
+    expect(service.hostT('settings.palette-import-aria-label')).toBe('Импорт JSON-палитры');
+    expect(service.hostT('settings.backend-capacity')).toBe('Ёмкость серверной части');
+    expect(service.hostT('settings.upload-plugin-zip')).toBe('Загрузить ZIP плагина');
+    expect(service.hostFormatNumber(1234.5)).toContain('1');
+    expect(service.hostFormatNumber(1234.5)).toContain('234');
+    expect(service.hostFormatDate(new Date('2026-01-02T03:04:00Z'), {timeZone: 'UTC'})).toContain('2026');
   });
 
   it('notifies only after locale commit and supports unsubscription', async () => {
-    initLocale();
+    service.initLocale();
 
     const listener = vi.fn();
-    const unsubscribe = subscribeLocale(listener);
+    const unsubscribe = service.subscribeLocale(listener);
 
-    await setLocale('ru');
+    await service.setLocale('ru');
     expect(listener).toHaveBeenCalledWith('ru');
 
     unsubscribe();
-    await setLocale('en');
+    await service.setLocale('en');
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
   it('does not install a cross-tab storage listener', () => {
     const addEventListener = vi.spyOn(window, 'addEventListener');
 
-    initLocale();
+    service.initLocale();
 
     expect(addEventListener.mock.calls.some(([type]) => type === 'storage')).toBe(false);
   });

@@ -6,7 +6,7 @@ import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import type {LoadedPlugin} from './plugin-registry.js';
 import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
 import type {PluginContextServices} from './plugin-context.js';
-import {pluginStylesheets} from './plugin-stylesheets.js';
+import type {PluginStylesheets} from './plugin-stylesheets.js';
 import {
   applyPluginListSnapshot,
   getPluginLoadState,
@@ -57,6 +57,7 @@ export interface SandboxLoaderDeps extends SandboxImports {
   catalogBaseUrl?: string;
   registry: SandboxRegistry;
   catalogService: PluginCatalogService;
+  pluginStylesheets: PluginStylesheets;
   getLocale: () => string;
   pluginContextServices: PluginContextServices;
   remountWidgets?: (
@@ -65,6 +66,7 @@ export interface SandboxLoaderDeps extends SandboxImports {
     prior: LoadedPlugin,
     registry: SandboxRegistry,
     pluginContextServices: PluginContextServices,
+    pluginStylesheets: PluginStylesheets,
   ) => Promise<boolean>;
   reloadPage?: (name: string, next: LoadedPlugin, prior: LoadedPlugin) => Promise<boolean>;
 }
@@ -405,7 +407,8 @@ export async function reloadSandboxPlugin(deps: SandboxLoaderDeps): Promise<Sand
 
   const priorRun = activeSandboxRun;
   let restored: LoadedPlugin;
-  const priorStylesheetHold = pluginStylesheets.retain(name, prior.entry.version);
+  const stylesheets = deps.pluginStylesheets;
+  const priorStylesheetHold = stylesheets.retain(name, prior.entry.version);
 
   try {
     restored = registry.replace(candidate);
@@ -419,7 +422,14 @@ export async function reloadSandboxPlugin(deps: SandboxLoaderDeps): Promise<Sand
   activeSandboxRun = {deps: reloadDeps, entry: candidate.entry, isCurrent};
 
   try {
-    const widgetsOk = await remountWidgets(name, candidate, prior, registry, pluginContextServices);
+    const widgetsOk = await remountWidgets(
+      name,
+      candidate,
+      prior,
+      registry,
+      pluginContextServices,
+      deps.pluginStylesheets,
+    );
 
     if (!ownsOperation()) {
       return 'failed';
@@ -447,7 +457,7 @@ export async function reloadSandboxPlugin(deps: SandboxLoaderDeps): Promise<Sand
 
     const restoredWithStylesheet = {
       ...restored,
-      stylesheetLease: pluginStylesheets.retain(name, restored.entry.version),
+      stylesheetLease: stylesheets.retain(name, restored.entry.version),
     };
     registry.replace(restoredWithStylesheet);
     activeSandboxRun = priorRun;
@@ -466,10 +476,11 @@ async function defaultRemountWidgets(
   prior: LoadedPlugin,
   registry: SandboxRegistry,
   pluginContextServices: PluginContextServices,
+  pluginStylesheets: PluginStylesheets,
 ): Promise<boolean> {
   const {remountWidgetTiles} = await import('../dashboard/tile-controller.js');
 
-  return remountWidgetTiles(pluginContextServices, registry, name, next, prior);
+  return remountWidgetTiles(pluginContextServices, registry, name, next, prior, pluginStylesheets);
 }
 
 /** Default page reload: dispatches the reload event and awaits any matching page host's report. */

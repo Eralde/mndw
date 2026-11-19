@@ -3,6 +3,7 @@ import {MNDW_TOKENS, type PaletteTokenMap} from '@mndw/sdk';
 import {defineMndwUi} from '@mndw/ui';
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
+import type {PaletteService} from '../../../services/palette.service.js';
 
 const refreshPalette = vi.fn<() => Promise<void>>();
 const previewOverride = vi.fn<(palette: PaletteTokenMap) => void>();
@@ -11,32 +12,13 @@ const commitOverride = vi.fn<(palette: PaletteTokenMap) => Promise<void>>();
 const resetToDefault = vi.fn<() => Promise<void>>();
 const getExportable = vi.fn<() => PaletteTokenMap>();
 
-vi.mock('../../../services/palette.service.js', async (importOriginal) => ({
-  ...await importOriginal<typeof import('../../../services/palette.service.js')>(),
-  refreshPalette: (): Promise<void> => refreshPalette(),
-  previewOverride: (palette: PaletteTokenMap): void => previewOverride(palette),
-  discardPreview: (): void => discardPreview(),
-  commitOverride: (palette: PaletteTokenMap): Promise<void> => commitOverride(palette),
-  resetToDefault: (): Promise<void> => resetToDefault(),
-  getExportable: (): PaletteTokenMap => getExportable(),
-  getApplied: () => null,
-  paletteService: {
-    refreshPalette: (): Promise<void> => refreshPalette(),
-    previewOverride: (palette: PaletteTokenMap): void => previewOverride(palette),
-    discardPreview: (): void => discardPreview(),
-    commitOverride: (palette: PaletteTokenMap): Promise<void> => commitOverride(palette),
-    resetToDefault: (): Promise<void> => resetToDefault(),
-    getExportable: (): PaletteTokenMap => getExportable(),
-  },
-}));
-
 import PaletteManager from './PaletteManager.svelte';
-import {createHostServices} from '../../../host-services.js';
-import {paletteService} from '../../../services/palette.service.js';
 import {createHostServicesContext} from '../../../host-services-context.js';
 import {hostT} from '../../../services/host-i18n.svelte.js';
-import {setLocale} from '../../../services/locale.service.js';
 import {toast} from '../../../services/toast/toast.svelte.js';
+import {createTestLocaleController} from '../../../testing/test-locale.js';
+
+const {services, setLocale} = createTestLocaleController();
 
 const valid = JSON.parse(JSON.stringify(MNDW_TOKENS)) as PaletteTokenMap;
 
@@ -46,12 +28,23 @@ let component: ReturnType<typeof mount>;
 function render(): void {
   target = document.createElement('div');
   document.body.appendChild(target);
+  const palette: PaletteService = {
+    ...services.palette,
+    refreshPalette,
+    previewOverride,
+    discardPreview,
+    commitOverride,
+    resetToDefault,
+    getExportable,
+    getApplied: () => null,
+  };
+
   component = mount(PaletteManager, {
     target,
     props: {},
     context: createHostServicesContext({
-      ...createHostServices({fetch: vi.fn<typeof globalThis.fetch>()}),
-      palette: paletteService,
+      ...services,
+      palette,
     }),
   });
   flushSync();

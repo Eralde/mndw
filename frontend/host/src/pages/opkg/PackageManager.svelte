@@ -1,7 +1,6 @@
 <script lang="ts">
 import type {MndwTabsChangeDetail} from '@mndw/ui';
-import {appRouter} from '../../router/create-app-router.js';
-import {hostT} from '../../services/host-i18n.svelte.js';
+import {getHostServices} from '../../host-services-context.js';
 import {appState} from '../../state/app.svelte.js';
 import PackagesPanel from './PackagesPanel.svelte';
 import ServicesPanel from './ServicesPanel.svelte';
@@ -11,8 +10,12 @@ import {
   packageManagerTabFromPath,
 } from './package-manager-route.js';
 
+const services = getHostServices();
+const hostT = services.locale.hostT;
+
 const activeTab = $derived.by(() => {
-  const pathname = appRouter?.route.pathname ?? globalThis.location.pathname;
+  const pathname = services.router.current?.route.pathname
+    ?? globalThis.location.pathname;
   return packageManagerTabFromPath(pathname) ?? 'packages';
 });
 
@@ -20,8 +23,10 @@ function handleTabChange(event: CustomEvent<MndwTabsChangeDetail>): void {
   const tab = PACKAGE_MANAGER_TAB_DEFS.find((candidate) =>
     candidate.id === event.detail.value
   );
-  if (tab !== undefined && appRouter !== undefined) {
-    void appRouter.navigate(packageManagerPath(tab.id));
+  const router = services.router.current;
+
+  if (tab !== undefined && router !== undefined) {
+    void router.navigate(packageManagerPath(tab.id));
   }
 }
 </script>

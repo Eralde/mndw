@@ -5,15 +5,13 @@ import {SvelteMap} from 'svelte/reactivity';
 import {appState} from '../../../state/app.svelte.js';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {syncPlugins} from '../../../runtime/plugin-loader.js';
-import {pluginRegistry} from '../../../runtime/plugin-registry.js';
-import {hostT} from '../../../services/host-i18n.svelte.js';
-import {refreshPluginRoutes} from '../../../router/create-app-router.js';
+import {getHostServices} from '../../../host-services-context.js';
+import {getUploadLimitLabel} from '../../../services/upload-limit.js';
 import {
   type MgmtClient,
   type RuntimeLimits,
   classifyMutationFailure,
   messageForError,
-  mgmtClient,
 } from '../../../services/mgmt-client.js';
 import InstalledPluginList from './InstalledPluginList.svelte';
 import PendingApprovals from './PendingApprovals.svelte';
@@ -32,10 +30,18 @@ interface Props {
 }
 
 let {
-  client = mgmtClient,
+  client: providedClient,
   capabilityVisible = false,
   capabilityAvailable = false,
 }: Props = $props();
+const services = getHostServices();
+const client = $derived(providedClient ?? services.mgmtClient);
+const pluginRegistry = services.registry;
+const hostT = services.locale.hostT;
+
+function formatError(error: unknown): string {
+  return messageForError(error, hostT, () => getUploadLimitLabel(hostT));
+}
 let plugins = $state<PluginListEntry[]>([]);
 let runtimeLimits = $state<RuntimeLimits | null>(null);
 let runtimeError = $state('');
@@ -97,7 +103,7 @@ async function load(): Promise<void> {
     }
   } catch (caught) {
     if (request === latestRequest) {
-      loadError = messageForError(caught);
+      loadError = formatError(caught);
     }
   } finally {
     if (request === latestRequest) {
@@ -119,15 +125,15 @@ async function refresh(): Promise<boolean> {
       loading = false;
       clearSatisfiedNotices(listed);
       const sync = syncPlugins(listed);
-      refreshPluginRoutes();
+      services.router.refresh(services.registry);
       reloadRequired = await sync;
       reloadPrompt = reloadPrompt || reloadRequired
         || hasRuntimeVersionMismatch(listed);
-      refreshPluginRoutes();
+      services.router.refresh(services.registry);
     }
   } catch (caught) {
     if (request === latestRequest) {
-      refreshError = messageForError(caught);
+      refreshError = formatError(caught);
       loading = false;
     }
   }
@@ -147,7 +153,7 @@ async function loadRuntime(): Promise<void> {
     runtimeLimits = await client.getRuntime();
     runtimeError = '';
   } catch (caught) {
-    runtimeError = messageForError(caught);
+    runtimeError = formatError(caught);
   }
 }
 
@@ -214,12 +220,12 @@ async function mutate(
       } catch (reconcileError) {
         rowStates.set(name, {
           state: 'outcome-unknown',
-          message: messageForError(reconcileError),
+          message: formatError(reconcileError),
           operation,
         });
       }
     } else {
-      rowStates.set(name, {state: 'error', message: messageForError(caught),
+      rowStates.set(name, {state: 'error', message: formatError(caught),
         operation});
       await refresh();
     }

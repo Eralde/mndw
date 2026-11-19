@@ -1,7 +1,6 @@
 <script lang="ts">
 import type {MndwSelectChangeDetail} from '@mndw/ui';
 import {onMount} from 'svelte';
-import {toggleTheme} from '../services/theme.service.js';
 import {appState, resetToLogin, toggleSidebar} from '../state/app.svelte.js';
 import {hostT} from '../services/host-i18n.svelte.js';
 import {getHostServices} from '../host-services-context.js';
@@ -57,7 +56,9 @@ async function handleLogout(): Promise<void> {
       variant="ghost"
       class="mndw-header__menu-toggle"
       aria-label={hostT('nav.toggle-menu')}
-      aria-expanded={isMobile ? appState.mobileSidebarOpen : !appState.desktopSidebarCollapsed}
+      aria-expanded={isMobile
+      ? appState.mobileSidebarOpen
+      : !appState.desktopSidebarCollapsed}
       aria-controls={SIDEBAR_ID}
       onclick={toggleSidebar}
     >
@@ -86,7 +87,7 @@ async function handleLogout(): Promise<void> {
       ? hostT('nav.light-theme')
       : hostT('nav.dark-theme')}
       aria-label={hostT('nav.color-theme')}
-      onclick={toggleTheme}
+      onclick={services.theme.toggleTheme}
     >
       <mndw-icon name={appState.theme === 'dark' ? 'sun' : 'moon'}></mndw-icon>
     </mndw-button>

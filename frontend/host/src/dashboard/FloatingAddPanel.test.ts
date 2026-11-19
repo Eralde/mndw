@@ -5,15 +5,16 @@ import {flushSync, mount, unmount} from 'svelte';
 
 vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('../runtime/plugin-registry.js')>(),
-  pluginRegistry: {getWidgets: vi.fn()},
 }));
 
-import {type LoadedWidget, pluginRegistry} from '../runtime/plugin-registry.js';
+import {type LoadedWidget, PluginRegistry} from '../runtime/plugin-registry.js';
 import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
 import FloatingAddPanel from './FloatingAddPanel.svelte';
+
+const pluginRegistry = {getWidgets: vi.fn()} as unknown as PluginRegistry;
 
 const emptyBackend = {routes: {}};
 

@@ -16,12 +16,11 @@ const {events, logout} = vi.hoisted(() => {
 });
 
 vi.mock('../services/rci.service.js', () => ({
-  rciService: {logout},
+  createRciService: () => ({logout}),
 }));
 
 import Header from './Header.svelte';
 import {SIDEBAR_ID, SIDEBAR_TOGGLE_ID} from './ids.js';
-import * as localeService from '../services/locale.service.js';
 import {appState} from '../state/app.svelte.js';
 import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
@@ -133,22 +132,25 @@ describe('Header locale controls', () => {
 
   it('updates translated header labels after a locale commit', async () => {
     const target = document.createElement('div');
+    const services = createHostServices({setUiLocale: (locale) => {
+      appState.locale = locale;
+    }});
 
     document.body.appendChild(target);
 
-    const component = mount(Header, {target, context: createHostServicesContext(createHostServices())});
+    const component = mount(Header, {target, context: createHostServicesContext(services)});
 
     try {
       expect(target.querySelector('.mndw-header__logout')?.textContent?.trim()).toBe('Log out');
 
-      await localeService.localeService.setLocale('ru');
+      await services.locale.setLocale('ru');
       flushSync();
 
       expect(target.querySelector('.mndw-header__logout')?.textContent?.trim()).toBe('Выйти');
       expect(target.querySelector<HTMLElement & {value: string}>('.mndw-header__locale-select')?.value).toBe('ru');
     } finally {
       await unmount(component);
-      await localeService.localeService.setLocale('en');
+      await services.locale.setLocale('en');
     }
   });
 

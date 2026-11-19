@@ -1,6 +1,6 @@
 import type {RciQuery} from '@mndw/sdk';
 import {Observable, map} from 'rxjs';
-import {rciService} from '../../rci.service.js';
+import type {RciService} from '../../rci.service.js';
 import {showVersionResponseSchema} from './show-version.schema.js';
 
 interface FwBlock {
@@ -38,12 +38,12 @@ export interface ShowVersion {
   description: string;
 }
 
-export const getShowVersion = (): Observable<ShowVersion> => {
+export const getShowVersion = (rci: Pick<RciService, 'driver'>): Observable<ShowVersion> => {
   const query: RciQuery = {
     path: 'show.version',
   };
 
-  return rciService.driver.queue(query)
+  return rci.driver.queue(query)
     .pipe(
       map((response) => showVersionResponseSchema.parse(response)),
     );

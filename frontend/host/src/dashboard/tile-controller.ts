@@ -2,14 +2,13 @@ import {FALLBACK_DEVICE_INFO, FALLBACK_HOST_INFO} from '../constants.js';
 import {type PluginContextServices, createPluginContext} from '../runtime/plugin-context.js';
 import type {OverlayTeardownReason} from '../runtime/plugin-lifecycle.js';
 import {type LoadedPlugin, type PluginRegistry} from '../runtime/plugin-registry.js';
+import type {PluginStylesheets} from '../runtime/plugin-stylesheets.js';
 import {getPluginLoadState} from '../runtime/plugin-load-state.svelte.js';
 import {retryPluginLoad} from '../runtime/plugin-loader.js';
 import {retrySandboxPlugin} from '../runtime/sandbox-loader.js';
 import {type PluginCatalogCell, getPluginManifestPresentation} from '../services/plugin-catalog.service.js';
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus} from '../state/deps-status.svelte.js';
-import {hostT} from '../services/locale.service.js';
-import {getTheme, subscribeTheme} from '../services/theme.service.js';
 import {createWidgetContext} from './widget-context.js';
 import {type WidgetTileHandle, mountWidgetTile} from './widget-mount.js';
 
@@ -37,6 +36,8 @@ export interface TileController {
   pluginLoadPlaceholder: boolean;
   retrying: boolean;
   onRemoveRequest: (tileId: string) => void;
+  hostT: PluginContextServices['locale']['hostT'];
+  pluginStylesheets?: PluginStylesheets;
 }
 
 const controllers = new Map<string, TileController>();
@@ -55,7 +56,11 @@ function placeholderTileHandle(): WidgetTileHandle {
 }
 
 /** Replaces tile body content with a host-owned dependency-status notice. */
-function renderTileNotice(body: HTMLElement, kind: 'installing' | 'failed'): void {
+function renderTileNotice(
+  body: HTMLElement,
+  kind: 'installing' | 'failed',
+  hostT: PluginContextServices['locale']['hostT'],
+): void {
   body.textContent = '';
 
   const notice = document.createElement('div');
@@ -74,6 +79,7 @@ function renderPluginLoadFailure(
   controller: TileController,
   onRemoveRequest: (tileId: string) => void,
   retry: () => void,
+  hostT: PluginContextServices['locale']['hostT'],
 ): void {
   const state = getPluginLoadState(controller.pluginName);
   const retrying = state?.status === 'loading';
@@ -155,6 +161,7 @@ async function retryFailedPlugin(controller: TileController): Promise<void> {
 function buildTileFrame(
   label: string,
   onRemove: () => void,
+  hostT: PluginContextServices['locale']['hostT'],
 ): {
   frame: HTMLElement;
   body: HTMLElement;
@@ -253,7 +260,7 @@ function hydrateLoadedPlugin(
   controller.retrying = false;
 
   if (status === 'installing') {
-    renderTileNotice(controller.body, 'installing');
+    renderTileNotice(controller.body, 'installing', pluginContextServices.locale.hostT);
     controller.handle = placeholderTileHandle();
     controller.pending = true;
 
@@ -261,7 +268,7 @@ function hydrateLoadedPlugin(
   }
 
   if (status === 'failed') {
-    renderTileNotice(controller.body, 'failed');
+    renderTileNotice(controller.body, 'failed', pluginContextServices.locale.hostT);
     controller.handle = placeholderTileHandle();
     controller.pending = false;
 
@@ -281,6 +288,10 @@ function hydrateLoadedPlugin(
       undefined,
       controller.setTileTitle,
     ),
+    {
+      errorText: pluginContextServices.locale.hostT('dashboard.widget-error'),
+      pluginStylesheets: controller.pluginStylesheets,
+    },
   );
 
   controller.handle = handle;
@@ -298,7 +309,7 @@ function hydrateLoadedPlugin(
 
       handle.dispose();
       hydrateLoadedPlugin(controller, plugin, pluginContextServices, registry);
-    });
+    }, pluginContextServices.locale.hostT);
   });
 }
 
@@ -314,6 +325,7 @@ export function ensureTileController(
   pluginName: string,
   instanceId: string,
   onRemoveRequest: (tileId: string) => void,
+  pluginStylesheets?: PluginStylesheets,
 ): TileController | null {
   const id = `widget-${instanceId}`;
   const existing = controllers.get(id);
@@ -343,10 +355,11 @@ export function ensureTileController(
   const {frame, body, setTileTitle, getTileTitle, setManifestLabel} = buildTileFrame(
     label,
     () => onRemoveRequest(id),
+    pluginContextServices.locale.hostT,
   );
   frame.dataset.widgetId = id;
-  body.dataset.theme = getTheme();
-  const themeUnsubscribe = subscribeTheme((theme) => {
+  body.dataset.theme = pluginContextServices.theme.getTheme();
+  const themeUnsubscribe = pluginContextServices.theme.subscribeTheme((theme) => {
     body.dataset.theme = theme;
   });
   const controller: TileController = {
@@ -365,6 +378,8 @@ export function ensureTileController(
     pluginLoadPlaceholder: loadedWidget === undefined,
     retrying: loadState?.status === 'loading',
     onRemoveRequest,
+    hostT: pluginContextServices.locale.hostT,
+    pluginStylesheets,
   };
 
   controllers.set(id, controller);
@@ -376,7 +391,7 @@ export function ensureTileController(
   if (controller.pluginLoadPlaceholder) {
     renderPluginLoadFailure(controller, onRemoveRequest, () => {
       void retryFailedPlugin(controller);
-    });
+    }, controller.hostT);
   } else if (loadedWidget !== undefined) {
     hydrateLoadedPlugin(controller, loadedWidget, pluginContextServices, registry);
   }
@@ -409,7 +424,7 @@ function refreshPluginLoadPlaceholder(
   if (state?.status === 'failed' || state?.status === 'loading') {
     renderPluginLoadFailure(controller, onRemoveRequest, () => {
       void retryFailedPlugin(controller);
-    });
+    }, pluginContextServices.locale.hostT);
   }
 }
 
@@ -494,6 +509,7 @@ export async function remountWidgetTiles(
   pluginName: string,
   next: LoadedPlugin,
   prior: LoadedPlugin,
+  pluginStylesheets?: PluginStylesheets,
 ): Promise<boolean> {
   const affected = [...controllers.values()]
     .filter((controller) => controller.pluginName === pluginName && !controller.pending);
@@ -526,6 +542,10 @@ export async function remountWidgetTiles(
           catalogCell: plugin.catalog,
           services: pluginContextServices,
         }),
+        {
+          errorText: pluginContextServices.locale.hostT('dashboard.widget-error'),
+          pluginStylesheets: pluginStylesheets ?? controller.pluginStylesheets,
+        },
       );
 
       return controller.handle;

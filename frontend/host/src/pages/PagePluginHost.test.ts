@@ -2,11 +2,6 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
 
-vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
-  ...await importOriginal<typeof import('../runtime/plugin-registry.js')>(),
-  pluginRegistry: {get: vi.fn(), getPages: vi.fn(() => []), getWidgets: vi.fn(() => [])},
-}));
-
 vi.mock('../runtime/plugin-loader.js', () => ({retryPluginLoad: vi.fn()}));
 
 vi.mock('../runtime/plugin-context.js', () => ({
@@ -32,12 +27,12 @@ vi.mock('../services/storage.service.js', async (importOriginal) => ({
 
 import type {MndwPlugin, PluginContext, PluginInstance} from '@mndw/sdk';
 import {type PluginContextHandle, createPluginContext} from '../runtime/plugin-context.js';
-import {type LoadedPage, pluginRegistry} from '../runtime/plugin-registry.js';
+import {type LoadedPage, type PluginRegistry} from '../runtime/plugin-registry.js';
 import type {PageListEntry} from '../runtime/plugin-types.js';
 import {SANDBOX_RELOAD_EVENT, type SandboxReloadDetail} from '../runtime/sandbox-loader.js';
 import {PAGE_PLUGIN_LOADING_DELAY_MS, PAGE_PLUGIN_SLOW_TIMEOUT_MS} from '../constants.js';
 import {appState} from '../state/app.svelte.js';
-import {createAppRouter} from '../router/create-app-router.js';
+import type {AppRouter} from '../router/create-app-router.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import {replacePluginLoadStates, setPluginLoadState} from '../runtime/plugin-load-state.svelte.js';
 import {retryPluginLoad} from '../runtime/plugin-loader.js';
@@ -45,7 +40,6 @@ import PagePluginHost from './PagePluginHost.svelte';
 import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
 import {hostT} from '../services/host-i18n.svelte.js';
-import {getTheme, setTheme} from '../services/theme.service.js';
 
 const emptyBackend = {routes: {}};
 
@@ -118,8 +112,14 @@ function deferred<T>(): {
 
 const pageA = pagePlugin('page-a');
 const pageB = pagePlugin('page-b');
+const pluginRegistry = {
+  get: vi.fn(),
+  getPages: vi.fn((): LoadedPage[] => []),
+  getWidgets: vi.fn(() => []),
+} as unknown as PluginRegistry;
+const services = {...createHostServices(), registry: pluginRegistry};
 
-let router: ReturnType<typeof createAppRouter>;
+let router!: AppRouter;
 const components: Array<ReturnType<typeof mount>> = [];
 
 async function unmountTracked(component: ReturnType<typeof mount>): Promise<void> {
@@ -138,7 +138,7 @@ async function setup(): Promise<{component: ReturnType<typeof mount>; target: HT
     name === 'page-a' ? pageA : name === 'page-b' ? pageB : undefined
   );
 
-  router = createAppRouter();
+  router = services.router.create(pluginRegistry);
   await router.navigate('/page-a');
 
   const target = document.createElement('div');
@@ -147,7 +147,7 @@ async function setup(): Promise<{component: ReturnType<typeof mount>; target: HT
 
   const component = mount(PagePluginHost, {
     target,
-    context: createHostServicesContext({...createHostServices(), registry: pluginRegistry}),
+    context: createHostServicesContext(services),
   });
 
   components.push(component);
@@ -183,7 +183,7 @@ describe('PagePluginHost', () => {
       await unmount(component);
     }
 
-    await router?.navigate('/');
+    await router.navigate('/');
     vi.clearAllMocks();
     replaceDepsStatuses([]);
     replacePluginLoadStates([]);
@@ -216,15 +216,15 @@ describe('PagePluginHost', () => {
   });
 
   it('sets the host theme on the plugin container and updates it while mounted', async () => {
-    const priorTheme = getTheme();
+    const priorTheme = services.theme.getTheme();
 
-    setTheme('dark');
+    services.theme.setTheme('dark');
 
     const {target} = await setup();
     const child = target.querySelector<HTMLElement>('.mndw-page-plugin__mount');
 
     expect(child?.dataset.theme).toBe('dark');
-    setTheme('light');
+    services.theme.setTheme('light');
     expect(child?.dataset.theme).toBe('light');
 
     const [component] = components;
@@ -234,9 +234,9 @@ describe('PagePluginHost', () => {
     }
 
     await unmountTracked(component);
-    setTheme('dark');
+    services.theme.setTheme('dark');
     expect(child.dataset.theme).toBe('light');
-    setTheme(priorTheme);
+    services.theme.setTheme(priorTheme);
   });
 
   it('shows a failed-load placeholder and mounts after a successful retry', async () => {
@@ -257,7 +257,7 @@ describe('PagePluginHost', () => {
       });
     });
 
-    router = createAppRouter();
+    router = services.router.create(pluginRegistry);
     await router.navigate('/page-a');
 
     const target = document.createElement('div');
@@ -266,7 +266,7 @@ describe('PagePluginHost', () => {
 
     const component = mount(PagePluginHost, {
       target,
-      context: createHostServicesContext({...createHostServices(), registry: pluginRegistry}),
+      context: createHostServicesContext(services),
     });
 
     components.push(component);
@@ -566,7 +566,7 @@ describe('PagePluginHost', () => {
     // Setup variant: navigate with real timers, then fake only the host's status
     // timers before mounting so nothing outside the host clock is faked.
     async function setupWithTimers(): Promise<{component: ReturnType<typeof mount>; target: HTMLElement}> {
-      router = createAppRouter();
+      router = services.router.create(pluginRegistry);
       await router.navigate('/page-a');
 
       vi.useFakeTimers({toFake: ['setTimeout', 'clearTimeout']});
@@ -577,7 +577,7 @@ describe('PagePluginHost', () => {
 
       const component = mount(PagePluginHost, {
         target,
-        context: createHostServicesContext({...createHostServices(), registry: pluginRegistry}),
+        context: createHostServicesContext(services),
       });
 
       components.push(component);

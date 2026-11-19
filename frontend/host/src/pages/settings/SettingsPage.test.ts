@@ -2,17 +2,15 @@
 import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {defineMndwUi} from '@mndw/ui';
 import {mount as mountComponent, unmount} from 'svelte';
-import {MNDW_TOKENS} from '@mndw/sdk';
 
 const {
   downloadDiagnostics,
   clearController,
   getCapability,
-  navigate,
-  routerPathname,
   saveController,
   setEnabled,
   selfUpdateStatus,
+  toggleTheme,
 } = vi.hoisted(() => ({
   downloadDiagnostics: vi.fn(),
   clearController: vi.fn().mockResolvedValue(undefined),
@@ -22,23 +20,15 @@ const {
     extenders: [],
     stale: false,
   }),
-  navigate: vi.fn().mockResolvedValue(undefined),
-  routerPathname: {pathname: '/settings/general'},
   saveController: vi.fn(),
   setEnabled: vi.fn().mockResolvedValue(undefined),
   selfUpdateStatus: vi.fn().mockResolvedValue({state: 'idle', version: 'dev'}),
-}));
-
-vi.mock('../../router/create-app-router.js', () => ({
-  appRouter: {
-    route: routerPathname,
-    navigate,
-  },
+  toggleTheme: vi.fn(),
 }));
 
 vi.mock('../../services/mgmt-client.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../services/mgmt-client.js')>(),
-  mgmtClient: {
+  createMgmtClient: () => ({
     listPlugins: vi.fn().mockResolvedValue([]),
     uploadPlugin: vi.fn(),
     approvePlugin: vi.fn(),
@@ -47,78 +37,85 @@ vi.mock('../../services/mgmt-client.js', async (importOriginal) => ({
     setPluginCapability: vi.fn(),
     denyPlugin: vi.fn(),
     deletePlugin: vi.fn(),
-  },
-  messageForError: vi.fn(),
+    getTelemetry: vi.fn().mockResolvedValue({enabled: false}),
+  }),
 }));
-// Partial: `app.svelte.ts` reads `getTheme()` from this module at import time.
-vi.mock('../../services/theme.service.js', async (importOriginal) => ({
-  ...await importOriginal<typeof import('../../services/theme.service.js')>(),
-  toggleTheme: vi.fn(),
-}));
-vi.mock('../../services/palette.service.js', async (importOriginal) => ({
-  ...await importOriginal<typeof import('../../services/palette.service.js')>(),
-  refreshPalette: vi.fn().mockResolvedValue(undefined),
-  previewOverride: vi.fn(),
-  discardPreview: vi.fn(),
-  commitOverride: vi.fn().mockResolvedValue(undefined),
-  resetToDefault: vi.fn().mockResolvedValue(undefined),
-  getExportable: vi.fn(() => MNDW_TOKENS),
-  getApplied: vi.fn(() => null),
-  paletteService: {
-    refreshPalette: vi.fn().mockResolvedValue(undefined),
-    previewOverride: vi.fn(),
-    discardPreview: vi.fn(),
-    commitOverride: vi.fn().mockResolvedValue(undefined),
-    resetToDefault: vi.fn().mockResolvedValue(undefined),
-    getExportable: vi.fn(() => MNDW_TOKENS),
-  },
-}));
+vi.mock('../../services/theme.service.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../services/theme.service.js')>();
+
+  return {
+    ...original,
+    createThemeService: (deps: Parameters<typeof original.createThemeService>[0]) => {
+      const service = original.createThemeService(deps);
+
+      return {...service, toggleTheme: () => {
+        toggleTheme();
+        service.toggleTheme();
+      }};
+    },
+  };
+});
+vi.mock('../../services/palette.service.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../services/palette.service.js')>();
+
+  return {
+    ...original,
+    createPaletteService: (deps: Parameters<typeof original.createPaletteService>[0]) => ({
+      ...original.createPaletteService(deps),
+      refreshPalette: vi.fn().mockResolvedValue(undefined),
+      previewOverride: vi.fn(),
+      discardPreview: vi.fn(),
+      commitOverride: vi.fn().mockResolvedValue(undefined),
+      resetToDefault: vi.fn().mockResolvedValue(undefined),
+    }),
+  };
+});
 vi.mock('../../services/persistent-rci-session.service.js', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../services/persistent-rci-session.service.js')>();
 
   return {
     ...original,
-    persistentRciSessionService: {
+    createPersistentRciSessionService: () => ({
       getCapability,
       testController: vi.fn(),
       saveController,
       clearController,
       setEnabled,
-    },
+    }),
   };
 });
 vi.mock('../../services/diagnostics.service.js', () => ({downloadDiagnostics}));
-vi.mock('../../services/self-update-client.js', () => ({
-  selfUpdateClient: {
-    status: selfUpdateStatus,
-    check: vi.fn(),
-    apply: vi.fn(),
-    revert: vi.fn(),
-  },
-}));
+vi.mock('../../services/self-update-client.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../services/self-update-client.js')>();
+
+  return {
+    ...original,
+    createSelfUpdateClient: () => ({
+      status: selfUpdateStatus,
+      check: vi.fn(),
+      apply: vi.fn(),
+      revert: vi.fn(),
+    }),
+  };
+});
 
 import SettingsPage from './SettingsPage.svelte';
 import generalSettingsSource from './GeneralSettings.svelte?raw';
-import {toggleTheme} from '../../services/theme.service.js';
 import {createHostServices} from '../../host-services.js';
 import {createHostServicesContext} from '../../host-services-context.js';
-import {mgmtClient} from '../../services/mgmt-client.js';
-import {paletteService} from '../../services/palette.service.js';
 import {toast} from '../../services/toast/toast.svelte.js';
-import {defaultOverlayRuntime} from '../../services/overlay/overlay-manager.svelte.js';
-import {PersistentRciSessionError, persistentRciSessionService} from '../../services/persistent-rci-session.service.js';
+import {PersistentRciSessionError} from '../../services/persistent-rci-session.service.js';
+
+let activeServices!: ReturnType<typeof createHostServices>;
 
 const mount = (component: typeof SettingsPage, options: {target: HTMLElement}) => {
   const services = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+  activeServices = services;
+  services.router.create(services.registry);
 
   return mountComponent(component, {
     ...options,
-    context: createHostServicesContext({
-      ...services,
-      mgmtClient,
-      palette: paletteService,
-      persistentRci: persistentRciSessionService,
-    }),
+    context: createHostServicesContext(services),
   });
 };
 
@@ -128,13 +125,13 @@ beforeAll(() => {
 
 describe('SettingsPage', () => {
   afterEach(() => {
-    for (const layer of [...defaultOverlayRuntime.store.layers]) {
+    for (const layer of [...activeServices.overlayRuntime.store.layers]) {
       layer.close();
     }
 
     document.body.innerHTML = '';
     toast.clear();
-    vi.mocked(toggleTheme).mockClear();
+    toggleTheme.mockClear();
     getCapability.mockReset().mockResolvedValue({
       store: {state: 'empty'},
       controller: {support: 'unknown', auth: 'unknown', enabled: false},
@@ -146,8 +143,7 @@ describe('SettingsPage', () => {
     setEnabled.mockReset().mockResolvedValue(undefined);
     downloadDiagnostics.mockReset();
     selfUpdateStatus.mockReset().mockResolvedValue({state: 'idle', version: 'dev'});
-    navigate.mockReset().mockResolvedValue(undefined);
-    routerPathname.pathname = '/settings/general';
+    globalThis.history.replaceState({}, '', '/settings/general');
   });
 
   it('renders route-backed tabs and keeps General selected by default', async () => {
@@ -182,7 +178,7 @@ describe('SettingsPage', () => {
     void unmount(component);
   });
 
-  it('navigates to selected child route', () => {
+  it('navigates to selected child route', async () => {
     const target = document.createElement('div');
 
     document.body.appendChild(target);
@@ -197,33 +193,40 @@ describe('SettingsPage', () => {
       }),
     );
 
-    expect(navigate).toHaveBeenCalledWith('/settings/diagnostics');
+    await vi.waitFor(() => expect(activeServices.router.current?.route.pathname).toBe('/settings/diagnostics'));
 
     void unmount(component);
   });
 
   it('redirects the settings entry route to General with history replacement', async () => {
-    routerPathname.pathname = '/settings';
-
     const target = document.createElement('div');
 
     document.body.appendChild(target);
 
-    const component = mount(SettingsPage, {target});
+    const services = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+    activeServices = services;
+    const router = services.router.create(services.registry);
 
-    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/settings/general', {replace: true}));
+    await router.navigate('/settings', {replace: true});
+
+    const component = mountComponent(SettingsPage, {
+      target,
+      context: createHostServicesContext(services),
+    });
+
+    await vi.waitFor(() => expect(router.route.pathname).toBe('/settings/general'));
 
     void unmount(component);
   });
 
   it('selects tab from child route', async () => {
-    routerPathname.pathname = '/settings/plugins';
-
     const target = document.createElement('div');
 
     document.body.appendChild(target);
 
     const component = mount(SettingsPage, {target});
+
+    await activeServices.router.current?.navigate('/settings/plugins');
 
     await vi.waitFor(() =>
       expect(target.querySelector('mndw-tab#plugins')?.getAttribute('aria-selected'))
@@ -617,12 +620,12 @@ describe('SettingsPage', () => {
 
     clearButton.click();
 
-    await vi.waitFor(() => expect(defaultOverlayRuntime.store.layers).toHaveLength(1));
-    expect(defaultOverlayRuntime.store.layers[0]?.contentElement.textContent)
+    await vi.waitFor(() => expect(activeServices.overlayRuntime.store.layers).toHaveLength(1));
+    expect(activeServices.overlayRuntime.store.layers[0]?.contentElement.textContent)
       .toContain('Persistent RCI sessions will stop until you save a controller token again.');
     expect(clearController).not.toHaveBeenCalled();
 
-    defaultOverlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[1]?.click();
+    activeServices.overlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[1]?.click();
 
     await vi.waitFor(() => expect(clearController).toHaveBeenCalledOnce());
 
@@ -655,10 +658,10 @@ describe('SettingsPage', () => {
     });
 
     clearButton.click();
-    await vi.waitFor(() => expect(defaultOverlayRuntime.store.layers).toHaveLength(1));
-    defaultOverlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[0]?.click();
+    await vi.waitFor(() => expect(activeServices.overlayRuntime.store.layers).toHaveLength(1));
+    activeServices.overlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[0]?.click();
 
-    await vi.waitFor(() => expect(defaultOverlayRuntime.store.layers).toHaveLength(0));
+    await vi.waitFor(() => expect(activeServices.overlayRuntime.store.layers).toHaveLength(0));
     expect(clearController).not.toHaveBeenCalled();
 
     void unmount(component);

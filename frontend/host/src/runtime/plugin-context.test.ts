@@ -20,14 +20,14 @@ import {createHostServices} from '../host-services.js';
 import type {PageListEntry, PluginBackendDescriptor, WidgetListEntry} from './plugin-types.js';
 
 vi.mock('../services/rci.service.js', () => ({
-  rciService: {
+  createRciService: () => ({
     driver: {
       execute: vi.fn(() => 'exec-result'),
       queue: vi.fn(),
       initBackgroundProcess: vi.fn(),
       queueBackgroundProcess: vi.fn(),
     },
-  },
+  }),
 }));
 vi.mock('../services/storage.service.js', () => ({
   ScopedPluginStorage: class {
@@ -35,20 +35,8 @@ vi.mock('../services/storage.service.js', () => ({
   },
 }));
 
-const themeState = vi.hoisted(() => ({
-  current: 'dark' as 'light' | 'dark',
-  listeners: new Set<(theme: 'light' | 'dark') => void>(),
-}));
-
-vi.mock('../services/theme.service.js', () => ({
-  getTheme: () => themeState.current,
-  subscribeTheme: (callback: (theme: 'light' | 'dark') => void) => {
-    themeState.listeners.add(callback);
-
-    return () => themeState.listeners.delete(callback);
-  },
-}));
 vi.mock('../services/overlay/overlay-manager.svelte.js', () => ({
+  createOverlayRuntime: vi.fn(() => ({})),
   createPluginOverlayService: vi.fn(() => ({
     service: {createLayer: vi.fn(), open: vi.fn(), closeAll: vi.fn()},
     dispose: vi.fn(),
@@ -62,6 +50,7 @@ const routerNavigate = vi.fn((_pathname: string): Promise<void> => Promise.resol
 let gatheringValue: TelemetryGathering | null = null;
 const gatheringListeners = new Set<() => void>();
 const pluginContextServices: PluginContextServices = {
+  ...hostServices,
   locale: hostServices.locale,
   palette: hostServices.palette,
   telemetry: hostServices.telemetry,
@@ -123,8 +112,7 @@ class ContextTickerWorker {
 }
 
 beforeEach(() => {
-  themeState.current = 'dark';
-  themeState.listeners.clear();
+  hostServices.theme.setTheme('dark');
   ContextTickerWorker.instances.length = 0;
   gatheringValue = null;
   gatheringListeners.clear();
@@ -379,11 +367,7 @@ describe('createPluginContext service boundaries', () => {
       ctx.appearance.palette$.subscribe(),
     ];
 
-    themeState.current = 'light';
-
-    for (const listener of themeState.listeners) {
-      listener(themeState.current);
-    }
+    hostServices.theme.setTheme('light');
 
     locale = 'ru';
 
@@ -521,9 +505,8 @@ describe('createPluginContext service boundaries', () => {
     expect(paletteSpy).toHaveBeenCalled();
   });
 
-  it('hands out a facade, not the shared rciManager singleton', async () => {
-    const {rciService} = await import('../services/rci.service.js');
-    const driver = rciService.driver as unknown as Record<string, unknown>;
+  it('hands out a facade, not the shared rciManager singleton', () => {
+    const driver = hostServices.rci.driver as unknown as Record<string, unknown>;
     const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
     const facade = ctx.device.rci as unknown as Record<string, unknown>;
 
@@ -531,9 +514,8 @@ describe('createPluginContext service boundaries', () => {
     expect(facade.execute).toBeInstanceOf(Function);
   });
 
-  it('forwards facade calls to the shared rciManager and returns its result', async () => {
-    const {rciService} = await import('../services/rci.service.js');
-    const driver = rciService.driver as unknown as Record<string, unknown>;
+  it('forwards facade calls to the shared rciManager and returns its result', () => {
+    const driver = hostServices.rci.driver as unknown as Record<string, unknown>;
     const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
 
     const result = ctx.device.rci.execute({path: 'x'});
@@ -558,8 +540,7 @@ describe('plugin RCI facade', () => {
   });
 
   it('implements query through the shared manager queue', async () => {
-    const {rciService} = await import('../services/rci.service.js');
-    const driver = rciService.driver as unknown as {queue: ReturnType<typeof vi.fn>};
+    const driver = hostServices.rci.driver as unknown as {queue: ReturnType<typeof vi.fn>};
     const response = {version: '1'};
 
     driver.queue.mockReturnValueOnce(of(response));

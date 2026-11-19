@@ -1,6 +1,6 @@
 import {MNDW_TOKENS, type PaletteTokenMap} from '@mndw/sdk';
 import {paletteToCss, validateImportedPalette} from '@mndw/sdk-internal/palette';
-import {type MgmtClient, mgmtClient} from './mgmt-client.js';
+import type {MgmtClient} from './mgmt-client.js';
 
 const OVERRIDE_ELEMENT_ID = 'mndw-palette-override';
 const OVERRIDE_SELECTOR = ':root:root';
@@ -148,16 +148,3 @@ export function createPaletteService(deps: PaletteServiceDeps): PaletteService {
     },
   };
 }
-
-export const paletteService = createPaletteService({mgmtClient});
-
-export const getApplied = (): PaletteTokenMap | null => paletteService.getApplied();
-export const getExportable = (): PaletteTokenMap => paletteService.getExportable();
-export const getTokens = (): PaletteTokenMap => paletteService.getTokens();
-export const refreshPalette = (): Promise<void> => paletteService.refreshPalette();
-export const initPalette = (): Promise<void> => paletteService.initPalette();
-export const previewOverride = (palette: PaletteTokenMap): void => paletteService.previewOverride(palette);
-export const discardPreview = (): void => paletteService.discardPreview();
-export const commitOverride = (palette: PaletteTokenMap): Promise<void> => paletteService.commitOverride(palette);
-export const resetToDefault = (): Promise<void> => paletteService.resetToDefault();
-export const subscribePalette = (callback: PaletteListener): () => void => paletteService.subscribePalette(callback);

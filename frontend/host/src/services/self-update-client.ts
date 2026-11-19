@@ -153,5 +153,3 @@ export function createSelfUpdateClient(fetchImpl: typeof globalThis.fetch = glob
     },
   };
 }
-
-export const selfUpdateClient: SelfUpdateClient = createSelfUpdateClient();

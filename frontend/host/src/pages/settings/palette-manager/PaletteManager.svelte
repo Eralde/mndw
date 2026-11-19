@@ -3,13 +3,13 @@ import {onDestroy, onMount} from 'svelte';
 import type {PaletteTokenMap} from '@mndw/sdk';
 import type {PaletteContrastWarning} from '@mndw/sdk-internal/palette';
 import {messageForError} from '../../../services/mgmt-client.js';
-import {hostT} from '../../../services/host-i18n.svelte.js';
 import {toast} from '../../../services/toast/toast.svelte.js';
 import PaletteExport from './PaletteExport.svelte';
 import PaletteImport from './PaletteImport.svelte';
 import PalettePreview from './PalettePreview.svelte';
 import PaletteReset from './PaletteReset.svelte';
 import {getHostServices} from '../../../host-services-context.js';
+import {getUploadLimitLabel} from '../../../services/upload-limit.js';
 
 type State =
   | 'loading'
@@ -24,7 +24,9 @@ const PALETTE_COMMIT_TOAST_KEY = 'settings.palette.commit';
 const PALETTE_RESET_TOAST_KEY = 'settings.palette.reset';
 
 let paletteState = $state<State>('loading');
-const paletteService = getHostServices().palette;
+const hostServices = getHostServices();
+const paletteService = hostServices.palette;
+const hostT = hostServices.locale.hostT;
 let refreshError = $state('');
 let importErrors = $state<string[]>([]);
 let commitError = $state('');
@@ -54,7 +56,11 @@ let resetDisabled = $derived(paletteState !== 'idle');
  * the failed operation.
  */
 function paletteErrorMessage(error: unknown, fallbackKey: string): string {
-  const message = messageForError(error);
+  const message = messageForError(
+    error,
+    hostT,
+    () => getUploadLimitLabel(hostT),
+  );
 
   if (error instanceof Error && message === error.message) {
     console.error('[mndw] Palette operation failed:', error);

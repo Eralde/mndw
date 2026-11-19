@@ -2,8 +2,10 @@
 import {defineMndwUi} from '@mndw/ui';
 import {afterEach, beforeAll, describe, expect, it} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
-import {setLocale} from '../../services/locale.service.js';
+import {createTestLocaleController} from '../../testing/test-locale.js';
 import ConfirmActionModal from './ConfirmActionModal.svelte';
+
+const {setLocale} = createTestLocaleController();
 
 let component: ReturnType<typeof mount> | undefined;
 

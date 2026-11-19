@@ -153,5 +153,3 @@ export function createTickerPool(workerFactory: WorkerFactory = createWorker): T
 
   return Object.freeze({create: createHandle});
 }
-
-export const hostTickerPool: TickerPool = createTickerPool();

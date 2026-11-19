@@ -14,12 +14,11 @@ import {SvelteMap, SvelteSet} from 'svelte/reactivity';
 import {
   OpkgError,
   dependencyConflictDetail,
-  opkgClient,
 } from '../../services/opkg-client.js';
 import type {PackageEntry} from '../../services/opkg-client.js';
 import {toast} from '../../services/toast/toast.svelte.js';
 import {openHostModal} from '../../services/overlay/host-overlay.js';
-import {hostT} from '../../services/host-i18n.svelte.js';
+import {getHostServices} from '../../host-services-context.js';
 import {appState} from '../../state/app.svelte.js';
 import PackageNameCell from './PackageNameCell.svelte';
 import PackageVersionCell from './PackageVersionCell.svelte';
@@ -54,6 +53,9 @@ function packageActionToastKey(
 }
 
 let {now = () => new Date()}: Props = $props();
+const hostServices = getHostServices();
+const hostT = hostServices.locale.hostT;
+const opkgClient = hostServices.opkgClient;
 let packages = $state<PackageEntry[]>([]);
 let metadataUpdatedAt = $state<string | null>(null);
 let freshnessComputedAt = $state<Date | null>(null);
@@ -255,7 +257,7 @@ async function runAction(
       message: string;
       confirmLabel: string;
       close: (result: boolean) => void;
-    }>(ConfirmActionModal, {
+    }>(hostServices.hostOverlay, ConfirmActionModal, {
       title: hostT('packages.confirm-remove-title'),
       props: {
         message: hostT('packages.confirm-remove', {names: names.join(', ')}),
@@ -419,6 +421,7 @@ async function removeOne(
 ): Promise<void> {
   const session = openHostModal<boolean,
     {message: string; confirmLabel: string; close: (result: boolean) => void}>(
+      hostServices.hostOverlay,
       ConfirmActionModal,
       {
         title: hostT('packages.confirm-remove-title'),

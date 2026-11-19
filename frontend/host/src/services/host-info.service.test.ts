@@ -2,11 +2,14 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {of, throwError} from 'rxjs';
 import type {MgmtClient} from './mgmt-client.js';
+import {createHostServices} from '../host-services.js';
 
 vi.mock('./rci/show-version/index.js', () => ({getShowVersion: vi.fn()}));
 
 import {getShowVersion} from './rci/show-version/index.js';
 import {fetchDeviceInfo, fetchHostInfo} from './host-info.service.js';
+
+const hostServices = createHostServices();
 
 const switchports = {
   list: [{
@@ -48,7 +51,10 @@ describe('fetchHostInfo', () => {
   it('returns only current UI session fields without querying show.version', async () => {
     vi.mocked(getShowVersion).mockClear();
 
-    await expect(fetchHostInfo()).resolves.toEqual({locale: expect.any(String), theme: expect.any(String)});
+    await expect(fetchHostInfo(hostServices.theme, hostServices.locale)).resolves.toEqual({
+      locale: expect.any(String),
+      theme: expect.any(String),
+    });
     expect(getShowVersion).not.toHaveBeenCalled();
   });
 });
@@ -59,7 +65,7 @@ describe('fetchDeviceInfo', () => {
   });
 
   it('composes identity, parsed capabilities, switchports, and derived USB ports', async () => {
-    const result = await fetchDeviceInfo(managementClient(switchports));
+    const result = await fetchDeviceInfo(managementClient(switchports), hostServices.rci);
 
     expect(result).toEqual(expect.objectContaining({
       deviceName: 'Hopper',
@@ -78,7 +84,7 @@ describe('fetchDeviceInfo', () => {
   it('keeps valid hardware when show.version fails', async () => {
     vi.mocked(getShowVersion).mockReturnValue(throwError(() => new Error('rci down')));
 
-    const result = await fetchDeviceInfo(managementClient(switchports));
+    const result = await fetchDeviceInfo(managementClient(switchports), hostServices.rci);
 
     expect(result.deviceName).toBe('Unknown');
     expect(result.architecture).toBeUndefined();
@@ -90,7 +96,7 @@ describe('fetchDeviceInfo', () => {
   it('keeps version fields when the hardware read fails', async () => {
     const client = {getDeviceHardware: vi.fn().mockRejectedValue(new Error('daemon down'))};
 
-    const result = await fetchDeviceInfo(client);
+    const result = await fetchDeviceInfo(client, hostServices.rci);
 
     expect(result.deviceName).toBe('Hopper');
     expect(result.switchports).toEqual({list: [], layout: [], hasPortStats: false});
@@ -102,7 +108,7 @@ describe('fetchDeviceInfo', () => {
 
     const client = {getDeviceHardware: vi.fn().mockRejectedValue(new Error('daemon down'))};
 
-    await expect(fetchDeviceInfo(client)).resolves.toEqual(expect.objectContaining({
+    await expect(fetchDeviceInfo(client, hostServices.rci)).resolves.toEqual(expect.objectContaining({
       deviceName: 'Unknown',
       vendor: 'Unknown',
       manufacturer: 'Unknown',

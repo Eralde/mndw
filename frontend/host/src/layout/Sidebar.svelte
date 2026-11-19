@@ -6,11 +6,11 @@ import {mobileMediaQuery} from './breakpoint.js';
 import {SIDEBAR_ID, SIDEBAR_TOGGLE_ID} from './ids.js';
 import {hostT} from '../services/host-i18n.svelte.js';
 import {getHostServices} from '../host-services-context.js';
-import {appRouter} from '../router/create-app-router.js';
 import {HOST_PATHS} from '../router/host-routes.js';
 import {getPagePluginCandidates} from '../runtime/page-plugin-candidates.js';
 
-const registry = getHostServices().registry;
+const services = getHostServices();
+const registry = services.registry;
 const mobileQuery = mobileMediaQuery();
 
 let isMobile = $state(mobileQuery.matches);
@@ -41,7 +41,8 @@ const pagePlugins = $derived.by(() => {
 });
 
 const currentPath = $derived.by(() => {
-  return appRouter?.route.pathname ?? globalThis.location.pathname;
+  return services.router.current?.route.pathname
+    ?? globalThis.location.pathname;
 });
 
 function normalizePath(pathname: string): string {

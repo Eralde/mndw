@@ -8,7 +8,6 @@ const retrySandboxPlugin = vi.hoisted(() => vi.fn());
 
 vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('../runtime/plugin-registry.js')>(),
-  pluginRegistry: {get: vi.fn()},
 }));
 
 vi.mock('../runtime/plugin-context.js', () => ({
@@ -37,7 +36,7 @@ vi.mock('../runtime/plugin-loader.js', () => ({retryPluginLoad}));
 vi.mock('../runtime/sandbox-loader.js', () => ({retrySandboxPlugin}));
 
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
-import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
+import {type LoadedPlugin, type PluginRegistry} from '../runtime/plugin-registry.js';
 import {createHostServices} from '../host-services.js';
 import type {PageListEntry, WidgetListEntry} from '../runtime/plugin-types.js';
 import {
@@ -46,7 +45,6 @@ import {
   setPluginLoadState,
 } from '../runtime/plugin-load-state.svelte.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
-import {getTheme, setTheme} from '../services/theme.service.js';
 import {
   destroyAllTiles,
   ensureTileController,
@@ -58,10 +56,9 @@ import {
 } from './tile-controller.js';
 
 const hostServices = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+const pluginRegistry = {get: vi.fn(), clear: vi.fn()} as unknown as PluginRegistry;
 const pluginContextServices = {
-  locale: hostServices.locale,
-  palette: hostServices.palette,
-  telemetry: hostServices.telemetry,
+  ...hostServices,
   telemetryGathering: hostServices.telemetryGathering,
   eventStream: hostServices.eventStream,
   navigation: () => ({
@@ -165,31 +162,46 @@ describe('tile controller', () => {
   it('builds a frame with title, close control, and body, and mounts a ready plugin', () => {
     vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('clock', noop));
 
-    const controller = ensureTileController(pluginContextServices, pluginRegistry, 'clock', 'clock:1', vi.fn());
+    const controller = ensureTileController(
+      pluginContextServices,
+      pluginRegistry,
+      'clock',
+      'clock:1',
+      vi.fn(),
+      hostServices.pluginStylesheets,
+    );
 
     expect(controller?.id).toBe('widget-clock:1');
     expect(controller?.frame.querySelector('.mndw-grid-tile__title')?.textContent).toBe('clock');
     expect(controller?.frame.querySelector('.mndw-grid-tile__close')).not.toBeNull();
-    expect(mountWidgetTile).toHaveBeenCalledWith(controller?.body, expect.anything(), expect.anything());
+    expect(mountWidgetTile).toHaveBeenCalledWith(
+      controller?.body,
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        errorText: hostServices.locale.hostT('dashboard.widget-error'),
+        pluginStylesheets: hostServices.pluginStylesheets,
+      }),
+    );
   });
 
   it('sets the host theme on the plugin body and updates it until removal', () => {
-    const priorTheme = getTheme();
+    const priorTheme = hostServices.theme.getTheme();
 
-    setTheme('dark');
+    hostServices.theme.setTheme('dark');
     vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('clock', noop));
 
     const controller = ensureTileController(pluginContextServices, pluginRegistry, 'clock', 'clock:1', vi.fn());
     const body = controller?.body;
 
     expect(body?.dataset.theme).toBe('dark');
-    setTheme('light');
+    hostServices.theme.setTheme('light');
     expect(body?.dataset.theme).toBe('light');
 
     removeTileController('widget-clock:1');
-    setTheme('dark');
+    hostServices.theme.setTheme('dark');
     expect(body?.dataset.theme).toBe('light');
-    setTheme(priorTheme);
+    hostServices.theme.setTheme(priorTheme);
   });
 
   it('updates the tile title and close aria-label via setTileTitle', () => {
@@ -599,7 +611,6 @@ describe('tile controller', () => {
     document.body.appendChild(controller?.frame ?? document.createElement('div'));
     removeTileController('widget-traffic:1');
 
-    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(controller?.handle.dispose).toHaveBeenCalledWith({
       clearStorage: true,
       closeReason: 'plugin-unmount',
@@ -616,12 +627,10 @@ describe('tile controller', () => {
 
     destroyAllTiles('host-navigation');
 
-    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(first?.handle.dispose).toHaveBeenCalledWith({
       clearStorage: false,
       closeReason: 'host-navigation',
     });
-    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(second?.handle.dispose).toHaveBeenCalledWith({
       clearStorage: false,
       closeReason: 'host-navigation',

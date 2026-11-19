@@ -8,9 +8,7 @@ const login = vi.fn<(user: string, password: string) => Observable<boolean>>();
 const initAuthenticated = vi.fn<() => Promise<void>>();
 
 vi.mock('../../services/rci.service.js', () => ({
-  rciService: {
-    login: (user: string, password: string) => login(user, password),
-  },
+  createRciService: () => ({login: (user: string, password: string) => login(user, password)}),
 }));
 vi.mock('../../services/init-auth.js', () => ({
   initAuthenticated: (): Promise<void> => initAuthenticated(),

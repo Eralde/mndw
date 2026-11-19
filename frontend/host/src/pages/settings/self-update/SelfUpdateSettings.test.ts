@@ -3,17 +3,25 @@ import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {mount, unmount} from 'svelte';
 import {defineMndwUi} from '@mndw/ui';
 import {type SelfUpdateClient, SelfUpdateError} from '../../../services/self-update-client.js';
-import {defaultOverlayRuntime} from '../../../services/overlay/overlay-manager.svelte.js';
+import {createHostServices} from '../../../host-services.js';
+import {createHostServicesContext} from '../../../host-services-context.js';
 import {hostT} from '../../../services/host-i18n.svelte.js';
 import {toast} from '../../../services/toast/toast.svelte.js';
 import SelfUpdateSettings from './SelfUpdateSettings.svelte';
 
+let activeServices!: ReturnType<typeof createHostServices>;
+
 const mountSettings = (client: SelfUpdateClient, options: {pollIntervalMs?: number; pollAttempts?: number} = {}) => {
   const target = document.createElement('div');
+  activeServices = createHostServices();
 
   document.body.appendChild(target);
 
-  const component = mount(SelfUpdateSettings, {target, props: {client, ...options}});
+  const component = mount(SelfUpdateSettings, {
+    target,
+    props: {client, ...options},
+    context: createHostServicesContext(activeServices),
+  });
 
   return {component, target};
 };
@@ -23,7 +31,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
-  for (const layer of [...defaultOverlayRuntime.store.layers]) {
+  for (const layer of [...activeServices.overlayRuntime.store.layers]) {
     layer.close(undefined, 'api');
   }
 
@@ -106,8 +114,8 @@ it('uses accepted apply target and terminal status version', async () => {
   target.querySelectorAll('mndw-button')[0]?.dispatchEvent(new Event('click', {bubbles: true}));
   await vi.waitFor(() => expect(target.textContent).toContain('Update available: 0.0.4'));
   target.querySelectorAll('mndw-button')[1]?.dispatchEvent(new Event('click', {bubbles: true}));
-  await vi.waitFor(() => expect(defaultOverlayRuntime.store.layers).toHaveLength(1));
-  defaultOverlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[1]?.click();
+  await vi.waitFor(() => expect(activeServices.overlayRuntime.store.layers).toHaveLength(1));
+  activeServices.overlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[1]?.click();
   await vi.waitFor(() => expect(target.textContent).toContain('Preparing update…'));
   resolveApply?.({operation: 'update', targetVersion: '0.0.5'});
   await vi.advanceTimersByTimeAsync(10);
@@ -141,16 +149,18 @@ it('requires confirmation before applying an update and opens a blocking progres
   await vi.waitFor(() => expect(target.textContent).toContain('Update available: 0.0.4'));
   target.querySelectorAll('mndw-button')[1]?.click();
 
-  await vi.waitFor(() => expect(defaultOverlayRuntime.store.layers).toHaveLength(1));
+  await vi.waitFor(() => expect(activeServices.overlayRuntime.store.layers).toHaveLength(1));
   expect(apply).not.toHaveBeenCalled();
-  expect(defaultOverlayRuntime.store.layers[0]?.contentElement.textContent).toContain('Install update to 0.0.4?');
+  expect(activeServices.overlayRuntime.store.layers[0]?.contentElement.textContent).toContain(
+    'Install update to 0.0.4?',
+  );
 
-  defaultOverlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[1]?.click();
+  activeServices.overlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[1]?.click();
 
   await vi.waitFor(() => expect(apply).toHaveBeenCalledOnce());
-  await vi.waitFor(() => expect(defaultOverlayRuntime.store.layers).toHaveLength(1));
+  await vi.waitFor(() => expect(activeServices.overlayRuntime.store.layers).toHaveLength(1));
 
-  const [progress] = defaultOverlayRuntime.store.layers;
+  const [progress] = activeServices.overlayRuntime.store.layers;
 
   expect(progress?.closeOnEscape).toBe(false);
   expect(progress?.shell?.showCloseButton).toBe(false);
@@ -168,11 +178,11 @@ it('requires confirmation before reverting', async () => {
   await vi.waitFor(() => expect(target.textContent).toContain('Rollback version: 0.0.2'));
   target.querySelectorAll('mndw-button')[2]?.click();
 
-  await vi.waitFor(() => expect(defaultOverlayRuntime.store.layers).toHaveLength(1));
+  await vi.waitFor(() => expect(activeServices.overlayRuntime.store.layers).toHaveLength(1));
   expect(revert).not.toHaveBeenCalled();
-  expect(defaultOverlayRuntime.store.layers[0]?.contentElement.textContent).toContain('Revert to 0.0.2?');
+  expect(activeServices.overlayRuntime.store.layers[0]?.contentElement.textContent).toContain('Revert to 0.0.2?');
 
-  defaultOverlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[1]?.click();
+  activeServices.overlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[1]?.click();
   await vi.waitFor(() => expect(revert).toHaveBeenCalledOnce());
 
   void unmount(component);
@@ -192,23 +202,23 @@ it('makes the progress modal closable when completion cannot be confirmed', asyn
   target.querySelectorAll('mndw-button')[0]?.click();
   await vi.waitFor(() => expect(target.textContent).toContain('Update available: 0.0.4'));
   target.querySelectorAll('mndw-button')[1]?.click();
-  await vi.waitFor(() => expect(defaultOverlayRuntime.store.layers).toHaveLength(1));
-  defaultOverlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[1]?.click();
+  await vi.waitFor(() => expect(activeServices.overlayRuntime.store.layers).toHaveLength(1));
+  activeServices.overlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[1]?.click();
 
   await vi.waitFor(() => expect(apply).toHaveBeenCalledOnce());
   await vi.waitFor(() =>
-    expect(defaultOverlayRuntime.store.layers[0]?.contentElement.textContent).toContain(
+    expect(activeServices.overlayRuntime.store.layers[0]?.contentElement.textContent).toContain(
       'Updating to 0.0.4…',
     )
   );
   await vi.advanceTimersByTimeAsync(10);
   await vi.waitFor(() =>
-    expect(defaultOverlayRuntime.store.layers[0]?.contentElement.textContent).toContain(
+    expect(activeServices.overlayRuntime.store.layers[0]?.contentElement.textContent).toContain(
       'Unable to confirm self-update completion.',
     )
   );
 
-  const [progress] = defaultOverlayRuntime.store.layers;
+  const [progress] = activeServices.overlayRuntime.store.layers;
 
   expect(progress?.contentElement.querySelector('[role="status"]')).not.toBeNull();
   expect(progress?.contentElement.querySelector('[role="alert"]')).toBeNull();
@@ -217,7 +227,7 @@ it('makes the progress modal closable when completion cannot be confirmed', asyn
   expect(progress?.contentElement.querySelector('mndw-button')).not.toBeNull();
 
   progress?.contentElement.querySelector('mndw-button')?.click();
-  await vi.waitFor(() => expect(defaultOverlayRuntime.store.layers).toHaveLength(0));
+  await vi.waitFor(() => expect(activeServices.overlayRuntime.store.layers).toHaveLength(0));
   expect(target.querySelector('[role="status"]')?.textContent).toContain(
     hostT('settings.self-update-unconfirmed'),
   );
@@ -254,8 +264,8 @@ describe('SelfUpdateSettings errors', () => {
     target.querySelectorAll('mndw-button')[0]?.click();
     await vi.waitFor(() => expect(target.textContent).toContain('Update available: 0.0.4'));
     target.querySelectorAll('mndw-button')[1]?.click();
-    await vi.waitFor(() => expect(defaultOverlayRuntime.store.layers).toHaveLength(1));
-    defaultOverlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[1]?.click();
+    await vi.waitFor(() => expect(activeServices.overlayRuntime.store.layers).toHaveLength(1));
+    activeServices.overlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[1]?.click();
 
     await vi.waitFor(() =>
       expect(toast.toasts[0]).toMatchObject({

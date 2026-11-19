@@ -41,7 +41,6 @@ import {
   createHostServicesContext,
   getHostServices,
 } from '../host-services-context.js';
-import {getPluginNavigationRouter} from '../router/create-app-router.js';
 import {HOST_PATHS} from '../router/host-routes.js';
 import {
   getPluginListRevision,
@@ -63,7 +62,11 @@ const pluginContextServices = {
   telemetry: services.telemetry,
   telemetryGathering: services.telemetryGathering,
   eventStream: services.eventStream,
-  navigation: getPluginNavigationRouter,
+  rci: services.rci,
+  theme: services.theme,
+  tickerPool: services.tickerPool,
+  overlayRuntime: services.overlayRuntime,
+  navigation: services.router.navigation,
 };
 
 function resolveWidgetSize(pluginName: string): WidgetSize | undefined {
@@ -420,6 +423,7 @@ function handleGridReady(readyGrid: GridStackType): void {
 
       addWidgetTile(
         pluginContextServices,
+        services.pluginStylesheets,
         registry,
         readyGrid,
         parsed.pluginName,
@@ -495,6 +499,7 @@ function syncDesktopGridToTiles(): void {
 
       addWidgetTile(
         pluginContextServices,
+        services.pluginStylesheets,
         registry,
         grid,
         parsed.pluginName,
@@ -552,6 +557,7 @@ function addMobileWidget(pluginName: string): string | null {
     pluginName,
     instanceId,
     requestRemoveTile,
+    services.pluginStylesheets,
   );
 
   if (controller === null) {
@@ -585,6 +591,7 @@ function handleAddWidget(pluginName: string): string | null {
 
   const id = addWidgetTile(
     pluginContextServices,
+    services.pluginStylesheets,
     registry,
     activeGrid,
     pluginName,
@@ -650,18 +657,22 @@ function openAddWidgetModal(): void {
 
   const opener = document.activeElement;
   let addedWidgetId: string | null = null;
-  const session = openHostModal<undefined, AddPanelProps>(FloatingAddPanel, {
-    title: hostT('dashboard.add-widget'),
-    props: {
-      onAddWidget: (pluginName) => {
-        addedWidgetId = handleAddWidget(pluginName);
+  const session = openHostModal<undefined, AddPanelProps>(
+    services.hostOverlay,
+    FloatingAddPanel,
+    {
+      title: hostT('dashboard.add-widget'),
+      props: {
+        onAddWidget: (pluginName) => {
+          addedWidgetId = handleAddWidget(pluginName);
 
-        return addedWidgetId;
+          return addedWidgetId;
+        },
       },
+      closeOnOutsideClick: true,
+      context: hostModalContext,
     },
-    closeOnOutsideClick: true,
-    context: hostModalContext,
-  });
+  );
 
   addPanelSession = session;
   void session.closed.then(async () => {
@@ -693,6 +704,7 @@ function openOrderModal(): void {
 
   orderOverlayOpen = true;
   const session = openHostModal<undefined, OrderOverlayProps>(
+    services.hostOverlay,
     MobileOrderOverlay,
     {
       title: hostT('dashboard.arrange-widgets'),

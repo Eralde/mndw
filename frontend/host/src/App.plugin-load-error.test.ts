@@ -1,15 +1,12 @@
 // @vitest-environment happy-dom
-import {defineMndwUi} from '@mndw/ui';
 import {flushSync, mount, unmount} from 'svelte';
-import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {defineMndwUi} from '@mndw/ui';
 import {initAuthenticated} from './services/init-auth.js';
 import {loadPlugins} from './runtime/plugin-loader.js';
 import type {PluginListEntry} from './runtime/plugin-types.js';
-import {uiOverlayService} from './services/overlay/ui-overlay.js';
 import {appState, beginAuthRun, getAuthRunGeneration, resetToLogin} from './state/app.svelte.js';
 import {type HostEnv, createHostServices} from './host-services.js';
-import {appRouter, createAppRouter} from './router/create-app-router.js';
-import {pluginRegistry} from './runtime/plugin-registry.js';
 import App from './App.svelte';
 
 const grid = vi.hoisted(() => ({
@@ -29,15 +26,16 @@ let target: HTMLDivElement;
 let component: ReturnType<typeof mount>;
 let services: ReturnType<typeof createHostServices>;
 
-function render(withRouter = false, env: HostEnv = {}): void {
+async function render(withRouter = false, env: HostEnv = {}): Promise<void> {
   target = document.createElement('div');
   document.body.appendChild(target);
   services = createHostServices(env);
+  await services.locale.setLocale(appState.locale);
+  defineMndwUi({overlay: services.overlay, initialLocale: services.locale.getLocale()});
 
   if (withRouter) {
-    pluginRegistry.clear();
-    services = {...services, registry: pluginRegistry};
-    createAppRouter(services.registry);
+    services.registry.clear();
+    services.router.create(services.registry);
   }
 
   component = mount(App, {target, props: {services}});
@@ -51,10 +49,6 @@ function retryButton(root: ParentNode): RetryButton | null {
   return root.querySelector<RetryButton>('.mndw-plugin-load-alert mndw-button');
 }
 
-beforeAll(() => {
-  defineMndwUi({overlay: uiOverlayService, initialLocale: 'en'});
-});
-
 beforeEach(() => {
   appState.authenticated = true;
   appState.ready = false;
@@ -63,15 +57,14 @@ beforeEach(() => {
   appState.authInitInFlight = false;
   appState.pluginLoadRevision = 0;
   appState.pluginLoadFailureSeq = 0;
-  pluginRegistry.clear();
   vi.mocked(initAuthenticated).mockReset();
 });
 
 afterEach(() => {
   void unmount(component);
-  uiOverlayService.closeAll();
+  services.overlay.closeAll();
   document.body.innerHTML = '';
-  pluginRegistry.clear();
+  services.registry.clear();
   globalThis.history.replaceState({}, '', '/');
 });
 
@@ -82,7 +75,7 @@ describe('plugin list failure alert', () => {
   ])('renders localized alert in %s', async (locale, message, retry) => {
     appState.locale = locale;
     appState.ready = true;
-    render(true);
+    await render(true);
 
     await vi.waitFor(() => {
       expect(target.querySelector('[role="alert"]')?.textContent).toContain(message);
@@ -104,6 +97,7 @@ describe('plugin list failure alert', () => {
           }),
         registry: retryServices.registry,
         catalogService: retryServices.catalog,
+        pluginStylesheets: retryServices.pluginStylesheets,
         getLocale: () => retryServices.locale.getLocale(),
         importModule: () => Promise.resolve({createInstance: () => ({unmount() {}})}),
         acquireStylesheet: () => ({loaded: Promise.resolve(), release: () => {}}),
@@ -115,7 +109,7 @@ describe('plugin list failure alert', () => {
       return getAuthRunGeneration();
     });
     appState.ready = true;
-    render(true);
+    await render(true);
 
     await vi.waitFor(() => {
       expect(retryButton(target)).not.toBeNull();
@@ -149,7 +143,7 @@ describe('plugin list failure alert', () => {
 
   it('remounts dashboard and sidebar after retry registers widgets and pages', async () => {
     appState.ready = true;
-    render(true);
+    await render(true);
     const createPageInstance = vi.fn((container: HTMLElement) => {
       container.textContent = 'Retry page mounted';
 
@@ -193,7 +187,7 @@ describe('plugin list failure alert', () => {
         },
         module: {createInstance: createPageInstance},
       });
-      createAppRouter(retryServices.registry);
+      retryServices.router.create(retryServices.registry);
       appState.pluginLoadError = null;
 
       return Promise.resolve(getAuthRunGeneration());
@@ -206,7 +200,7 @@ describe('plugin list failure alert', () => {
         .toContain('Add widget');
       expect(target.querySelector('a[href="/retry-page"]')?.textContent)
         .toContain('Retry page');
-      expect(appRouter.pluginPages.baseRouteOf('retry-page')).toBe('/retry-page');
+      expect(services.router.current?.pluginPages.baseRouteOf('retry-page')).toBe('/retry-page');
     }, {timeout: 5000});
 
     target.querySelector<HTMLAnchorElement>('a[href="/retry-page"]')?.click();
@@ -216,7 +210,7 @@ describe('plugin list failure alert', () => {
       expect(target.textContent).toContain('Retry page mounted');
     });
 
-    await appRouter.navigate('/', {replace: true});
+    await services.router.current?.navigate('/', {replace: true});
 
     target.querySelector<HTMLElement>('.mndw-empty-state mndw-button')?.click();
 
@@ -261,7 +255,7 @@ describe('plugin list failure alert', () => {
     // Deep link to a page plugin while the list is down: the router falls back to the dashboard.
     globalThis.history.replaceState({}, '', '/my-page');
     appState.ready = true;
-    render(true, {
+    await render(true, {
       fetch: vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response('{}', {status: 404})),
     });
 
@@ -285,7 +279,7 @@ describe('plugin list failure alert', () => {
       return getAuthRunGeneration();
     });
     appState.ready = true;
-    render(true);
+    await render(true);
 
     await vi.waitFor(() => {
       expect(target.querySelector('[role="alert"]')).not.toBeNull();
@@ -312,7 +306,7 @@ describe('plugin list failure alert', () => {
       return getAuthRunGeneration();
     });
     appState.ready = true;
-    render(true);
+    await render(true);
 
     await vi.waitFor(() => {
       expect(retryButton(target)).not.toBeNull();
@@ -373,7 +367,7 @@ describe('plugin list failure alert', () => {
     });
 
     appState.ready = true;
-    render(true, {
+    await render(true, {
       fetch: vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response('{}', {status: 404})),
     });
 
@@ -414,7 +408,7 @@ describe('plugin list failure alert', () => {
       return staleRetry;
     });
     appState.ready = true;
-    render();
+    await render();
     await vi.waitFor(() => expect(retryButton(target)).not.toBeNull());
 
     retryButton(target)?.click();
@@ -437,7 +431,7 @@ describe('plugin list failure alert', () => {
       return Promise.reject(new Error('current failure'));
     });
     appState.ready = true;
-    render();
+    await render();
     await vi.waitFor(() => expect(retryButton(target)).not.toBeNull());
 
     retryButton(target)?.click();
@@ -448,7 +442,7 @@ describe('plugin list failure alert', () => {
 
   it('clears the previous list error when logout returns to login', async () => {
     appState.ready = true;
-    render(true);
+    await render(true);
 
     await vi.waitFor(() => {
       expect(target.querySelector('[role="alert"]')).not.toBeNull();
@@ -464,7 +458,7 @@ describe('plugin list failure alert', () => {
   it('disables retry while authenticated initialization is in flight', async () => {
     appState.authInitInFlight = true;
     appState.ready = true;
-    render(true);
+    await render(true);
 
     await vi.waitFor(() => {
       expect(retryButton(target)).not.toBeNull();

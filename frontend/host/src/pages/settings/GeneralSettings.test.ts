@@ -5,10 +5,12 @@ import {flushSync, mount, unmount} from 'svelte';
 import {type HostServices, createHostServices} from '../../host-services.js';
 import {createHostServicesContext} from '../../host-services-context.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
-import {setLocale} from '../../services/locale.service.js';
 import {toast} from '../../services/toast/toast.svelte.js';
+import {createTestLocaleController} from '../../testing/test-locale.js';
 import type {ControllerTestResult, PersistentRciCapability} from '../../services/persistent-rci-session.service.js';
 import GeneralSettings from './GeneralSettings.svelte';
+
+const {services: localeServices, setLocale} = createTestLocaleController();
 
 const getCapability = vi.fn<() => Promise<PersistentRciCapability>>();
 const testController = vi.fn<(token: string) => Promise<ControllerTestResult>>();
@@ -40,6 +42,7 @@ function createServices(): HostServices {
 
   return {
     ...services,
+    locale: localeServices.locale,
     mgmtClient: {...services.mgmtClient, getTelemetry, setTelemetry},
     telemetryGathering: {...services.telemetryGathering, report: reportTelemetryGathering},
     palette: {...services.palette, refreshPalette},
@@ -154,6 +157,19 @@ describe('GeneralSettings telemetry section', () => {
 
     expect(interfaceSection?.querySelector('mndw-select')).not.toBeNull();
     expect(deviceSection?.querySelector('mndw-select')).toBeNull();
+  });
+
+  it('updates an already-mounted heading through its injected locale translator', async () => {
+    render();
+
+    const deviceHeading = [...target.querySelectorAll('h3')]
+      .find((heading) => heading.textContent === localeServices.locale.hostT('settings.device'));
+
+    expect(deviceHeading?.textContent).toBe('Device');
+
+    await setLocale('ru');
+
+    await vi.waitFor(() => expect(deviceHeading?.textContent).toBe('Устройство'));
   });
 
   it('shows extender count and access problems in a collapsed summary', async () => {

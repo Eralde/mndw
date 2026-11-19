@@ -31,19 +31,21 @@ vi.mock('./breakpoint.js', () => ({
 
 vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('../runtime/plugin-registry.js')>(),
-  pluginRegistry: {getPages: vi.fn(() => [])},
 }));
 
-import {type LoadedPage, pluginRegistry} from '../runtime/plugin-registry.js';
+import {type LoadedPage, PluginRegistry} from '../runtime/plugin-registry.js';
 import type {PageListEntry} from '../runtime/plugin-types.js';
 import {replacePluginLoadStates, setPluginLoadState} from '../runtime/plugin-load-state.svelte.js';
-import {setLocale} from '../services/locale.service.js';
 import {appState} from '../state/app.svelte.js';
 import Sidebar from './Sidebar.svelte';
 import Header from './Header.svelte';
 import {SIDEBAR_TOGGLE_ID} from './ids.js';
-import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
+import {createTestLocaleController} from '../testing/test-locale.js';
+
+const getPages = vi.fn<() => LoadedPage[]>(() => []);
+const pluginRegistry = {getPages} as unknown as PluginRegistry;
+const {services, setLocale} = createTestLocaleController();
 
 const emptyBackend = {routes: {}};
 
@@ -72,7 +74,7 @@ function mountSidebar(): {component: ReturnType<typeof mount>; target: HTMLEleme
 
   const component = mount(Sidebar, {
     target,
-    context: createHostServicesContext({...createHostServices(), registry: pluginRegistry}),
+    context: createHostServicesContext({...services, registry: pluginRegistry}),
   });
 
   flushSync();
@@ -124,7 +126,7 @@ describe('Sidebar', () => {
 
   describe('with page plugins', () => {
     beforeEach(() => {
-      vi.mocked(pluginRegistry).getPages.mockReturnValue([
+      getPages.mockReturnValue([
         page('zeta', 'Traffic', '/traffic'),
         page('beta-status', 'Status', '/beta-status'),
         page('alpha-status', 'Status', '/alpha-status'),
@@ -176,7 +178,7 @@ describe('Sidebar', () => {
 
   describe('without page plugins', () => {
     beforeEach(() => {
-      vi.mocked(pluginRegistry).getPages.mockReturnValue([]);
+      getPages.mockReturnValue([]);
     });
 
     it('omits the Plugins heading and shows only Dashboard, Entware and Settings', () => {
@@ -207,7 +209,7 @@ describe('Sidebar', () => {
       expect(warning?.getAttribute('title')).toBe('Page failed to load');
       expect(link?.querySelector('.mndw-visually-hidden')?.textContent).toBe('Page failed to load');
 
-      vi.mocked(pluginRegistry).getPages.mockReturnValue([failedPage]);
+      getPages.mockReturnValue([failedPage]);
       setPluginLoadState('failed-page', 'loaded');
       flushSync();
 
@@ -220,7 +222,7 @@ describe('Sidebar', () => {
       const acceptedPage = page('accepted-page', 'Accepted page', '/shared');
       const rejectedPage = page('rejected-page', 'Rejected page', '/shared');
 
-      vi.mocked(pluginRegistry).getPages.mockReturnValue([acceptedPage]);
+      getPages.mockReturnValue([acceptedPage]);
       replacePluginLoadStates([acceptedPage.entry, rejectedPage.entry]);
       setPluginLoadState('accepted-page', 'loaded');
       setPluginLoadState('rejected-page', 'not-runnable');
@@ -437,7 +439,7 @@ describe('Sidebar', () => {
       const {component, target} = mountSidebar();
       const header = mount(Header, {
         target,
-        context: createHostServicesContext(createHostServices()),
+        context: createHostServicesContext({...services, registry: pluginRegistry}),
       });
       const link = target.querySelector<HTMLAnchorElement>('.mndw-sidebar__link');
       const menu = target.querySelector<HTMLElement>(`#${SIDEBAR_TOGGLE_ID}`);
@@ -462,7 +464,7 @@ describe('Sidebar', () => {
       const {component, target} = mountSidebar();
       const header = mount(Header, {
         target,
-        context: createHostServicesContext(createHostServices()),
+        context: createHostServicesContext({...services, registry: pluginRegistry}),
       });
       const link = target.querySelector<HTMLAnchorElement>('.mndw-sidebar__link');
       const menu = target.querySelector<HTMLElement>(`#${SIDEBAR_TOGGLE_ID}`);
@@ -558,7 +560,7 @@ describe('Sidebar', () => {
   });
 
   it('marks a plugin parent active for a nested plugin route', () => {
-    vi.mocked(pluginRegistry).getPages.mockReturnValue([
+    getPages.mockReturnValue([
       page('traffic', 'Traffic', '/traffic'),
     ]);
     window.history.replaceState(null, '', '/traffic/details');

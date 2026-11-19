@@ -12,7 +12,6 @@ import {
 } from '../runtime/plugin-load-state.svelte.js';
 import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
-import {createAppRouter} from '../router/create-app-router.js';
 import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
 import {ScopedPluginStorage} from '../services/storage.service.js';
 import {toast} from '../services/toast/toast.svelte.js';
@@ -132,7 +131,7 @@ function prepareDashboard(): void {
   replacePluginLoadStates([widgetEntry]);
   setPluginLoadState(PLUGIN_NAME, 'loaded');
   setPluginLoadListOutcome('ok');
-  createAppRouter(registry);
+  services.router.create(registry);
 
   pendingMount = deferred<PluginInstance>();
   instance = {

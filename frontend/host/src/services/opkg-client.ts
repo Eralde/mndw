@@ -237,5 +237,3 @@ export function createOpkgClient(fetchImpl: typeof globalThis.fetch = globalThis
     },
   };
 }
-
-export const opkgClient: OpkgClient = createOpkgClient();

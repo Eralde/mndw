@@ -8,12 +8,11 @@ import {mount} from 'svelte';
 import App from './App.svelte';
 import {initAuthenticated} from './services/init-auth.js';
 import './services/pristine-fetch.js';
-import {initTheme} from './services/theme.service.js';
 import {appState, getAuthRunGeneration, resetToLogin} from './state/app.svelte.js';
 import {initialize} from './startup.js';
-import {appHostServices} from './host-services.js';
+import {createHostServices} from './host-services.js';
 
-const services = appHostServices();
+const services = createHostServices();
 
 // A broken plugin must never take down the host. These window-level guards swallow
 // errors originating from plugin bundle URLs; the per-widget error boundary
@@ -75,7 +74,7 @@ async function init(): Promise<void> {
   await initialize({
     initLocale: () => services.locale.initLocale(),
     defineUi: (locale) => defineMndwUi({overlay: services.overlay, initialLocale: locale, iconSpriteUrl}),
-    initTheme,
+    initTheme: () => services.theme.initTheme(),
     initPalette: () => services.palette.initPalette(),
     checkAuthenticated,
     setAuthenticated: (authenticated) => {

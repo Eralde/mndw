@@ -21,8 +21,6 @@ import {
 import {decodeMgmtList, decodeMgmtListEntry} from '../runtime/mgmt-list-schema.js';
 import {decodeDeviceHardware, emptySwitchports} from '../runtime/device-info-schema.js';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
-import {hostT} from './locale.service.js';
-import {getUploadLimitLabel} from './upload-limit.js';
 import {isNonEmptyString, isRecord} from './json.js';
 import {HostApiError, createRestClient, malformedApiResponse} from './rest.js';
 
@@ -294,8 +292,6 @@ export function createMgmtClient(
   };
 }
 
-export const mgmtClient: MgmtClient = createMgmtClient();
-
 const MESSAGE_KEYS: Record<string, string> = {
   INVALID_ZIP: 'errors.invalid-zip',
   MANIFEST_MISSING: 'errors.manifest-missing',
@@ -314,7 +310,11 @@ const MESSAGE_KEYS: Record<string, string> = {
   RCI_SOCKET_START_FAILED: 'errors.rci-socket-start-failed',
 };
 
-export function messageForError(error: unknown): string {
+export function messageForError(
+  error: unknown,
+  hostT: (key: string, values?: Record<string, unknown>) => string,
+  getUploadLimitLabel: () => string,
+): string {
   if (error instanceof DOMException && error.name === 'TimeoutError') {
     return hostT('errors.device-timeout');
   }

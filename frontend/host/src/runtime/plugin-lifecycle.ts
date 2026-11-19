@@ -2,7 +2,7 @@ import type {PluginContext, PluginInstance} from '@mndw/sdk';
 import {clearInstanceStorage} from '../services/storage.service.js';
 import type {OverlayDispose, PluginContextHandle} from './plugin-context.js';
 import type {LoadedPlugin} from './plugin-registry.js';
-import {type PluginStylesheetLease, pluginStylesheets} from './plugin-stylesheets.js';
+import {type PluginStylesheetLease, type PluginStylesheets} from './plugin-stylesheets.js';
 
 export type OverlayTeardownReason = 'plugin-unmount' | 'host-navigation';
 
@@ -21,6 +21,7 @@ export interface MountedPlugin {
 
 export interface PluginMountOptions {
   errorText?: string;
+  pluginStylesheets?: PluginStylesheets;
 }
 
 export interface PluginUnmountOptions {
@@ -30,10 +31,10 @@ export interface PluginUnmountOptions {
 }
 
 export interface PluginMountHandle {
-  getMounted(): MountedPlugin | null;
-  dispose(options?: PluginUnmountOptions): void;
+  getMounted(this: void): MountedPlugin | null;
+  dispose(this: void, options?: PluginUnmountOptions): void;
   /** Resolves once createInstance settles; true on success, false on failure. */
-  whenReady(): Promise<boolean>;
+  whenReady(this: void): Promise<boolean>;
 }
 
 function isPromiseLike<T>(value: T | PromiseLike<T>): value is PromiseLike<T> {
@@ -52,7 +53,7 @@ export function mountPlugin(
   options?: PluginMountOptions,
 ): Promise<MountedPlugin | null> | MountedPlugin | null {
   const name = plugin.entry.name;
-  const stylesheetLease = pluginStylesheets.retain(name, plugin.entry.version);
+  const stylesheetLease = options?.pluginStylesheets?.retain(name, plugin.entry.version);
 
   try {
     const result = plugin.module.createInstance(container, context);
@@ -68,7 +69,7 @@ export function mountPlugin(
         }))
         .catch((err: unknown) => {
           console.error(`[mndw] Plugin "${name}" createInstance failed:`, err);
-          stylesheetLease.release();
+          stylesheetLease?.release();
 
           // Nothing mounted, but the overlay service was created with the context.
           disposeOverlayService('plugin-unmount');
@@ -90,7 +91,7 @@ export function mountPlugin(
     };
   } catch (err) {
     console.error(`[mndw] Plugin "${name}" createInstance failed:`, err);
-    stylesheetLease.release();
+    stylesheetLease?.release();
 
     disposeOverlayService('plugin-unmount');
 

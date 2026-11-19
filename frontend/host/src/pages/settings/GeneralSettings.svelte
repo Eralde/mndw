@@ -3,8 +3,6 @@ import {onDestroy, onMount} from 'svelte';
 import type {MndwSelectChangeDetail, MndwSwitchChangeDetail} from '@mndw/ui';
 import PaletteManager from './palette-manager/PaletteManager.svelte';
 import ConfirmActionModal from '../opkg/ConfirmActionModal.svelte';
-import {toggleTheme} from '../../services/theme.service.js';
-import {hostT} from '../../services/host-i18n.svelte.js';
 import {openHostModal} from '../../services/overlay/host-overlay.js';
 import {toast} from '../../services/toast/toast.svelte.js';
 import {appState} from '../../state/app.svelte.js';
@@ -40,6 +38,7 @@ let {onCapabilityStateChange}: Props = $props();
 const services = getHostServices();
 const locale = services.locale;
 const persistentRci = services.persistentRci;
+const hostT = locale.hostT;
 
 let persistentCapability = $state<PersistentRciCapability | null>(null);
 let persistentAuth = $derived.by(() =>
@@ -328,6 +327,7 @@ async function saveController(): Promise<void> {
 
 async function clearController(): Promise<void> {
   const session = openHostModal<boolean, ConfirmationProps>(
+    services.hostOverlay,
     ConfirmActionModal,
     {
       title: hostT('settings.clear-controller-session-title'),
@@ -482,7 +482,7 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
       <mndw-switch
         id="mndw-theme-switch"
         checked={appState.theme === 'dark'}
-        onmndwchange={toggleTheme}
+        onmndwchange={services.theme.toggleTheme}
       >
       </mndw-switch>
     </mndw-field>

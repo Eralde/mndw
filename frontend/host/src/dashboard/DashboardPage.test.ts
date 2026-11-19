@@ -110,13 +110,12 @@ vi.mock('../services/storage.service.js', async (importOriginal) => {
 
 vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('../runtime/plugin-registry.js')>(),
-  pluginRegistry: {get: vi.fn(), getWidgets: vi.fn(() => [])},
 }));
 
 import {addWidgetTile, resizeWidgetTile} from './grid-dashboard-setup.js';
 import {destroyAllTiles, ensureTileController, removeTileController} from './tile-controller.js';
 import {loadDashboardLayout, parseWidgetTileId, saveDashboardLayout} from './grid-layout-persistence.js';
-import {PluginRegistry, pluginRegistry} from '../runtime/plugin-registry.js';
+import {PluginRegistry} from '../runtime/plugin-registry.js';
 import {appState} from '../state/app.svelte.js';
 import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {raiseInstanceCounter} from './widget-counter.js';
@@ -132,13 +131,17 @@ import {
 } from '../runtime/plugin-load-state.svelte.js';
 import DashboardPage from './DashboardPage.svelte';
 import OverlayHost from '../components/overlay/OverlayHost.svelte';
-import {defaultOverlayRuntime} from '../services/overlay/overlay-manager.svelte.js';
 import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
 import {toast} from '../services/toast/toast.svelte.js';
 import {loadSandboxPlugin} from '../runtime/sandbox-loader.js';
 
 const overlayHosts: ReturnType<typeof mount>[] = [];
+const pluginRegistry = {
+  get: vi.fn(),
+  getWidgets: vi.fn(() => []),
+} as unknown as PluginRegistry;
+const hostServices = {...createHostServices(), registry: pluginRegistry};
 
 const emptyBackend = {routes: {}};
 
@@ -214,11 +217,11 @@ function mountPage(): {component: ReturnType<typeof mount>; target: HTMLElement}
 
   document.body.appendChild(target);
   document.body.appendChild(overlayTarget);
-  overlayHosts.push(mount(OverlayHost, {target: overlayTarget}));
+  overlayHosts.push(mount(OverlayHost, {target: overlayTarget, props: {runtime: hostServices.overlayRuntime}}));
 
   const component = mount(DashboardPage, {
     target,
-    context: createHostServicesContext({...createHostServices(), registry: pluginRegistry}),
+    context: createHostServicesContext(hostServices),
   });
 
   flushSync();
@@ -264,13 +267,13 @@ describe('DashboardPage', () => {
   });
 
   afterEach(async () => {
-    for (const layer of [...defaultOverlayRuntime.store.layers]) {
+    for (const layer of [...hostServices.overlayRuntime.store.layers]) {
       layer.close();
     }
 
     await vi.waitFor(() => {
       flushSync();
-      expect(defaultOverlayRuntime.store.layers).toHaveLength(0);
+      expect(hostServices.overlayRuntime.store.layers).toHaveLength(0);
     });
     await Promise.all(overlayHosts.splice(0).map((overlay) => unmount(overlay)));
     toast.clear();
@@ -300,6 +303,7 @@ describe('DashboardPage', () => {
     expect(addWidgetTile).toHaveBeenNthCalledWith(
       1,
       expect.anything(),
+      expect.anything(),
       pluginRegistry,
       fakeGrid,
       'traffic',
@@ -314,6 +318,7 @@ describe('DashboardPage', () => {
     );
     expect(addWidgetTile).toHaveBeenNthCalledWith(
       2,
+      expect.anything(),
       expect.anything(),
       pluginRegistry,
       fakeGrid,
@@ -347,6 +352,7 @@ describe('DashboardPage', () => {
 
     expect(addWidgetTile).toHaveBeenCalledWith(
       expect.anything(),
+      expect.anything(),
       pluginRegistry,
       fakeGrid,
       'broken',
@@ -355,7 +361,7 @@ describe('DashboardPage', () => {
     );
     expect(desktop.target.querySelector('.mndw-empty-state')).toBeNull();
 
-    const onRemove = vi.mocked(addWidgetTile).mock.calls[0]?.[4];
+    const onRemove = vi.mocked(addWidgetTile).mock.calls[0]?.[5];
 
     onRemove?.('widget-broken:5');
 
@@ -373,6 +379,7 @@ describe('DashboardPage', () => {
       'broken',
       'broken:5',
       expect.any(Function),
+      expect.anything(),
     );
     expect(mobile.target.querySelector('.mndw-mobile-tile')).not.toBeNull();
     expect(mobile.target.querySelector('.mndw-empty-state')).toBeNull();
@@ -452,6 +459,7 @@ describe('DashboardPage', () => {
 
     expect(addWidgetTile).toHaveBeenCalledWith(
       expect.anything(),
+      expect.anything(),
       pluginRegistry,
       fakeGrid,
       'clock',
@@ -507,10 +515,12 @@ describe('DashboardPage', () => {
         'clock',
         'clock:1',
         expect.any(Function),
+        expect.anything(),
       );
     } else {
       expect(addWidgetTile).toHaveBeenCalledTimes(1);
       expect(addWidgetTile).toHaveBeenCalledWith(
+        expect.anything(),
         expect.anything(),
         pluginRegistry,
         fakeGrid,
@@ -942,6 +952,7 @@ describe('DashboardPage', () => {
 
       expect(addWidgetTile).toHaveBeenCalledWith(
         expect.anything(),
+        expect.anything(),
         pluginRegistry,
         fakeGrid,
         'traffic',
@@ -981,7 +992,7 @@ describe('DashboardPage', () => {
       name === 'traffic' ? trafficPlugin : name === 'weather' ? weatherPlugin : undefined
     );
     vi.mocked(pluginRegistry).getWidgets.mockReturnValue([trafficPlugin, weatherPlugin]);
-    vi.mocked(addWidgetTile).mockImplementation((_services, _registry, _grid, name) => {
+    vi.mocked(addWidgetTile).mockImplementation((_services, _stylesheets, _registry, _grid, name) => {
       const id = `widget-${name}:1`;
       const tile = document.createElement('div');
 
@@ -1037,8 +1048,8 @@ describe('DashboardPage', () => {
     vi.stubGlobal('__MNDW_SANDBOX__', 'virtual');
     setPluginLoadListOutcome('pending');
 
-    const sandboxRegistry = new PluginRegistry();
     const services = createHostServices();
+    const sandboxRegistry = services.registry;
 
     await loadSandboxPlugin({
       importPluginModule: () => Promise.resolve({createInstance: vi.fn()}),
@@ -1056,6 +1067,7 @@ describe('DashboardPage', () => {
       catalogService: services.catalog,
       getLocale: () => services.locale.getLocale(),
       pluginContextServices: {} as never,
+      pluginStylesheets: services.pluginStylesheets,
     });
 
     vi.mocked(pluginRegistry).get.mockImplementation((name: string) => sandboxRegistry.get(name));
@@ -1086,6 +1098,7 @@ describe('DashboardPage', () => {
       flushSync();
 
       expect(addWidgetTile).toHaveBeenCalledWith(
+        expect.anything(),
         expect.anything(),
         pluginRegistry,
         fakeGrid,
@@ -1304,6 +1317,7 @@ describe('DashboardPage', () => {
     expect(saveDashboardLayout).not.toHaveBeenCalled();
     expect(addWidgetTile).toHaveBeenLastCalledWith(
       expect.anything(),
+      expect.anything(),
       pluginRegistry,
       fakeGrid,
       'clock',
@@ -1436,6 +1450,7 @@ describe('DashboardPage', () => {
       'clock',
       'clock:1',
       expect.any(Function),
+      expect.anything(),
     );
     expect(toast.toasts).toHaveLength(0);
     expect(localStorage.getItem('mndw:plugin:clock:instance:clock:1:settings')).toBe('saved');

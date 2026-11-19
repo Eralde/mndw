@@ -5,6 +5,7 @@ import {getWidgetSize} from './widget-size.js';
 import type {PluginContextServices} from '../runtime/plugin-context.js';
 import type {LoadedPlugin, LoadedWidget, PluginRegistry} from '../runtime/plugin-registry.js';
 import {getPluginLoadState} from '../runtime/plugin-load-state.svelte.js';
+import type {PluginStylesheets} from '../runtime/plugin-stylesheets.js';
 
 function isLoadedWidget(plugin: LoadedPlugin | undefined): plugin is LoadedWidget {
   return plugin?.entry.type === 'widget';
@@ -32,6 +33,7 @@ export interface RestoredTilePosition {
  */
 export function addWidgetTile(
   pluginContextServices: PluginContextServices,
+  pluginStylesheets: PluginStylesheets,
   registry: Pick<PluginRegistry, 'get'>,
   grid: GridStack,
   pluginName: string,
@@ -50,7 +52,14 @@ export function addWidgetTile(
   }
 
   const instanceId = position?.instanceId ?? getNextInstanceId(pluginName);
-  const controller = ensureTileController(pluginContextServices, registry, pluginName, instanceId, onRemoveRequest);
+  const controller = ensureTileController(
+    pluginContextServices,
+    registry,
+    pluginName,
+    instanceId,
+    onRemoveRequest,
+    pluginStylesheets,
+  );
 
   if (controller === null) {
     return null;

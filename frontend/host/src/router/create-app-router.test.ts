@@ -1,15 +1,28 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
 
-vi.mock('../runtime/plugin-registry.js', () => ({
-  pluginRegistry: {getPages: vi.fn(() => []), getWidgets: vi.fn(() => [])},
-}));
+vi.mock('../runtime/plugin-registry.js', () => ({}));
 
-import {type LoadedPage, type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
+import type {LoadedPage, LoadedPlugin} from '../runtime/plugin-registry.js';
 import type {PageListEntry, WidgetListEntry} from '../runtime/plugin-types.js';
 import {replacePluginLoadStates, setPluginLoadState} from '../runtime/plugin-load-state.svelte.js';
 import PagePluginHost from '../pages/PagePluginHost.svelte';
-import {buildPluginRoutes, createAppRouter, refreshPluginRoutes, resolvePageRoute} from './create-app-router.js';
+import {
+  buildPluginRoutes as buildPluginRoutesForRegistry,
+  createAppRouterService,
+  resolvePageRoute,
+} from './create-app-router.js';
+
+const pluginRegistry = {
+  getPages: vi.fn((): LoadedPage[] => []),
+  getWidgets: vi.fn((): LoadedPlugin[] => []),
+};
+
+function buildPluginRoutes(
+  registry: Parameters<typeof buildPluginRoutesForRegistry>[0] = pluginRegistry,
+): ReturnType<typeof buildPluginRoutesForRegistry> {
+  return buildPluginRoutesForRegistry(registry);
+}
 
 const emptyBackend = {routes: {}};
 
@@ -251,7 +264,7 @@ describe('createAppRouter', () => {
   it('keeps the static shell routes reachable alongside page routes', async () => {
     vi.mocked(pluginRegistry).getPages.mockReturnValue([page('status', 'Status', '/status')]);
 
-    const router = createAppRouter();
+    const router = createAppRouterService().create(pluginRegistry);
 
     await router.navigate('/settings');
     expect(router.route.pathname).toBe('/settings');
@@ -276,7 +289,7 @@ describe('createAppRouter', () => {
   it('preserves raw child spelling at the router boundary', async () => {
     vi.mocked(pluginRegistry).getPages.mockReturnValue([page('mws-page', 'MWS', '/mws')]);
 
-    const router = createAppRouter();
+    const router = createAppRouterService().create(pluginRegistry);
 
     await router.navigate('/mws/clients%20archive//');
 
@@ -291,19 +304,20 @@ describe('createAppRouter', () => {
   it('adds routes in place and returns to dashboard when current plugin page is removed', async () => {
     let pages = [page('live-page', 'Live page', '/live')];
     const injectedRegistry = {getPages: vi.fn(() => pages)};
-    const router = createAppRouter(injectedRegistry);
+    const routerService = createAppRouterService();
+    const router = routerService.create(injectedRegistry);
 
     await router.navigate('/live');
     expect(router.route.pathname).toBe('/live');
 
     pages = [page('new-page', 'New page', '/new')];
-    refreshPluginRoutes();
+    routerService.refresh(injectedRegistry);
     expect(router.pluginPages.baseRouteOf('new-page')).toBe('/new');
     await router.navigate('/new');
     expect(router.route.pathname).toBe('/new');
 
     pages = [];
-    refreshPluginRoutes();
+    routerService.refresh(injectedRegistry);
     await vi.waitFor(() => expect(router.route.pathname).toBe('/'));
     expect(router.pluginPages.baseRouteOf('new-page')).toBeUndefined();
   });
@@ -312,10 +326,38 @@ describe('createAppRouter', () => {
     window.history.replaceState(null, '', '/mws/%GG?mode=large#node-7');
     vi.mocked(pluginRegistry).getPages.mockReturnValue([page('mws-page', 'MWS', '/mws')]);
 
-    createAppRouter();
+    createAppRouterService().create(pluginRegistry);
 
     expect(window.location.pathname).toBe('/mws');
     expect(window.location.search).toBe('?mode=large');
     expect(window.location.hash).toBe('#node-7');
+  });
+
+  it('keeps router state isolated between service graphs', async () => {
+    const firstService = createAppRouterService();
+    const secondService = createAppRouterService();
+    const firstRegistry = {getPages: vi.fn(() => [page('first-page', 'First', '/first')])};
+    const secondRegistry = {getPages: vi.fn(() => [page('second-page', 'Second', '/second')])};
+    const firstRouter = firstService.create(firstRegistry);
+
+    await firstRouter.navigate('/first');
+
+    const secondRouter = secondService.create(secondRegistry);
+
+    await secondRouter.navigate('/second');
+    secondService.refresh({getPages: vi.fn(() => [page('second-next', 'Second next', '/second-next')])});
+    const firstNavigate = vi.spyOn(firstRouter, 'navigate');
+    const secondNavigate = vi.spyOn(secondRouter, 'navigate');
+    await firstService.navigation()?.navigate('/first');
+
+    expect(firstService.current).toBe(firstRouter);
+    expect(firstNavigate).toHaveBeenCalledWith('/first');
+    expect(secondNavigate).not.toHaveBeenCalled();
+    expect(firstRouter.route.pathname).toBe('/first');
+    expect(firstRouter.pluginPages.baseRouteOf('first-page')).toBe('/first');
+    expect(firstRouter.pluginPages.baseRouteOf('second-page')).toBeUndefined();
+    expect(secondService.current).toBe(secondRouter);
+    expect(secondRouter.pluginPages.baseRouteOf('second-next')).toBe('/second-next');
+    expect(firstService.navigation()?.pageTable.baseRouteOf('first-page')).toBe('/first');
   });
 });

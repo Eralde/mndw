@@ -2,15 +2,20 @@
 import {defineMndwUi} from '@mndw/ui';
 import {flushSync, mount, unmount} from 'svelte';
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
-import {setLocale} from '../../services/locale.service.js';
-import {OpkgError, type PackageEntry, type PackageInfo, opkgClient} from '../../services/opkg-client.js';
+import {OpkgError, type PackageEntry, type PackageInfo} from '../../services/opkg-client.js';
 import {toast} from '../../services/toast/toast.svelte.js';
+import {createHostServices} from '../../host-services.js';
+import {createTestLocaleController} from '../../testing/test-locale.js';
 
 const {openHostModal} = vi.hoisted(() => ({openHostModal: vi.fn()}));
 
 vi.mock('../../services/overlay/host-overlay.js', () => ({openHostModal}));
 
 import PackagesPanel from './PackagesPanel.svelte';
+
+const services = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+const opkgClient = services.opkgClient;
+const {context, setLocale} = createTestLocaleController(services);
 
 const referenceTime = new Date('2026-11-16T12:00:00.000Z');
 
@@ -51,6 +56,7 @@ describe('PackagesPanel metadata age', () => {
 
     const component = mount(PackagesPanel, {
       target: host,
+      context,
       props: {now: () => new Date(referenceTime)},
     });
 
@@ -97,6 +103,7 @@ describe('PackagesPanel controls', () => {
     document.body.appendChild(host);
     component = mount(PackagesPanel, {
       target: host,
+      context,
       props: {now: () => new Date(referenceTime)},
     });
     flushSync();

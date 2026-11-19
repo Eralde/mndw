@@ -5,11 +5,13 @@ import {flushSync, mount, unmount} from 'svelte';
 
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {type MgmtClient, MgmtError, type UploadResult} from '../../../services/mgmt-client.js';
-import {setLocale} from '../../../services/locale.service.js';
 import {hostT} from '../../../services/host-i18n.svelte.js';
 import {toast} from '../../../services/toast/toast.svelte.js';
-import {pluginRegistry} from '../../../runtime/plugin-registry.js';
+import {createTestLocaleController} from '../../../testing/test-locale.js';
 import PluginManager from './PluginManager.svelte';
+
+const {services, context, setLocale} = createTestLocaleController();
+const pluginRegistry = services.registry;
 
 const emptyBackend = {routes: {}};
 
@@ -68,7 +70,7 @@ async function mountManager(
 
   document.body.appendChild(target);
 
-  const component = mount(PluginManager, {target, props: {client, ...capabilities}});
+  const component = mount(PluginManager, {target, context, props: {client, ...capabilities}});
 
   await vi.waitFor(() => expect(client.listPlugins.mock.calls).toHaveLength(1));
   flushSync();
@@ -219,7 +221,7 @@ describe('PluginManager', () => {
 
     document.body.appendChild(target);
 
-    const component = mount(PluginManager, {target, props: {client}});
+    const component = mount(PluginManager, {target, context, props: {client}});
 
     await vi.waitFor(() => expect(client.listPlugins.mock.calls).toHaveLength(1));
 

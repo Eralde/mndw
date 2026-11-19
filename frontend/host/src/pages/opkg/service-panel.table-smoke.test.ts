@@ -3,6 +3,8 @@ import {defineMndwUi} from '@mndw/ui';
 import {mount, unmount} from 'svelte';
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {ServiceEntry} from '../../services/service-client.js';
+import {createHostServices} from '../../host-services.js';
+import {createHostServicesContext} from '../../host-services-context.js';
 
 const mockList = vi.fn<() => Promise<ServiceEntry[]>>();
 const mockStatus = vi.fn<(name: string, signal?: AbortSignal) => Promise<ServiceEntry>>();
@@ -11,18 +13,23 @@ const {openHostModal} = vi.hoisted(() => ({openHostModal: vi.fn()}));
 
 vi.mock('../../services/overlay/host-overlay.js', () => ({openHostModal}));
 
-vi.mock('../../services/service-client.js', () => ({
-  ServiceError: Error,
-  get serviceClient() {
-    return {
+vi.mock('../../services/service-client.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/service-client.js')>();
+
+  return {
+    ...actual,
+    ServiceError: Error,
+    createServiceClient: () => ({
       list: mockList,
       status: mockStatus,
       setEnabled: mockSetEnabled,
-    };
-  },
-}));
+    }),
+  };
+});
 
 import ServicesPanel from './ServicesPanel.svelte';
+
+const context = createHostServicesContext(createHostServices());
 
 const entry = (name: string): ServiceEntry => ({
   name,
@@ -64,7 +71,7 @@ describe('ServicesPanel table smoke', () => {
     mockList.mockResolvedValue([row]);
     mockStatus.mockResolvedValue(row);
 
-    const app = mount(ServicesPanel, {target: host});
+    const app = mount(ServicesPanel, {target: host, context});
 
     await vi.waitFor(() => expect(host.querySelector('mndw-table')).not.toBeNull());
     await vi.waitFor(() => expect(host.querySelector('mndw-switch')).not.toBeNull());

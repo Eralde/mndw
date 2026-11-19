@@ -16,16 +16,13 @@ import {filter} from 'rxjs';
 import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
 import {type PluginCatalogCell, createPluginI18n} from '../services/plugin-catalog.service.js';
 import {createPluginOverlayService} from '../services/overlay/overlay-manager.svelte.js';
-import {rciService} from '../services/rci.service.js';
 import {ScopedPluginStorage} from '../services/storage.service.js';
-import {getTheme, subscribeTheme} from '../services/theme.service.js';
 import type {HostServices} from '../host-services.js';
 import type {PluginListEntry} from './plugin-types.js';
 import {createServiceFacade} from './service-facade.js';
 import {type HostInfo, createDeviceInfoContext} from './device-info-context.js';
 import {createPluginLifetime, hostValue$} from './plugin-lifetime.js';
 import {type PluginNavigationRouter, createPluginNavigation} from './plugin-navigation.js';
-import {hostTickerPool} from './ticker-pool.js';
 
 export type OverlayDispose = (reason?: 'plugin-unmount' | 'host-navigation') => void;
 
@@ -37,7 +34,15 @@ export interface PluginContextHandle {
 export type PluginContextServices =
   & Pick<
     HostServices,
-    'locale' | 'palette' | 'telemetry' | 'telemetryGathering' | 'eventStream'
+    | 'locale'
+    | 'palette'
+    | 'telemetry'
+    | 'telemetryGathering'
+    | 'eventStream'
+    | 'rci'
+    | 'theme'
+    | 'tickerPool'
+    | 'overlayRuntime'
   >
   & {
     navigation(): PluginNavigationRouter | undefined;
@@ -101,7 +106,11 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
 
   const lifetime = createPluginLifetime();
   const abortController = new AbortController();
-  const theme$ = hostValue$(getTheme, subscribeTheme, lifetime);
+  const theme$ = hostValue$(
+    () => services.theme.getTheme(),
+    (listener) => services.theme.subscribeTheme(listener),
+    lifetime,
+  );
   const palette$ = hostValue$(getPaletteTokens, (callback) => services.palette.subscribePalette(callback), lifetime);
   const gathering$ = hostValue$(
     () => services.telemetryGathering.get(),
@@ -116,14 +125,18 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
   const appearance = Object.create(null) as PluginContext['appearance'];
 
   Object.defineProperties(appearance, {
-    theme: {enumerable: true, get: () => getTheme()},
+    theme: {enumerable: true, get: () => services.theme.getTheme()},
     theme$: {enumerable: true, value: theme$},
     palette: {enumerable: true, get: () => getPaletteTokens()},
     palette$: {enumerable: true, value: palette$},
   });
   Object.freeze(appearance);
 
-  const {service, dispose: disposeOverlay} = createPluginOverlayService(entry.name, instanceId);
+  const {service, dispose: disposeOverlay} = createPluginOverlayService(
+    entry.name,
+    instanceId,
+    services.overlayRuntime,
+  );
   const eventFacadeId = createEventFacadeId();
   const events = eventStream.createFacade(eventFacadeId, entry.name, entry.capabilities ?? [], lifetime);
   let disposed = false;
@@ -173,12 +186,12 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
       },
       {
         info: createDeviceInfoContext(deviceInfo),
-        rci: createPluginRci(createServiceFacade(rciService.driver, PLUGIN_RCI_MANAGER_METHODS)),
+        rci: createPluginRci(createServiceFacade(services.rci.driver, PLUGIN_RCI_MANAGER_METHODS)),
       },
     )),
     i18n: createPluginI18n(catalogCell, getHostLocale, subscribeHostLocaleValue, lifetime),
     instanceId,
-    timers: createPluginTimers(abortController.signal, () => hostTickerPool.create(lifetime)),
+    timers: createPluginTimers(abortController.signal, () => services.tickerPool.create(lifetime)),
     backend: backendClientFor(entry),
     overlay: service,
     ...variant,

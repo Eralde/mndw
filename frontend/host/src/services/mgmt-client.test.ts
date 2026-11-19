@@ -3,7 +3,8 @@ import {type Mock, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {PaletteTokenMap} from '@mndw/sdk';
 import type {PluginCapability} from '@mndw/sdk-internal';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
-import {setLocale} from './locale.service.js';
+import {translateHostMessage} from './locale.service.svelte.js';
+import {getUploadLimitLabel} from './upload-limit.js';
 import {
   MgmtError,
   type MgmtTimeoutKind,
@@ -13,6 +14,13 @@ import {
 } from './mgmt-client.js';
 
 const backend = {routes: {}};
+let locale = 'en';
+
+function friendlyMessage(error: unknown): string {
+  const hostT = (key: string, values?: Record<string, unknown>): string => translateHostMessage(key, values, locale);
+
+  return messageForError(error, hostT, () => getUploadLimitLabel(hostT));
+}
 
 function entry(name: string, over: Partial<PluginListEntry> = {}): PluginListEntry {
   return {
@@ -77,6 +85,7 @@ let fetchImpl: Mock<typeof globalThis.fetch>;
 
 beforeEach(() => {
   fetchImpl = vi.fn<typeof globalThis.fetch>();
+  locale = 'en';
 });
 
 describe('mgmt-client', () => {
@@ -268,7 +277,7 @@ describe('mgmt-client', () => {
     const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
 
     await expect(client.listPlugins()).rejects.toSatisfy(
-      (error: unknown) => messageForError(error) === 'Something went wrong.',
+      (error: unknown) => friendlyMessage(error) === 'Something went wrong.',
     );
   });
 
@@ -322,28 +331,28 @@ describe('mgmt-client', () => {
     expect(second.switchports.layout).not.toBe(first.switchports.layout);
   });
 
-  it('messageForError maps known codes and includes MANIFEST_INVALID detail', async () => {
+  it('messageForError maps known codes and includes MANIFEST_INVALID detail', () => {
     try {
-      await setLocale('en');
-      expect(messageForError(new MgmtError('x', 'UPLOAD_TOO_LARGE'))).toBe(
+      locale = 'en';
+      expect(friendlyMessage(new MgmtError('x', 'UPLOAD_TOO_LARGE'))).toBe(
         'The plugin exceeds the 10 MiB upload limit.',
       );
-      expect(messageForError(new MgmtError('x', 'RCI_SOCKET_START_FAILED'))).toBe(
+      expect(friendlyMessage(new MgmtError('x', 'RCI_SOCKET_START_FAILED'))).toBe(
         'Background router access could not start. Try again.',
       );
-      await setLocale('ru');
-      expect(messageForError(new MgmtError('x', 'UPLOAD_TOO_LARGE'))).toBe('Плагин превышает лимит загрузки 10 МБ.');
-      expect(messageForError(new MgmtError('x', 'RCI_SOCKET_START_FAILED'))).toBe(
+      locale = 'ru';
+      expect(friendlyMessage(new MgmtError('x', 'UPLOAD_TOO_LARGE'))).toBe('Плагин превышает лимит загрузки 10 МБ.');
+      expect(friendlyMessage(new MgmtError('x', 'RCI_SOCKET_START_FAILED'))).toBe(
         'Не удалось запустить фоновый доступ к роутеру. Повторите попытку.',
       );
-      await setLocale('en');
+      locale = 'en';
     } finally {
-      await setLocale('en');
+      locale = 'en';
     }
 
-    expect(messageForError(new MgmtError('x', 'MANIFEST_INVALID', 'route reserved'))).toContain('route reserved');
-    expect(messageForError(new MgmtError('x', 'CONTROLLER_SESSION_UNAVAILABLE'))).toContain('Controller token session');
-    expect(messageForError(new Error('boom'))).toBe('boom');
+    expect(friendlyMessage(new MgmtError('x', 'MANIFEST_INVALID', 'route reserved'))).toContain('route reserved');
+    expect(friendlyMessage(new MgmtError('x', 'CONTROLLER_SESSION_UNAVAILABLE'))).toContain('Controller token session');
+    expect(friendlyMessage(new Error('boom'))).toBe('boom');
   });
 
   it('coerces non-string envelope fields instead of trusting the JSON cast', async () => {
@@ -385,7 +394,7 @@ describe('mgmt-client', () => {
   });
 
   it('omits a non-string MANIFEST_INVALID detail instead of interpolating it', () => {
-    expect(messageForError(new MgmtError('x', 'MANIFEST_INVALID', {a: 1}))).not.toContain('[object Object]');
+    expect(friendlyMessage(new MgmtError('x', 'MANIFEST_INVALID', {a: 1}))).not.toContain('[object Object]');
   });
 });
 
@@ -544,7 +553,7 @@ describe('mgmt-client timeouts', () => {
   });
 
   it('maps TimeoutError to device response copy', () => {
-    expect(messageForError(new DOMException('signal timed out', 'TimeoutError'))).toBe(
+    expect(friendlyMessage(new DOMException('signal timed out', 'TimeoutError'))).toBe(
       'The device did not respond.',
     );
   });

@@ -6,9 +6,9 @@ import {
   type UploadResult,
   messageForError,
 } from '../../../services/mgmt-client.js';
-import {hostT} from '../../../services/host-i18n.svelte.js';
 import {toast} from '../../../services/toast/toast.svelte.js';
 import {getUploadLimitLabel} from '../../../services/upload-limit.js';
+import {getHostServices} from '../../../host-services-context.js';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import InstallVersionWarnings from './InstallVersionWarnings.svelte';
 import {openApprovalModal} from './approval-modal.js';
@@ -48,8 +48,25 @@ let {
   onDeny,
   onDismiss,
   architecture,
-  openApproval = openApprovalModal,
+  openApproval: providedOpenApproval,
 }: Props = $props();
+const services = getHostServices();
+const hostT = services.locale.hostT;
+
+function openApproval(
+  entry: PluginListEntry,
+  signal?: AbortSignal,
+): Promise<'approve' | 'deny' | undefined> {
+  if (providedOpenApproval) {
+    return providedOpenApproval(entry, signal);
+  }
+
+  return openApprovalModal(services, entry, signal);
+}
+
+function formatError(error: unknown): string {
+  return messageForError(error, hostT, () => getUploadLimitLabel(hostT));
+}
 
 let status = $state<UploadStatus>('idle');
 let error = $state('');
@@ -73,7 +90,7 @@ function validate(file: File): string | undefined {
 
   if (file.size > MAX_UPLOAD_BYTES) {
     return hostT('settings.plugin-manager.zip-too-large', {
-      limit: getUploadLimitLabel(),
+      limit: getUploadLimitLabel(hostT),
     });
   }
 }
@@ -221,7 +238,7 @@ async function upload(file: File): Promise<void> {
       return;
     }
 
-    showError(messageForError(caught));
+    showError(formatError(caught));
 
     return;
   }
@@ -247,7 +264,7 @@ async function upload(file: File): Promise<void> {
       return;
     }
 
-    showError(messageForError(caught));
+    showError(formatError(caught));
 
     return;
   }

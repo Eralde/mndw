@@ -1,10 +1,11 @@
 import {setMndwUiLocale} from '@mndw/ui';
+import {SvelteSet} from 'svelte/reactivity';
 import {formatMessage, normalizeFormatterLocale} from '@mndw/sdk-internal/i18n-format';
 import enCatalog from '../i18n/en.json';
 import ruCatalog from '../i18n/ru.json';
 import {STORAGE_PREFIX, SUPPORTED_LOCALES} from '../constants.js';
 import {type CatalogNode, pseudoLocalizeCatalog} from './pseudo-locale.js';
-import {type PluginCatalogService, pluginCatalogService} from './plugin-catalog.service.js';
+import type {PluginCatalogService} from './plugin-catalog.service.js';
 
 type HostCatalog = Record<string, CatalogNode>;
 type LocaleListener = (locale: string) => void;
@@ -92,7 +93,7 @@ export interface LocaleService {
   subscribeLocale(listener: LocaleListener): () => void;
   isLocaleSwitchPending(): boolean;
   subscribeLocalePending(listener: (pending: boolean) => void): () => void;
-  hostT(key: string, values?: Record<string, unknown>, locale?: string): string;
+  hostT(this: void, key: string, values?: Record<string, unknown>, locale?: string): string;
   hostFormatNumber(value: number, options?: Intl.NumberFormatOptions): string;
   hostFormatDate(value: Date | number, options?: Intl.DateTimeFormatOptions): string;
   getAvailableLocales(): readonly string[];
@@ -104,10 +105,10 @@ export function createLocaleService(deps: LocaleServiceDeps): LocaleService {
   const storage = deps.storage ?? globalThis.localStorage;
   const hostDocument = deps.document ?? globalThis.document;
   const setUiLocale = deps.setUiLocale ?? setMndwUiLocale;
-  let committedLocale: string = SUPPORTED_LOCALES[0];
+  let currentLocale = $state<string>(SUPPORTED_LOCALES[0]);
   let localeSwitchPending = false;
-  const listeners = new Set<LocaleListener>();
-  const pendingListeners = new Set<(pending: boolean) => void>();
+  const listeners = new SvelteSet<LocaleListener>();
+  const pendingListeners = new SvelteSet<(pending: boolean) => void>();
 
   const applyLocaleMetadata = (locale: string): void => {
     hostDocument.documentElement.lang = locale;
@@ -115,7 +116,7 @@ export function createLocaleService(deps: LocaleServiceDeps): LocaleService {
   };
 
   const commitLocale = (locale: string): void => {
-    committedLocale = locale;
+    currentLocale = locale;
     setUiLocale(locale);
     applyLocaleMetadata(locale);
 
@@ -140,7 +141,7 @@ export function createLocaleService(deps: LocaleServiceDeps): LocaleService {
   const setLocale = async (locale: string): Promise<void> => {
     const next = navigatorSupported(locale) ?? 'en';
 
-    if (next === committedLocale) {
+    if (next === currentLocale) {
       return;
     }
 
@@ -189,49 +190,38 @@ export function createLocaleService(deps: LocaleServiceDeps): LocaleService {
 
   return Object.freeze({
     initLocale,
-    getLocale: () => committedLocale,
+    getLocale: () => currentLocale,
     setLocale,
     subscribeLocale,
     isLocaleSwitchPending: () => localeSwitchPending,
     subscribeLocalePending,
-    hostT: (key: string, values?: Record<string, unknown>, locale = committedLocale): string => {
-      const hostCatalog = locale === 'en-XA' && isPseudoLocaleEnabled()
-        ? PSEUDO_HOST_CATALOG
-        : HOST_CATALOGS[locale] ?? HOST_CATALOGS.en;
-      const message = catalogMessage(hostCatalog, key)
-        ?? catalogMessage(HOST_CATALOGS.en, key)
-        ?? key;
-
-      if (values === undefined) {
-        return message;
-      }
-
-      return formatMessage(message, values, locale);
-    },
+    hostT: (key: string, values?: Record<string, unknown>, locale?: string): string =>
+      translateHostMessage(key, values, locale ?? currentLocale),
     hostFormatNumber: (value: number, options?: Intl.NumberFormatOptions): string =>
-      new Intl.NumberFormat(normalizeFormatterLocale(committedLocale), options).format(value),
+      new Intl.NumberFormat(normalizeFormatterLocale(currentLocale), options)
+        .format(value),
     hostFormatDate: (value: Date | number, options?: Intl.DateTimeFormatOptions): string =>
-      new Intl.DateTimeFormat(normalizeFormatterLocale(committedLocale), options).format(value),
+      new Intl.DateTimeFormat(normalizeFormatterLocale(currentLocale), options)
+        .format(value),
     getAvailableLocales,
     isPseudoLocaleEnabled,
   });
 }
 
-const defaultService = createLocaleService({catalog: pluginCatalogService});
-export const localeService = defaultService;
+export function translateHostMessage(key: string, values: Record<string, unknown> | undefined, locale: string): string {
+  const hostCatalog = locale === 'en-XA' && isPseudoLocaleEnabled()
+    ? PSEUDO_HOST_CATALOG
+    : HOST_CATALOGS[locale] ?? HOST_CATALOGS.en;
+  const message = catalogMessage(hostCatalog, key)
+    ?? catalogMessage(HOST_CATALOGS.en, key)
+    ?? key;
 
-export const initLocale = (): string => defaultService.initLocale();
-export const getLocale = (): string => defaultService.getLocale();
-export const setLocale = (locale: string): Promise<void> => defaultService.setLocale(locale);
-export const subscribeLocale = (listener: LocaleListener): () => void => defaultService.subscribeLocale(listener);
-export const subscribeLocalePending = (listener: (pending: boolean) => void): () => void =>
-  defaultService.subscribeLocalePending(listener);
-export const hostT = (key: string, values?: Record<string, unknown>, locale?: string): string =>
-  defaultService.hostT(key, values, locale);
-export const hostFormatNumber = (value: number, options?: Intl.NumberFormatOptions): string =>
-  defaultService.hostFormatNumber(value, options);
-export const hostFormatDate = (value: Date | number, options?: Intl.DateTimeFormatOptions): string =>
-  defaultService.hostFormatDate(value, options);
+  if (values === undefined) {
+    return message;
+  }
+
+  return formatMessage(message, values, locale);
+}
 
 function catalogMessage(catalog: HostCatalog, key: string): string | undefined {
   let value: CatalogNode | undefined = catalog;

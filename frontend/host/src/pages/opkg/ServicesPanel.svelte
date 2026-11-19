@@ -2,10 +2,10 @@
 import {column} from '@mndw/ui';
 import {svelteCell} from '@mndw/ui-svelte';
 import {onMount} from 'svelte';
-import {ServiceError, serviceClient} from '../../services/service-client.js';
+import {ServiceError} from '../../services/service-client.js';
 import type {ServiceEntry} from '../../services/service-client.js';
 import {openHostModal} from '../../services/overlay/host-overlay.js';
-import {hostT} from '../../services/host-i18n.svelte.js';
+import {getHostServices} from '../../host-services-context.js';
 import {appState} from '../../state/app.svelte.js';
 import EmptyState from '../../components/EmptyState.svelte';
 import ConfirmActionModal from './ConfirmActionModal.svelte';
@@ -19,6 +19,9 @@ import {
 import {serviceAutostartRenderer} from './service-autostart-renderer.svelte.js';
 
 let services = $state<ServiceEntry[]>([]);
+const hostServices = getHostServices();
+const hostT = hostServices.locale.hostT;
+const serviceClient = hostServices.serviceClient;
 let rowErrors = $state<Record<string, boolean>>({});
 let loading = $state(false);
 let unavailable = $state(false);
@@ -207,10 +210,14 @@ async function confirm(
   message: string,
   confirmLabel: string,
 ): Promise<boolean> {
-  const session = openHostModal<boolean, ConfirmProps>(ConfirmActionModal, {
-    title: hostT('services.confirm-title'),
-    props: {message, confirmLabel},
-  });
+  const session = openHostModal<boolean, ConfirmProps>(
+    hostServices.hostOverlay,
+    ConfirmActionModal,
+    {
+      title: hostT('services.confirm-title'),
+      props: {message, confirmLabel},
+    },
+  );
   const event = await session.closed;
   return event.result === true;
 }

@@ -1,14 +1,12 @@
-import type {OverlaySession} from '@mndw/sdk';
+import type {OverlayService, OverlaySession} from '@mndw/sdk';
 import {type Component, mount, unmount} from 'svelte';
-import {createPluginOverlayService} from './overlay-manager.svelte.js';
-
-const {service: hostService} = createPluginOverlayService('@host', '@host');
 
 export interface HostModalProps<Result> {
   close: (result: Result) => void;
 }
 
 export function openHostModal<Result, Props extends HostModalProps<Result>>(
+  hostService: OverlayService,
   component: Component<Props>,
   options: {
     title: string;

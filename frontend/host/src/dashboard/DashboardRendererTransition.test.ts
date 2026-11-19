@@ -35,7 +35,6 @@ vi.mock('gridstack', () => ({
 
 vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('../runtime/plugin-registry.js')>(),
-  pluginRegistry: {get: vi.fn()},
 }));
 
 vi.mock('../state/deps-status.svelte.js', () => ({
@@ -67,7 +66,7 @@ vi.mock('./tile-controller.js', () => ({
   removeTileController: vi.fn(),
 }));
 
-import {pluginRegistry} from '../runtime/plugin-registry.js';
+import type {PluginRegistry} from '../runtime/plugin-registry.js';
 import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
 import {addWidgetTile} from './grid-dashboard-setup.js';
@@ -76,12 +75,9 @@ import MobileDashboard from './MobileDashboard.svelte';
 import {getTileController, removeTileController} from './tile-controller.js';
 
 const hostServices = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+const pluginRegistry = {get: vi.fn()} as unknown as PluginRegistry;
 const pluginContextServices = {
-  locale: hostServices.locale,
-  palette: hostServices.palette,
-  telemetry: hostServices.telemetry,
-  telemetryGathering: hostServices.telemetryGathering,
-  eventStream: hostServices.eventStream,
+  ...hostServices,
   navigation: () => ({
     pageTable: {baseRouteOf: () => undefined, pluginNameOf: () => undefined},
     navigate: () => undefined,
@@ -141,7 +137,14 @@ describe('dashboard renderer transition', () => {
         onWidgetResized: vi.fn(),
       },
     });
-    const id = addWidgetTile(pluginContextServices, pluginRegistry, fakeGrid as never, 'traffic', vi.fn());
+    const id = addWidgetTile(
+      pluginContextServices,
+      hostServices.pluginStylesheets,
+      pluginRegistry,
+      fakeGrid as never,
+      'traffic',
+      vi.fn(),
+    );
 
     if (id === null) {
       throw new Error('addWidgetTile unexpectedly returned null');

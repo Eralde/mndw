@@ -1,5 +1,5 @@
-import {createPluginOverlayService} from './overlay-manager.svelte.js';
+import {type OverlayRuntime, createPluginOverlayService} from './overlay-manager.svelte.js';
 
-const {service} = createPluginOverlayService('@mndw/ui', '@mndw/ui');
-
-export const uiOverlayService = service;
+export function createUiOverlayService(runtime: OverlayRuntime) {
+  return createPluginOverlayService('@mndw/ui', '@mndw/ui', runtime).service;
+}

@@ -5,9 +5,11 @@ import {type ComponentProps, flushSync, mount, unmount} from 'svelte';
 import {MAX_UPLOAD_BYTES} from '../../../constants.js';
 import type {UploadResult} from '../../../services/mgmt-client.js';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
-import {setLocale} from '../../../services/locale.service.js';
 import {toast} from '../../../services/toast/toast.svelte.js';
 import PluginUpload from './PluginUpload.svelte';
+import {createTestLocaleController} from '../../../testing/test-locale.js';
+
+const {context, setLocale} = createTestLocaleController();
 
 const entry: PluginListEntry = {
   type: 'page',
@@ -32,6 +34,7 @@ function mountUpload(overrides: Partial<ComponentProps<typeof PluginUpload>> = {
 
   const component = mount(PluginUpload, {
     target,
+    context,
     props: {
       uploadFile: vi.fn(),
       onInstalled: vi.fn(),

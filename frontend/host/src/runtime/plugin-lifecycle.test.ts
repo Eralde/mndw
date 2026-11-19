@@ -9,7 +9,9 @@ import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {mountPlugin, mountPluginWithContext} from './plugin-lifecycle.js';
 import type {PluginContextHandle} from './plugin-context.js';
 import type {LoadedPlugin} from './plugin-registry.js';
-import {pluginStylesheets} from './plugin-stylesheets.js';
+import {PluginStylesheets} from './plugin-stylesheets.js';
+
+const pluginStylesheets = new PluginStylesheets();
 
 @Component({selector: 'throwing-angular-root', standalone: true, template: ''})
 class ThrowingAngularRootComponent {
@@ -381,7 +383,9 @@ describe('mountPluginWithContext', () => {
       finishUnmount = resolve;
     });
     const plugin = mockPlugin({unmount: () => unmounting});
-    const handle = mountPluginWithContext(document.createElement('div'), plugin, mockContextHandle());
+    const handle = mountPluginWithContext(document.createElement('div'), plugin, mockContextHandle(), {
+      pluginStylesheets,
+    });
 
     stylesheet.release();
     expect(stylesheet.link.isConnected).toBe(true);
@@ -404,6 +408,7 @@ describe('mountPluginWithContext', () => {
       mockPlugin(mounting),
       mockContext(),
       () => {},
+      {pluginStylesheets},
     );
 
     if (!(result instanceof Promise)) {
@@ -433,6 +438,7 @@ describe('mountPluginWithContext', () => {
       document.createElement('div'),
       mockPlugin(mounting),
       mockContextHandle(),
+      {pluginStylesheets},
     );
 
     handle.dispose();

@@ -17,7 +17,6 @@ vi.mock('./tile-controller.js', () => ({ensureTileController, getTileController}
 
 vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('../runtime/plugin-registry.js')>(),
-  pluginRegistry: {get: vi.fn()},
 }));
 
 vi.mock('./widget-counter.js', () => ({
@@ -25,7 +24,7 @@ vi.mock('./widget-counter.js', () => ({
 }));
 
 import type {PluginInstance} from '@mndw/sdk';
-import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
+import {type LoadedPlugin, type PluginRegistry} from '../runtime/plugin-registry.js';
 import {createHostServices} from '../host-services.js';
 import type {PageListEntry, WidgetListEntry} from '../runtime/plugin-types.js';
 import {
@@ -37,12 +36,9 @@ import {getNextInstanceId} from './widget-counter.js';
 import {type RestoredTilePosition, addWidgetTile, resizeWidgetTile} from './grid-dashboard-setup.js';
 
 const hostServices = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+const pluginRegistry = {get: vi.fn()} as unknown as PluginRegistry;
 const pluginContextServices = {
-  locale: hostServices.locale,
-  palette: hostServices.palette,
-  telemetry: hostServices.telemetry,
-  telemetryGathering: hostServices.telemetryGathering,
-  eventStream: hostServices.eventStream,
+  ...hostServices,
   navigation: () => ({
     pageTable: {baseRouteOf: () => undefined, pluginNameOf: () => undefined},
     navigate: () => undefined,
@@ -171,7 +167,10 @@ describe('grid-dashboard-setup', () => {
 
     const {grid, addWidget} = createFakeGrid();
 
-    expect(addWidgetTile(pluginContextServices, pluginRegistry, grid, 'missing', vi.fn())).toBeNull();
+    expect(
+      addWidgetTile(pluginContextServices, hostServices.pluginStylesheets, pluginRegistry, grid, 'missing', vi.fn()),
+    )
+      .toBeNull();
     expect(addWidget).not.toHaveBeenCalled();
   });
 
@@ -180,7 +179,14 @@ describe('grid-dashboard-setup', () => {
 
     const {grid, addWidget} = createFakeGrid();
 
-    expect(addWidgetTile(pluginContextServices, pluginRegistry, grid, 'settings-plugin', vi.fn())).toBeNull();
+    expect(addWidgetTile(
+      pluginContextServices,
+      hostServices.pluginStylesheets,
+      pluginRegistry,
+      grid,
+      'settings-plugin',
+      vi.fn(),
+    )).toBeNull();
     expect(addWidget).not.toHaveBeenCalled();
   });
 
@@ -192,13 +198,21 @@ describe('grid-dashboard-setup', () => {
 
     ensureTileController.mockReturnValue(controller);
 
-    const id = addWidgetTile(pluginContextServices, pluginRegistry, grid, 'traffic', vi.fn(), {
-      x: 1,
-      y: 2,
-      w: 6,
-      h: 5,
-      instanceId: 'traffic:9',
-    });
+    const id = addWidgetTile(
+      pluginContextServices,
+      hostServices.pluginStylesheets,
+      pluginRegistry,
+      grid,
+      'traffic',
+      vi.fn(),
+      {
+        x: 1,
+        y: 2,
+        w: 6,
+        h: 5,
+        instanceId: 'traffic:9',
+      },
+    );
 
     expect(id).toBe('widget-traffic:1');
     expect(added[0]).toEqual({
@@ -224,13 +238,21 @@ describe('grid-dashboard-setup', () => {
 
     ensureTileController.mockReturnValue(controller);
 
-    const id = addWidgetTile(pluginContextServices, pluginRegistry, grid, 'traffic', vi.fn(), {
-      x: 10,
-      y: 5,
-      w: 2,
-      h: 1,
-      instanceId: 'traffic:9',
-    });
+    const id = addWidgetTile(
+      pluginContextServices,
+      hostServices.pluginStylesheets,
+      pluginRegistry,
+      grid,
+      'traffic',
+      vi.fn(),
+      {
+        x: 10,
+        y: 5,
+        w: 2,
+        h: 1,
+        instanceId: 'traffic:9',
+      },
+    );
 
     expect(id).toBe('widget-traffic:1');
     expect(added[0]).toEqual({id: 'widget-traffic:1', x: 10, y: 5, w: 2, h: 1});
@@ -243,7 +265,14 @@ describe('grid-dashboard-setup', () => {
 
     ensureTileController.mockReturnValue(createController('traffic'));
 
-    expect(addWidgetTile(pluginContextServices, pluginRegistry, grid, 'traffic', vi.fn())).toBe('widget-traffic:1');
+    expect(addWidgetTile(
+      pluginContextServices,
+      hostServices.pluginStylesheets,
+      pluginRegistry,
+      grid,
+      'traffic',
+      vi.fn(),
+    )).toBe('widget-traffic:1');
     expect(added[0]).toEqual({
       id: 'widget-traffic:1',
       x: undefined,
@@ -263,7 +292,14 @@ describe('grid-dashboard-setup', () => {
 
     ensureTileController.mockReturnValue(createController('traffic'));
 
-    expect(addWidgetTile(pluginContextServices, pluginRegistry, grid, 'traffic', vi.fn())).toBeNull();
+    expect(addWidgetTile(
+      pluginContextServices,
+      hostServices.pluginStylesheets,
+      pluginRegistry,
+      grid,
+      'traffic',
+      vi.fn(),
+    )).toBeNull();
     expect(removeWidget).toHaveBeenCalledWith(expect.anything(), true);
   });
 
@@ -277,8 +313,24 @@ describe('grid-dashboard-setup', () => {
 
     const position: RestoredTilePosition = {x: 1, y: 2, w: 4, h: 3, instanceId: 'traffic:1'};
 
-    addWidgetTile(pluginContextServices, pluginRegistry, grid, 'traffic', vi.fn(), position);
-    addWidgetTile(pluginContextServices, pluginRegistry, grid, 'traffic', vi.fn(), position);
+    addWidgetTile(
+      pluginContextServices,
+      hostServices.pluginStylesheets,
+      pluginRegistry,
+      grid,
+      'traffic',
+      vi.fn(),
+      position,
+    );
+    addWidgetTile(
+      pluginContextServices,
+      hostServices.pluginStylesheets,
+      pluginRegistry,
+      grid,
+      'traffic',
+      vi.fn(),
+      position,
+    );
 
     expect(ensureTileController).toHaveBeenCalledTimes(2);
     expect(document.querySelectorAll('.grid-stack-item-content')).toHaveLength(2);

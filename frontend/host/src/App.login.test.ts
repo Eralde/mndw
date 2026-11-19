@@ -1,24 +1,18 @@
 // @vitest-environment happy-dom
-import {defineMndwUi} from '@mndw/ui';
 import {type Observable, of} from 'rxjs';
+import {defineMndwUi} from '@mndw/ui';
 import {flushSync, mount, unmount} from 'svelte';
-import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 const login = vi.fn<(user: string, password: string) => Observable<boolean>>();
 const initAuthenticated = vi.fn<() => Promise<unknown>>();
 
-vi.mock('./services/rci.service.js', () => ({
-  rciService: {
-    login: (user: string, password: string) => login(user, password),
-  },
-}));
 vi.mock('./services/init-auth.js', () => ({
   initAuthenticated: (): Promise<unknown> => initAuthenticated(),
 }));
 
 import App from './App.svelte';
 import {createHostServices} from './host-services.js';
-import {uiOverlayService} from './services/overlay/ui-overlay.js';
 import {appState, resetToLogin} from './state/app.svelte.js';
 
 type LoginInput = HTMLElement & {
@@ -29,11 +23,15 @@ type LoginInput = HTMLElement & {
 
 let target: HTMLDivElement;
 let component: ReturnType<typeof mount>;
+let services: ReturnType<typeof createHostServices>;
 
 function render(): void {
   target = document.createElement('div');
   document.body.appendChild(target);
-  component = mount(App, {target, props: {services: createHostServices()}});
+  services = createHostServices();
+  defineMndwUi({overlay: services.overlay, initialLocale: 'en'});
+  vi.spyOn(services.rci, 'login').mockImplementation((user, password) => login(user, password));
+  component = mount(App, {target, props: {services}});
   flushSync();
 }
 
@@ -56,10 +54,6 @@ function pressEnter(element: HTMLElement): void {
   flushSync();
 }
 
-beforeAll(() => {
-  defineMndwUi({overlay: uiOverlayService, initialLocale: 'en'});
-});
-
 beforeEach(() => {
   login.mockReset();
   initAuthenticated.mockReset();
@@ -72,7 +66,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  uiOverlayService.closeAll();
+  services.overlay.closeAll();
   void unmount(component);
   document.body.innerHTML = '';
 });
@@ -113,7 +107,7 @@ describe('App login', () => {
     expect(login).toHaveBeenNthCalledWith(2, 'admin', 'secret');
   });
 
-  it('does not leak the failure into a fresh login page after resetting to login', async () => {
+  it('does not leak the failure into a fresh login page after resetting to login', () => {
     appState.loginError = 'Connection failed';
     appState.loginUsername = 'admin';
 

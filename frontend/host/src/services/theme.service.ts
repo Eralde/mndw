@@ -6,70 +6,84 @@ const DEFAULT_THEME: MndwThemeName = 'dark';
 
 type ThemeListener = (theme: MndwThemeName) => void;
 
-let current: MndwThemeName = DEFAULT_THEME;
-const listeners = new Set<ThemeListener>();
-
-function readStored(): MndwThemeName {
-  try {
-    const value = localStorage.getItem(THEME_STORAGE_KEY);
-
-    return value === 'light' || value === 'dark' ? value : DEFAULT_THEME;
-  } catch {
-    return DEFAULT_THEME;
-  }
+export interface ThemeService {
+  initTheme(): MndwThemeName;
+  getTheme(): MndwThemeName;
+  setTheme(theme: MndwThemeName): void;
+  toggleTheme(): void;
+  subscribeTheme(callback: ThemeListener): () => void;
 }
 
-function applyDataset(theme: MndwThemeName): void {
-  document.documentElement.dataset.theme = theme;
+export interface ThemeServiceDeps {
+  storage?: Pick<Storage, 'getItem' | 'setItem'>;
+  document?: Document;
 }
 
-function notify(theme: MndwThemeName): void {
-  for (const listener of listeners) {
-    listener(theme);
-  }
-}
+export function createThemeService(deps: ThemeServiceDeps = {}): ThemeService {
+  const hostDocument = deps.document ?? globalThis.document;
+  let current: MndwThemeName = DEFAULT_THEME;
+  const listeners = new Set<ThemeListener>();
 
-/**
- * Resolve the persisted theme, apply it to the document, and sync any subscribers
- * registered before boot. Call once, before mounting the app.
- */
-export function initTheme(): MndwThemeName {
-  current = readStored();
-  applyDataset(current);
-  notify(current);
+  function readStored(): MndwThemeName {
+    try {
+      const value = (deps.storage ?? globalThis.localStorage).getItem(THEME_STORAGE_KEY);
 
-  return current;
-}
-
-export function getTheme(): MndwThemeName {
-  return current;
-}
-
-export function setTheme(theme: MndwThemeName): void {
-  if (theme === current) {
-    return;
+      return value === 'light' || value === 'dark' ? value : DEFAULT_THEME;
+    } catch {
+      return DEFAULT_THEME;
+    }
   }
 
-  current = theme;
-  applyDataset(theme);
-
-  try {
-    localStorage.setItem(THEME_STORAGE_KEY, theme);
-  } catch {
-    // Persistence is best-effort; the in-memory theme still applies.
+  function applyDataset(theme: MndwThemeName): void {
+    hostDocument.documentElement.dataset.theme = theme;
   }
 
-  notify(theme);
-}
+  function notify(theme: MndwThemeName): void {
+    for (const listener of listeners) {
+      listener(theme);
+    }
+  }
 
-export function toggleTheme(): void {
-  setTheme(current === 'dark' ? 'light' : 'dark');
-}
+  function initTheme(): MndwThemeName {
+    current = readStored();
+    applyDataset(current);
+    notify(current);
 
-export function subscribeTheme(callback: ThemeListener): () => void {
-  listeners.add(callback);
+    return current;
+  }
 
-  return () => {
-    listeners.delete(callback);
-  };
+  function getTheme(): MndwThemeName {
+    return current;
+  }
+
+  function setTheme(theme: MndwThemeName): void {
+    if (theme === current) {
+      return;
+    }
+
+    current = theme;
+    applyDataset(theme);
+
+    try {
+      (deps.storage ?? globalThis.localStorage).setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // Persistence is best-effort; the in-memory theme still applies.
+    }
+
+    notify(theme);
+  }
+
+  function toggleTheme(): void {
+    setTheme(current === 'dark' ? 'light' : 'dark');
+  }
+
+  function subscribeTheme(callback: ThemeListener): () => void {
+    listeners.add(callback);
+
+    return () => {
+      listeners.delete(callback);
+    };
+  }
+
+  return Object.freeze({initTheme, getTheme, setTheme, toggleTheme, subscribeTheme});
 }

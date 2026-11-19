@@ -5,7 +5,7 @@ import AppShell from '../layout/AppShell.svelte';
 import PagePluginHost from '../pages/PagePluginHost.svelte';
 import PackageManagerPage from '../pages/PackageManagerPage.svelte';
 import SettingsPage from '../pages/settings/SettingsPage.svelte';
-import {type PluginRegistry, pluginRegistry} from '../runtime/plugin-registry.js';
+import type {PluginRegistry} from '../runtime/plugin-registry.js';
 import type {PluginNavigationRouter} from '../runtime/plugin-navigation.js';
 import {getPagePluginCandidates} from '../runtime/page-plugin-candidates.js';
 import {HOST_PATHS, type PluginPageTable} from './host-routes.js';
@@ -21,11 +21,13 @@ export interface PluginRoutesBuild {
 }
 
 export type AppRouter = ReturnType<typeof createRouter> & {readonly pluginPages: PluginPageTable};
-
-export let appRouter: AppRouter;
-let currentPageTable: PluginPageTable;
-let routeRegistry: Pick<PluginRegistry, 'getPages'> = pluginRegistry;
-let authenticatedRouteBranch: Record<string, RouteComponent> | undefined;
+export interface AppRouterService {
+  readonly current: AppRouter | undefined;
+  create(registry: Pick<PluginRegistry, 'getPages'>): AppRouter;
+  refresh(registry: Pick<PluginRegistry, 'getPages'>): void;
+  navigation(): PluginNavigationRouter | undefined;
+  pageRouteDefinitions(registry: Pick<PluginRegistry, 'getPages'>): readonly PageRouteDefinition[];
+}
 
 function canonicalBaseRoute(route: string): string {
   const withoutTrailingSlash = route.length > 1 && route.endsWith('/') ? route.slice(0, -1) : route;
@@ -50,7 +52,7 @@ function assertRouteIsAvailable(route: string, name: string): void {
  * exact and child-wildcard entries, both resolving to shared {@link PagePluginHost}.
  */
 export function buildPluginRoutes(
-  registry: Pick<PluginRegistry, 'getPages'> = pluginRegistry,
+  registry: Pick<PluginRegistry, 'getPages'>,
 ): PluginRoutesBuild {
   const pages = getPagePluginCandidates(registry);
 
@@ -96,9 +98,12 @@ export function buildPluginRoutes(
   return {routes: nextRoutes, pageTable};
 }
 
-export function getPageRouteDefinitions(): readonly PageRouteDefinition[] {
-  return getPagePluginCandidates(pluginRegistry).flatMap((page) => {
-    const route = appRouter.pluginPages.baseRouteOf(page.name);
+export function getPageRouteDefinitions(
+  registry: Pick<PluginRegistry, 'getPages'>,
+  pageTable: PluginPageTable,
+): readonly PageRouteDefinition[] {
+  return getPagePluginCandidates(registry).flatMap((page) => {
+    const route = pageTable.baseRouteOf(page.name);
 
     if (route === undefined) {
       return [];
@@ -153,9 +158,9 @@ export function resolvePageRoute(
 }
 
 /** Repair malformed raw browser paths before sv-router decodes wildcard captures. */
-export function repairMalformedPagePath(): void {
+function repairMalformedPagePath(router: AppRouter): void {
   const pathname = globalThis.location.pathname;
-  const match = resolvePageRoute(pathname, appRouter.pluginPages);
+  const match = resolvePageRoute(pathname, router.pluginPages);
 
   if (match === null) {
     return;
@@ -164,7 +169,7 @@ export function repairMalformedPagePath(): void {
   try {
     decodeURIComponent(pathname);
   } catch (_error) {
-    const baseRoute = appRouter.pluginPages.baseRouteOf(match.name);
+    const baseRoute = router.pluginPages.baseRouteOf(match.name);
 
     if (baseRoute === undefined) {
       return;
@@ -179,68 +184,85 @@ export function repairMalformedPagePath(): void {
 }
 
 /**
- * Build authenticated app router. Must run after loadPlugins() so registry is populated.
+ * Creates graph-owned router state. Must be called after the registry is populated.
  * Malformed page wildcard paths are repaired before Router's initial navigation can decode them.
  */
-export function createAppRouter(
-  registry: Pick<PluginRegistry, 'getPages'> = pluginRegistry,
-): AppRouter {
-  const {routes: pluginRoutes, pageTable} = buildPluginRoutes(registry);
-  const hostRoutes = buildHostRouteTable(pluginRoutes);
-  const branch = {layout: AppShell, ...hostRoutes} as Record<string, RouteComponent>;
-  const routeTree = {[HOST_PATHS.dashboard]: branch};
+export function createAppRouterService(): AppRouterService {
+  let currentRouter: AppRouter | undefined;
+  let currentPageTable: PluginPageTable | undefined;
+  let authenticatedRouteBranch: Record<string, RouteComponent> | undefined;
 
-  routeRegistry = registry;
-  currentPageTable = pageTable;
-  authenticatedRouteBranch = branch;
+  const create = (registry: Pick<PluginRegistry, 'getPages'>): AppRouter => {
+    const {routes: pluginRoutes, pageTable} = buildPluginRoutes(registry);
+    const hostRoutes = buildHostRouteTable(pluginRoutes);
+    const branch = {layout: AppShell, ...hostRoutes} as Record<string, RouteComponent>;
+    const routeTree = {[HOST_PATHS.dashboard]: branch};
+    const router = createRouter(routeTree);
 
-  const router = createRouter(routeTree);
+    currentPageTable = pageTable;
+    authenticatedRouteBranch = branch;
+    currentRouter = Object.defineProperty(router, 'pluginPages', {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        if (currentPageTable === undefined) {
+          throw new Error('Plugin page table is unavailable before router creation');
+        }
 
-  appRouter = Object.defineProperty(router, 'pluginPages', {
-    configurable: true,
-    enumerable: true,
-    get: () => currentPageTable,
-  }) as AppRouter;
-  repairMalformedPagePath();
+        return currentPageTable;
+      },
+    }) as AppRouter;
+    repairMalformedPagePath(currentRouter);
 
-  return appRouter;
-}
+    return currentRouter;
+  };
 
-/** Applies registry route additions and removals to the existing router instance. */
-export function refreshPluginRoutes(): void {
-  if (authenticatedRouteBranch === undefined || appRouter === undefined) {
-    return;
-  }
-
-  const previousPageTable = currentPageTable;
-  const currentPage = resolvePageRoute(appRouter.route.pathname, previousPageTable);
-  const {routes: pluginRoutes, pageTable} = buildPluginRoutes(routeRegistry);
-  const nextHostRoutes = buildHostRouteTable(pluginRoutes);
-
-  for (const key of Object.keys(authenticatedRouteBranch)) {
-    if (key !== 'layout') {
-      delete authenticatedRouteBranch[key];
+  const refresh = (registry: Pick<PluginRegistry, 'getPages'>): void => {
+    if (authenticatedRouteBranch === undefined || currentRouter === undefined || currentPageTable === undefined) {
+      return;
     }
-  }
 
-  Object.assign(authenticatedRouteBranch, nextHostRoutes);
-  currentPageTable = pageTable;
+    const previousPageTable = currentPageTable;
+    const currentPage = resolvePageRoute(currentRouter.route.pathname, previousPageTable);
+    const {routes: pluginRoutes, pageTable} = buildPluginRoutes(registry);
+    const nextHostRoutes = buildHostRouteTable(pluginRoutes);
 
-  if (currentPage !== null && pageTable.baseRouteOf(currentPage.name) === undefined) {
-    void appRouter.navigate(HOST_PATHS.dashboard);
-  }
-}
+    for (const key of Object.keys(authenticatedRouteBranch)) {
+      if (key !== 'layout') {
+        delete authenticatedRouteBranch[key];
+      }
+    }
 
-/** Supplies the live app router to plugin contexts after the registry has built its route table. */
-export function getPluginNavigationRouter(): PluginNavigationRouter | undefined {
-  const router = appRouter;
+    Object.assign(authenticatedRouteBranch, nextHostRoutes);
+    currentPageTable = pageTable;
 
-  if (router === undefined) {
-    return undefined;
-  }
+    if (currentPage !== null && pageTable.baseRouteOf(currentPage.name) === undefined) {
+      void currentRouter.navigate(HOST_PATHS.dashboard);
+    }
+  };
 
   return {
-    pageTable: router.pluginPages,
-    navigate: (pathname: string): unknown => router.navigate(pathname as never),
+    get current(): AppRouter | undefined {
+      return currentRouter;
+    },
+    create,
+    refresh,
+    navigation: (): PluginNavigationRouter | undefined => {
+      const router = currentRouter;
+
+      if (router === undefined) {
+        return undefined;
+      }
+
+      return {
+        pageTable: router.pluginPages,
+        navigate: (pathname: string): unknown => router.navigate(pathname as never),
+      };
+    },
+    pageRouteDefinitions: (registry): readonly PageRouteDefinition[] => {
+      const pageTable = currentPageTable;
+
+      return pageTable === undefined ? [] : getPageRouteDefinitions(registry, pageTable);
+    },
   };
 }

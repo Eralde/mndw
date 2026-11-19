@@ -517,9 +517,6 @@ export function createOverlayRuntime(): OverlayRuntime {
   };
 }
 
-const defaultRuntime = createOverlayRuntime();
-export const defaultOverlayRuntime = defaultRuntime;
-
 export interface PluginOverlayBundle {
   service: OverlayService;
   /** Host-internal teardown; closes this instance's overlays with the given reason. */
@@ -534,7 +531,7 @@ export interface PluginOverlayBundle {
 export function createPluginOverlayService(
   pluginName: string,
   instanceId: string,
-  runtime: OverlayRuntime = defaultRuntime,
+  runtime: OverlayRuntime,
 ): PluginOverlayBundle {
   let disposed = false;
 

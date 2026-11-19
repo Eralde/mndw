@@ -534,6 +534,5 @@ export function createPluginCatalogService(deps: PluginCatalogDeps = {}): Plugin
 }
 
 /** Production catalog runtime; isolated consumers construct one with createPluginCatalogService. */
-export const pluginCatalogService = createPluginCatalogService();
 
 export const PLUGIN_CATALOG_TIMEOUT_MS = CATALOG_TIMEOUT_MS;

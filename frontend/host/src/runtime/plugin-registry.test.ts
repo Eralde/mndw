@@ -3,7 +3,10 @@ import {beforeEach, describe, expect, it} from 'vitest';
 import {type LoadedPlugin, PluginRegistry} from './plugin-registry.js';
 import type {PluginCatalogCell} from '../services/plugin-catalog.service.js';
 import type {PluginBackendDescriptor} from './plugin-types.js';
-import {pluginStylesheets} from './plugin-stylesheets.js';
+import {PluginStylesheets} from './plugin-stylesheets.js';
+import {createTestPluginRegistry} from '../testing/plugin-registry.js';
+
+const pluginStylesheets = new PluginStylesheets();
 
 const emptyBackend: PluginBackendDescriptor = {
   routes: {},
@@ -52,7 +55,7 @@ let registry: PluginRegistry;
 beforeEach(() => {
   (window as unknown as {happyDOM: {settings: {disableCSSFileLoading: boolean}}})
     .happyDOM.settings.disableCSSFileLoading = true;
-  registry = new PluginRegistry();
+  registry = createTestPluginRegistry();
 });
 
 describe('PluginRegistry', () => {
@@ -93,10 +96,6 @@ describe('PluginRegistry', () => {
 
     expect(unregistered).toEqual([cell]);
     expect(cleared).toBe(1);
-  });
-
-  it('new PluginRegistry() remains default-constructible', () => {
-    expect(() => new PluginRegistry()).not.toThrow();
   });
 
   it('register() adds a plugin to the registry', () => {

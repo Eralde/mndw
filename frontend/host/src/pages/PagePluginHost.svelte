@@ -18,12 +18,7 @@ import {
   type SandboxReloadDetail,
 } from '../runtime/sandbox-loader.js';
 import {PageRouteController} from '../router/page-route-controller.js';
-import {
-  appRouter,
-  getPageRouteDefinitions,
-  getPluginNavigationRouter,
-  resolvePageRoute,
-} from '../router/create-app-router.js';
+import {resolvePageRoute} from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus} from '../state/deps-status.svelte.js';
 import {getPluginLoadState} from '../runtime/plugin-load-state.svelte.js';
@@ -31,7 +26,6 @@ import {getPluginManifestPresentation} from '../services/plugin-catalog.service.
 import {retryPluginLoad} from '../runtime/plugin-loader.js';
 import {getHostServices} from '../host-services-context.js';
 import {hostT} from '../services/host-i18n.svelte.js';
-import {getTheme, subscribeTheme} from '../services/theme.service.js';
 
 interface ActiveMount {
   generation: number;
@@ -74,7 +68,11 @@ const pluginContextServices = {
   telemetry: services.telemetry,
   telemetryGathering: services.telemetryGathering,
   eventStream: services.eventStream,
-  navigation: getPluginNavigationRouter,
+  rci: services.rci,
+  theme: services.theme,
+  tickerPool: services.tickerPool,
+  overlayRuntime: services.overlayRuntime,
+  navigation: services.router.navigation,
 };
 
 // Capture the host node via an action (not bind:this) so host-managed child containers
@@ -91,7 +89,16 @@ function bindHost(node: HTMLElement): {destroy(): void} {
 }
 
 const routeMatch = $derived.by(() => {
-  return resolvePageRoute(appRouter.route.pathname, getPageRouteDefinitions());
+  const router = services.router.current;
+
+  if (router === undefined) {
+    return null;
+  }
+
+  return resolvePageRoute(
+    router.route.pathname,
+    services.router.pageRouteDefinitions(registry),
+  );
 });
 const pluginName = $derived(routeMatch?.name ?? null);
 const depsState = $derived.by(() => {
@@ -260,15 +267,14 @@ function mountPluginRecord(
   const child = document.createElement('div');
 
   child.className = 'mndw-page-plugin__mount';
-  child.dataset.theme = getTheme();
-  const unsubscribeTheme = subscribeTheme((theme) => {
+  child.dataset.theme = services.theme.getTheme();
+  const unsubscribeTheme = services.theme.subscribeTheme((theme) => {
     child.dataset.theme = theme;
   });
   host.appendChild(child);
 
-  const definition = getPageRouteDefinitions().find((route) =>
-    route.name === plugin.entry.name
-  );
+  const definition = services.router.pageRouteDefinitions(services.registry)
+    .find((route) => route.name === plugin.entry.name);
   if (definition === undefined) {
     unsubscribeTheme();
     child.remove();
@@ -278,12 +284,18 @@ function mountPluginRecord(
 
   beginMountStatus(thisGeneration, plugin);
 
+  const router = services.router.current;
   const controller = new PageRouteController(
     definition.route,
     initialChildPath,
     {
-      navigate: (pathname, options) =>
-        appRouter.navigate(pathname as never, options),
+      navigate: (pathname, options) => {
+        if (router === undefined) {
+          return Promise.reject(new Error('Host router is unavailable'));
+        }
+
+        return router.navigate(pathname as never, options);
+      },
       getLocation: () => ({search: globalThis.location.search,
         hash: globalThis.location.hash}),
     },
@@ -310,7 +322,9 @@ function mountPluginRecord(
     catalogCell: plugin.catalog,
     services: pluginContextServices,
   });
-  const mount = mountPluginWithContext(child, plugin, contextHandle);
+  const mount = mountPluginWithContext(child, plugin, contextHandle, {
+    pluginStylesheets: services.pluginStylesheets,
+  });
 
   record.mount = mount;
 

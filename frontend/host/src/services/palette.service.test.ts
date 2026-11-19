@@ -1,18 +1,11 @@
 // @vitest-environment happy-dom
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_TOKENS, type PaletteTokenMap} from '@mndw/sdk';
+import {type PaletteService, createPaletteService} from './palette.service.js';
 
-const getPalette = vi.fn<() => Promise<unknown>>();
+const getPalette = vi.fn<() => Promise<PaletteTokenMap | null>>();
 const putPalette = vi.fn<(palette: PaletteTokenMap) => Promise<void>>();
 const deletePalette = vi.fn<() => Promise<void>>();
-
-vi.mock('./mgmt-client.js', () => ({
-  mgmtClient: {
-    getPalette: (): ReturnType<typeof getPalette> => getPalette(),
-    putPalette: (palette: PaletteTokenMap): ReturnType<typeof putPalette> => putPalette(palette),
-    deletePalette: (): ReturnType<typeof deletePalette> => deletePalette(),
-  },
-}));
 
 const override = JSON.parse(JSON.stringify(MNDW_TOKENS)) as PaletteTokenMap;
 
@@ -23,22 +16,27 @@ function overrideElement(): HTMLElement | null {
   return document.getElementById('mndw-palette-override');
 }
 
-let service: typeof import('./palette.service.js');
+let service: PaletteService;
 
-beforeEach(async () => {
+beforeEach(() => {
   document.head.innerHTML = '';
-  vi.resetModules();
   getPalette.mockReset();
   putPalette.mockReset();
   deletePalette.mockReset();
-  service = await import('./palette.service.js');
+  service = createPaletteService({
+    mgmtClient: {
+      getPalette: () => getPalette(),
+      putPalette: (palette) => putPalette(palette),
+      deletePalette: () => deletePalette(),
+    },
+  });
 });
 
 describe('initPalette', () => {
   it('uses injected management client and document state', async () => {
     const isolatedDocument = document.implementation.createHTMLDocument('isolated');
     const isolatedGetPalette = vi.fn<() => Promise<PaletteTokenMap | null>>().mockResolvedValue(override);
-    const isolatedService = service.createPaletteService({
+    const isolatedService = createPaletteService({
       mgmtClient: {
         getPalette: isolatedGetPalette,
         putPalette: vi.fn(),
@@ -85,7 +83,7 @@ describe('initPalette', () => {
   });
 
   it('rejects a structurally invalid device palette without applying it', async () => {
-    getPalette.mockResolvedValue({dark: {bg: 'nope'}, light: {}});
+    getPalette.mockResolvedValue({dark: {bg: 'nope'}, light: {}} as unknown as PaletteTokenMap);
 
     await service.initPalette();
 

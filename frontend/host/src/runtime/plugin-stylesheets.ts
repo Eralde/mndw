@@ -100,5 +100,3 @@ export class PluginStylesheets {
     };
   }
 }
-
-export const pluginStylesheets = new PluginStylesheets();

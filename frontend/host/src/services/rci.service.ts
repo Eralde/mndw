@@ -77,4 +77,6 @@ export class RciService {
   }
 }
 
-export const rciService = new RciService();
+export function createRciService(): RciService {
+  return new RciService();
+}

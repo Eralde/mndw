@@ -13,7 +13,8 @@ import {createHostServices} from '../host-services.js';
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus, replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import {getPagePluginCandidates} from './page-plugin-candidates.js';
-import {pluginStylesheets} from './plugin-stylesheets.js';
+import {PluginStylesheets} from './plugin-stylesheets.js';
+import {createTestPluginRegistry} from '../testing/plugin-registry.js';
 import {
   applyPluginListSnapshot,
   getPluginLoadListOutcome,
@@ -58,15 +59,12 @@ function deps(overrides: Partial<SandboxLoaderDeps> = {}): SandboxLoaderDeps {
   return {
     importPluginModule: () => Promise.resolve(sandboxModule),
     importManifestModule: () => Promise.resolve({default: widgetManifest}),
-    registry: new PluginRegistry() as unknown as SandboxLoaderDeps['registry'],
+    registry: createTestPluginRegistry() as unknown as SandboxLoaderDeps['registry'],
     catalogService: services.catalog,
+    pluginStylesheets: services.pluginStylesheets,
     getLocale: () => services.locale.getLocale(),
     pluginContextServices: {
-      locale: services.locale,
-      palette: services.palette,
-      telemetry: services.telemetry,
-      telemetryGathering: services.telemetryGathering,
-      eventStream: services.eventStream,
+      ...services,
       navigation: () => ({
         pageTable: {baseRouteOf: () => undefined, pluginNameOf: () => undefined},
         navigate: () => undefined,
@@ -139,7 +137,7 @@ describe('manifestToListEntry', () => {
 
 describe('loadSandboxPlugin dashboard state', () => {
   it('publishes a successful single-plugin list and loaded state', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
 
     await loadSandboxPlugin(deps({registry}));
 
@@ -155,7 +153,7 @@ describe('loadSandboxPlugin dashboard state', () => {
   });
 
   it('keeps list outcome successful when a valid sandbox plugin module fails to load', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
     let module: unknown = {};
 
     await loadSandboxPlugin(deps({
@@ -181,7 +179,7 @@ describe('loadSandboxPlugin dashboard state', () => {
   });
 
   it('does not let an older retry overwrite a successful HMR commit', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
     let rejectRetry: ((error: Error) => void) | undefined;
     let retryImportStarted!: () => void;
     const retryStarted = new Promise<void>((resolve) => {
@@ -227,7 +225,7 @@ describe('loadSandboxPlugin dashboard state', () => {
   });
 
   it('does not reset or publish plugin state for a superseded sandbox run', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
 
     applyPluginListSnapshot([manifestToListEntry(widgetManifest as never)]);
     setPluginLoadListOutcome('failed');
@@ -281,7 +279,7 @@ describe('loadSandboxPlugin', () => {
   });
 
   it('uses the injected catalog service and locale', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
     const catalogService = createPluginCatalogService({
       fetchCatalog: () => Promise.resolve({title: 'Hello'}),
     });
@@ -306,7 +304,7 @@ describe('loadSandboxPlugin', () => {
   });
 
   it('validates and registers the sandbox plugin from the virtual modules', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
 
     await loadSandboxPlugin(deps({registry: registry as never}));
 
@@ -315,7 +313,7 @@ describe('loadSandboxPlugin', () => {
   });
 
   it('drops a sandbox result superseded while modules load', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
 
     await loadSandboxPlugin(deps({
       registry: registry as never,
@@ -326,7 +324,7 @@ describe('loadSandboxPlugin', () => {
   });
 
   it('does not register when the manifest is invalid (fails visibly)', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
 
     await loadSandboxPlugin(deps({
       registry: registry as never,
@@ -340,7 +338,7 @@ describe('loadSandboxPlugin', () => {
   });
 
   it('does not register when the module lacks createInstance', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
 
     await loadSandboxPlugin(deps({
       registry: registry as never,
@@ -362,14 +360,10 @@ describe('reloadSandboxPlugin', () => {
   }
 
   it('replaces the registry module and remounts widgets on a compatible reload', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
     const services = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
     const pluginContextServices = {
-      locale: services.locale,
-      palette: services.palette,
-      telemetry: services.telemetry,
-      telemetryGathering: services.telemetryGathering,
-      eventStream: services.eventStream,
+      ...services,
       navigation: () => ({
         pageTable: {baseRouteOf: () => undefined, pluginNameOf: () => undefined},
         navigate: () => undefined,
@@ -394,11 +388,12 @@ describe('reloadSandboxPlugin', () => {
       expect.anything(),
       registry,
       pluginContextServices,
+      services.pluginStylesheets,
     );
   });
 
   it('remounts the page for a page-type sandbox plugin', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
     const prior = {entry: manifestToListEntry(pageManifest as never),
       module: {createInstance: () => ({unmount: () => {}})}};
 
@@ -417,7 +412,7 @@ describe('reloadSandboxPlugin', () => {
   });
 
   it('requires a restart on a topology-changing manifest and keeps the prior plugin live', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
     const prior = seed(registry);
 
     // Same plugin name, but the type flips widget -> page (a topology change).
@@ -434,7 +429,7 @@ describe('reloadSandboxPlugin', () => {
   });
 
   it('keeps the prior module when the candidate manifest is invalid', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
     const prior = seed(registry);
 
     const result = await reloadSandboxPlugin(deps({
@@ -447,7 +442,7 @@ describe('reloadSandboxPlugin', () => {
   });
 
   it('rolls the registry back to the prior module when a remount reports failure', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
     const prior = seed(registry);
 
     const result = await reloadSandboxPlugin(deps({
@@ -461,7 +456,8 @@ describe('reloadSandboxPlugin', () => {
   });
 
   it('keeps prior version CSS through failed reload and rollback', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
+    const pluginStylesheets = new PluginStylesheets();
     const priorEntry = manifestToListEntry({...widgetManifest, version: '0.0.1'} as never);
     const priorStylesheet = pluginStylesheets.acquire(
       priorEntry.name,
@@ -487,11 +483,15 @@ describe('reloadSandboxPlugin', () => {
     const remounting = new Promise<boolean>((resolve) => {
       finishRemount = resolve;
     });
-    const transaction = reloadSandboxPlugin(deps({
+    const sandboxDeps = deps({
       registry: registry as never,
       importManifestModule: () => Promise.resolve({default: {...widgetManifest, version: '0.0.2'}}),
       remountWidgets: () => remounting,
-    }));
+    });
+    const transaction = reloadSandboxPlugin({
+      ...sandboxDeps,
+      pluginStylesheets,
+    });
 
     try {
       await vi.waitFor(() => expect(registry.get('sandbox-widget')?.entry.version).toBe('0.0.2'));

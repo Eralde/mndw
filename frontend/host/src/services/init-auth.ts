@@ -2,7 +2,6 @@ import {type LoaderDeps, loadPlugins} from '../runtime/plugin-loader.js';
 import {type SandboxLoaderDeps, loadSandboxPlugin} from '../runtime/sandbox-loader.js';
 import {sandboxVirtualImports, setupSandboxHmr} from '../runtime/sandbox-virtual.js';
 import {type PluginRegistry} from '../runtime/plugin-registry.js';
-import {createAppRouter, getPluginNavigationRouter} from '../router/create-app-router.js';
 import {appState, beginAuthRun, finishAuthRun, getAuthRunGeneration} from '../state/app.svelte.js';
 import {anyInstalling, startDepsPolling} from '../state/deps-status.svelte.js';
 import {fetchDeviceInfo, fetchHostInfo} from './host-info.service.js';
@@ -44,11 +43,11 @@ export async function initAuthenticated(
   const isCurrent = (): boolean => generation === getAuthRunGeneration();
   const loadPluginsFn = deps.loadPlugins ?? loadPlugins;
   const loadSandboxPluginFn = deps.loadSandboxPlugin ?? loadSandboxPlugin;
-  const createRouterFn = deps.createRouter ?? createAppRouter;
+  const createRouterFn = deps.createRouter ?? ((registry) => services.router.create(registry));
 
   try {
     try {
-      const hostInfo = await fetchHostInfo();
+      const hostInfo = await fetchHostInfo(services.theme, services.locale);
 
       if (isCurrent()) {
         appState.hostInfo = hostInfo;
@@ -64,7 +63,7 @@ export async function initAuthenticated(
     }
 
     try {
-      const deviceInfo = await fetchDeviceInfo(services.mgmtClient);
+      const deviceInfo = await fetchDeviceInfo(services.mgmtClient, services.rci);
 
       if (isCurrent()) {
         appState.deviceInfo = deviceInfo;
@@ -100,6 +99,7 @@ export async function initAuthenticated(
         ...sandboxImports,
         registry: services.registry,
         catalogService: services.catalog,
+        pluginStylesheets: services.pluginStylesheets,
         getLocale: () => services.locale.getLocale(),
         isCurrent,
         pluginContextServices: {
@@ -108,7 +108,11 @@ export async function initAuthenticated(
           telemetry: services.telemetry,
           telemetryGathering: services.telemetryGathering,
           eventStream: services.eventStream,
-          navigation: getPluginNavigationRouter,
+          rci: services.rci,
+          theme: services.theme,
+          tickerPool: services.tickerPool,
+          overlayRuntime: services.overlayRuntime,
+          navigation: () => services.router.navigation(),
         },
       });
 
@@ -122,6 +126,7 @@ export async function initAuthenticated(
         registry: services.registry,
         catalogService: services.catalog,
         getLocale: () => services.locale.getLocale(),
+        pluginStylesheets: services.pluginStylesheets,
       });
 
       if (!isCurrent()) {

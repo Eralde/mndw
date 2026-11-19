@@ -11,8 +11,7 @@ vi.mock('../services/pristine-fetch.js', async (importOriginal) => ({
   pristineFetch,
 }));
 
-import {loadPlugins, retryPluginLoad, syncPlugins} from './plugin-loader.js';
-import {PluginRegistry, pluginRegistry} from './plugin-registry.js';
+import {type LoaderDeps, loadPlugins as loadPluginsWithDeps, retryPluginLoad, syncPlugins} from './plugin-loader.js';
 import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
 import {clearPluginVersionWarnings, getPluginVersionWarnings} from './plugin-version-warnings.svelte.js';
 import {
@@ -29,6 +28,8 @@ import {toast} from '../services/toast/toast.svelte.js';
 import {buildPluginRoutes} from '../router/create-app-router.js';
 import {getPagePluginCandidates} from './page-plugin-candidates.js';
 import {mountPluginWithContext} from './plugin-lifecycle.js';
+import {PluginStylesheets} from './plugin-stylesheets.js';
+import {createTestPluginRegistry} from '../testing/plugin-registry.js';
 
 (window as unknown as {happyDOM: {settings: {disableCSSFileLoading: boolean}}})
   .happyDOM.settings.disableCSSFileLoading = true;
@@ -72,6 +73,16 @@ function page(name: string, route: string, over: Partial<PluginListEntry> = {}):
 }
 
 const goodModule = {createInstance: () => ({unmount: () => {}})};
+const pluginRegistry = createTestPluginRegistry();
+
+function loadPlugins(deps: Partial<LoaderDeps> = {}): Promise<void> {
+  return loadPluginsWithDeps({
+    catalogService: deps.catalogService ?? createPluginCatalogService({fetchCatalog: () => Promise.resolve({})}),
+    registry: deps.registry ?? pluginRegistry,
+    pluginStylesheets: deps.pluginStylesheets ?? new PluginStylesheets(),
+    ...deps,
+  });
+}
 
 function emptyStylesheetLease(): {loaded: Promise<void>; release: () => void} {
   return {loaded: Promise.resolve(), release: () => {}};
@@ -110,17 +121,21 @@ async function finishPluginStylesheet(
   return link;
 }
 
-async function loadWithDefaultStylesheet(entry: PluginListEntry): Promise<void> {
+async function loadWithDefaultStylesheet(entry: PluginListEntry): Promise<PluginStylesheets> {
   const deps = harness([entry]);
+  const pluginStylesheets = new PluginStylesheets();
   const loading = loadPlugins({
     fetchList: deps.fetchList,
     importModule: deps.importModule,
     checkVersions: deps.checkVersions,
     catalogService: deps.catalogService,
+    pluginStylesheets,
   });
 
   await finishPluginStylesheet(entry.name, entry.version);
   await loading;
+
+  return pluginStylesheets;
 }
 
 afterEach(() => {
@@ -138,7 +153,7 @@ afterEach(() => {
 // eslint-disable-next-line max-lines-per-function -- loader behavior cases stay together.
 describe('loadPlugins', () => {
   it('registers into the injected registry using the injected locale', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
     const getLocale = vi.fn(() => 'ru');
     const h = harness([widget('localized', {
       i18n: {defaultLocale: 'en', locales: {en: 'i18n/en.json', ru: 'i18n/ru.json'}},
@@ -318,7 +333,7 @@ describe('loadPlugins', () => {
   it('keeps a disabled plugin stylesheet until the mounted tile finishes unmounting', async () => {
     const entry = widget('css-disabled');
 
-    await loadWithDefaultStylesheet(entry);
+    const pluginStylesheets = await loadWithDefaultStylesheet(entry);
 
     const plugin = pluginRegistry.get(entry.name);
 
@@ -336,7 +351,7 @@ describe('loadPlugins', () => {
     const handle = mountPluginWithContext(container, updated, {
       context: {} as PluginContext,
       dispose: (): void => {},
-    });
+    }, {pluginStylesheets});
 
     const syncing = syncPlugins([widget(entry.name, {enabled: false})]);
 
@@ -383,7 +398,7 @@ describe('loadPlugins', () => {
   it('remounting the same plugin version keeps its stylesheet without reloading', async () => {
     const entry = widget('css-remount');
 
-    await loadWithDefaultStylesheet(entry);
+    const pluginStylesheets = await loadWithDefaultStylesheet(entry);
 
     const existing = pluginStylesheet(entry.name, entry.version);
     const plugin = pluginRegistry.get(entry.name);
@@ -397,14 +412,14 @@ describe('loadPlugins', () => {
     const firstMount = mountPluginWithContext(container, plugin, {
       context,
       dispose: (): void => {},
-    });
+    }, {pluginStylesheets});
 
     firstMount.dispose();
 
     const secondMount = mountPluginWithContext(container, plugin, {
       context,
       dispose: (): void => {},
-    });
+    }, {pluginStylesheets});
 
     secondMount.dispose();
 
@@ -825,7 +840,7 @@ describe('loadPlugins', () => {
   });
 
   it('ignores a late result from an older load run', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
     let finishFirst: (entries: PluginListEntry[]) => void = () => {};
     const first = loadPlugins({
       fetchList: () =>
@@ -872,7 +887,7 @@ describe('loadPlugins', () => {
 
 describe('syncPlugins', () => {
   it('keeps a translated page name after reconciling the plugin list', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
     const entry = page('localized-page', '/localized', {
       label: 'Manifest page',
       i18n: {defaultLocale: 'en', locales: {en: 'i18n/en.json', ru: 'i18n/ru.json'}},

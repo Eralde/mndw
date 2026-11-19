@@ -2,11 +2,19 @@
 import {defineMndwUi} from '@mndw/ui';
 import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
+import {appState} from '../../../state/app.svelte.js';
+import {createHostServices} from '../../../host-services.js';
+import {createHostServicesContext} from '../../../host-services-context.js';
 
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
-import {setLocale} from '../../../services/locale.service.js';
+import {createTestLocaleController} from '../../../testing/test-locale.js';
 import {openApprovalModal} from './approval-modal.js';
 import BackendApprovalModal from './BackendApprovalModal.svelte';
+
+const services = createHostServices({setUiLocale: (locale) => {
+  appState.locale = locale;
+}});
+const {setLocale} = createTestLocaleController(services);
 
 const {openHostModal} = vi.hoisted(() => ({openHostModal: vi.fn()}));
 
@@ -33,7 +41,11 @@ function mountModal(close = vi.fn()): {component: ReturnType<typeof mount>; targ
 
   document.body.appendChild(target);
 
-  const component = mount(BackendApprovalModal, {target, props: {entry, close}});
+  const component = mount(BackendApprovalModal, {
+    target,
+    props: {entry, close},
+    context: createHostServicesContext(services),
+  });
 
   flushSync();
 
@@ -80,20 +92,22 @@ describe('BackendApprovalModal', () => {
     });
 
     try {
-      await openApprovalModal(entry);
+      await openApprovalModal(services, entry);
       expect(openHostModal).toHaveBeenLastCalledWith(
         expect.anything(),
+        BackendApprovalModal,
         expect.objectContaining({title: 'Approve backend for Network Tools'}),
       );
 
-      await setLocale('ru');
-      await openApprovalModal(entry);
+      await services.locale.setLocale('ru');
+      await openApprovalModal(services, entry);
       expect(openHostModal).toHaveBeenLastCalledWith(
         expect.anything(),
+        BackendApprovalModal,
         expect.objectContaining({title: 'Подтвердить серверную часть для Network Tools'}),
       );
     } finally {
-      await setLocale('en');
+      await services.locale.setLocale('en');
       openHostModal.mockReset();
     }
   });
@@ -130,7 +144,7 @@ describe('BackendApprovalModal', () => {
 
     controller.abort();
 
-    await expect(openApprovalModal(entry, controller.signal)).resolves.toBeUndefined();
+    await expect(openApprovalModal(services, entry, controller.signal)).resolves.toBeUndefined();
     expect(openHostModal).not.toHaveBeenCalled();
   });
 
@@ -144,7 +158,7 @@ describe('BackendApprovalModal', () => {
     openHostModal.mockReturnValue({closed, close});
 
     const controller = new AbortController();
-    const approval = openApprovalModal(entry, controller.signal);
+    const approval = openApprovalModal(services, entry, controller.signal);
 
     controller.abort();
 
@@ -162,7 +176,7 @@ describe('BackendApprovalModal', () => {
     openHostModal.mockReturnValue({closed, close});
 
     const controller = new AbortController();
-    const approval = openApprovalModal(entry, controller.signal);
+    const approval = openApprovalModal(services, entry, controller.signal);
 
     close('approve');
     await expect(approval).resolves.toBe('approve');

@@ -5,12 +5,11 @@ import {
   type SelfUpdateClient,
   SelfUpdateError,
   type SelfUpdateStatus,
-  selfUpdateClient,
 } from '../../../services/self-update-client.js';
-import {hostT} from '../../../services/host-i18n.svelte.js';
 import {toast} from '../../../services/toast/toast.svelte.js';
 import ConfirmActionModal from '../../opkg/ConfirmActionModal.svelte';
 import {openHostModal} from '../../../services/overlay/host-overlay.js';
+import {getHostServices} from '../../../host-services-context.js';
 import {appState} from '../../../state/app.svelte.js';
 import SelfUpdateProgressModal from './SelfUpdateProgressModal.svelte';
 import type {
@@ -36,8 +35,10 @@ const SELF_UPDATE_CHECK_TOAST_KEY = 'settings.self-update.check';
 const SELF_UPDATE_APPLY_TOAST_KEY = 'settings.self-update.apply';
 const SELF_UPDATE_REVERT_TOAST_KEY = 'settings.self-update.revert';
 const SELF_UPDATE_STATUS_TOAST_KEY = 'settings.self-update.status';
+const services = getHostServices();
+const hostT = services.locale.hostT;
 
-let client = $derived(providedClient ?? selfUpdateClient);
+let client = $derived(providedClient ?? services.selfUpdateClient);
 
 let status = $state<SelfUpdateStatus | null>(null);
 let checked = $state<Awaited<ReturnType<SelfUpdateClient['check']>> | null>(
@@ -237,6 +238,7 @@ async function requestConfirmation(
 ): Promise<boolean> {
   const isUpdate = operation === 'update';
   const session = openHostModal<boolean, ConfirmationProps>(
+    services.hostOverlay,
     ConfirmActionModal,
     {
       title: hostT(
@@ -281,6 +283,7 @@ function openProgressModal(operation: 'update' | 'revert'): void {
     progress: SelfUpdateProgress;
     close: (result: 'close') => void;
   }>(
+    services.hostOverlay,
     SelfUpdateProgressModal,
     {
       title: hostT('settings.self-update-progress-title'),

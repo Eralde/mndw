@@ -1,6 +1,6 @@
 import {appState} from '../state/app.svelte.js';
-import {hostT as translateHost} from './locale.service.js';
+import {translateHostMessage} from './locale.service.svelte.js';
 
 export function hostT(key: string, values?: Record<string, unknown>): string {
-  return translateHost(key, values, appState.locale);
+  return translateHostMessage(key, values, appState.locale);
 }

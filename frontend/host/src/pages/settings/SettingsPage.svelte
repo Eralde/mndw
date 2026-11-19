@@ -5,7 +5,7 @@ import DiagnosticsSettings from './DiagnosticsSettings.svelte';
 import GeneralSettings from './GeneralSettings.svelte';
 import PluginSettings from './PluginSettings.svelte';
 import SelfUpdateSettings from './self-update/SelfUpdateSettings.svelte';
-import {appRouter} from '../../router/create-app-router.js';
+import {getHostServices} from '../../host-services-context.js';
 import {HOST_PATHS} from '../../router/host-routes.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
 import {appState} from '../../state/app.svelte.js';
@@ -23,15 +23,17 @@ interface CapabilityState {
 
 let capabilityVisible = $state(false);
 let capabilityAvailable = $state(false);
+const routerService = getHostServices().router;
 
 const activeTab = $derived.by(() => {
-  const pathname = appRouter?.route.pathname ?? globalThis.location.pathname;
+  const pathname = routerService.current?.route.pathname
+    ?? globalThis.location.pathname;
 
   return settingsTabFromPath(pathname) ?? SETTINGS_DEFAULT_TAB;
 });
 
 onMount(() => {
-  const router = appRouter;
+  const router = routerService.current;
 
   if (router?.route.pathname === HOST_PATHS.settings) {
     void router.navigate(settingsPath(SETTINGS_DEFAULT_TAB), {replace: true});
@@ -43,7 +45,7 @@ function handleTabChange(event: CustomEvent<MndwTabsChangeDetail>): void {
     return candidate.id === event.detail.value;
   });
 
-  const router = appRouter;
+  const router = routerService.current;
 
   if (tab === undefined || router === undefined) {
     return;

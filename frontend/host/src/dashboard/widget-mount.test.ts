@@ -14,11 +14,10 @@ import {FALLBACK_HOST_INFO} from '../constants.js';
 import type {HostInfo} from '../runtime/device-info-context.js';
 import {createPluginContext} from '../runtime/plugin-context.js';
 import {type MountedPlugin, type PluginMountHandle, mountPluginWithContext} from '../runtime/plugin-lifecycle.js';
-import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
+import type {LoadedPlugin} from '../runtime/plugin-registry.js';
 import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {appState} from '../state/app.svelte.js';
 import {createHostServices} from '../host-services.js';
-import {hostT} from '../services/locale.service.js';
 import {createWidgetContext} from './widget-context.js';
 import {mountWidgetTile} from './widget-mount.js';
 
@@ -67,12 +66,9 @@ const explicitDeviceInfo: DeviceInfoData = {
 const dispose = vi.fn();
 const handle = {context: {instanceId: 'traffic:1'} as PluginContext, dispose};
 const hostServices = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+const pluginRegistry = hostServices.registry;
 const pluginContextServices = {
-  locale: hostServices.locale,
-  palette: hostServices.palette,
-  telemetry: hostServices.telemetry,
-  telemetryGathering: hostServices.telemetryGathering,
-  eventStream: hostServices.eventStream,
+  ...hostServices,
   navigation: () => ({
     pageTable: {baseRouteOf: () => undefined, pluginNameOf: () => undefined},
     navigate: () => undefined,
@@ -206,11 +202,15 @@ describe('mountWidgetTile', () => {
 
     const container = document.createElement('div');
 
-    const tileHandle = mountWidgetTile(container, plugin, handle);
+    const options = {
+      errorText: hostServices.locale.hostT('dashboard.widget-error'),
+      pluginStylesheets: hostServices.pluginStylesheets,
+    };
+    const tileHandle = mountWidgetTile(container, plugin, handle, options);
 
     expect(tileHandle).toBe(mountHandle);
     expect(mountPluginWithContext).toHaveBeenCalledWith(container, plugin, handle, {
-      errorText: hostT('dashboard.widget-error'),
+      ...options,
     });
   });
 

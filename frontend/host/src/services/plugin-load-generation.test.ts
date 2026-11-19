@@ -26,6 +26,8 @@ import {createPluginCatalogService} from './plugin-catalog.service.js';
 import {initAuthenticated} from './init-auth.js';
 import {loadPlugins} from '../runtime/plugin-loader.js';
 import {PluginRegistry} from '../runtime/plugin-registry.js';
+import {PluginStylesheets} from '../runtime/plugin-stylesheets.js';
+import {createTestPluginRegistry} from '../testing/plugin-registry.js';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
 import {appState, resetToLogin} from '../state/app.svelte.js';
 import {getDepsStatus, replaceDepsStatuses} from '../state/deps-status.svelte.js';
@@ -50,6 +52,7 @@ function loaderDeps(fetchList: (signal: AbortSignal) => Promise<PluginListEntry[
   return {
     fetchList,
     registry,
+    pluginStylesheets: new PluginStylesheets(),
     importModule: vi.fn(() => Promise.resolve({createInstance: () => ({unmount() {}})})),
     acquireStylesheet: () => ({loaded: Promise.resolve(), release: () => {}}),
     catalogService: createPluginCatalogService({fetchCatalog: () => Promise.resolve({})}),
@@ -98,7 +101,7 @@ describe('plugin load generation', () => {
   });
 
   it('drops pending plugin results when newer authenticated init starts', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
     let finishList: (entries: PluginListEntry[]) => void = () => {};
     const pending = loadPlugins(
       loaderDeps(() =>
@@ -150,7 +153,7 @@ describe('plugin load generation', () => {
   });
 
   it('ignores late list failure after newer authenticated init starts', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
     let failList: (error: Error) => void = () => {};
     const pending = loadPlugins(
       loaderDeps(() =>
@@ -170,7 +173,7 @@ describe('plugin load generation', () => {
   });
 
   it('drops pending plugin results after session reset', async () => {
-    const registry = new PluginRegistry();
+    const registry = createTestPluginRegistry();
     let requestSignal: AbortSignal | undefined;
     let finishList: (entries: PluginListEntry[]) => void = () => {};
     const pending = loadPlugins(

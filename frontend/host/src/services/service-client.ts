@@ -130,5 +130,3 @@ export function createServiceClient(fetchImpl: typeof globalThis.fetch = globalT
     },
   };
 }
-
-export const serviceClient: ServiceClient = createServiceClient();

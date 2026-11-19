@@ -12,13 +12,11 @@ vi.mock('../runtime/sandbox-url.js', () => ({
   sandboxUrlImports: vi.fn(() => ({importPluginModule: vi.fn(), importManifestModule: vi.fn()})),
   setupSandboxUrlHmr: vi.fn(),
 }));
-vi.mock('../router/create-app-router.js', () => ({createAppRouter: vi.fn(), getPluginNavigationRouter: vi.fn()}));
 
 import {type LoaderDeps, loadPlugins} from '../runtime/plugin-loader.js';
 import {loadSandboxPlugin} from '../runtime/sandbox-loader.js';
 import {sandboxVirtualImports, setupSandboxHmr} from '../runtime/sandbox-virtual.js';
 import {sandboxUrlImports, setupSandboxUrlHmr} from '../runtime/sandbox-url.js';
-import {createAppRouter} from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
 import {fetchDeviceInfo, fetchHostInfo} from './host-info.service.js';
 import {initAuthenticated} from './init-auth.js';
@@ -59,7 +57,6 @@ describe('initAuthenticated', () => {
     vi.mocked(fetchHostInfo).mockResolvedValue(hostInfo);
     vi.mocked(fetchDeviceInfo).mockResolvedValue(deviceInfo);
     vi.mocked(loadPlugins).mockResolvedValue(undefined);
-    vi.mocked(createAppRouter).mockReturnValue({} as ReturnType<typeof createAppRouter>);
   });
 
   afterEach(() => {
@@ -69,11 +66,14 @@ describe('initAuthenticated', () => {
   });
 
   it('loads plugins from the daemon and never touches the sandbox loader in normal mode', async () => {
-    await initAuthenticated(testHostServices());
+    const services = testHostServices();
+
+    await initAuthenticated(services);
 
     expect(loadPlugins).toHaveBeenCalledTimes(1);
     expect(loadSandboxPlugin).not.toHaveBeenCalled();
     expect(setupSandboxHmr).not.toHaveBeenCalled();
+    expect(services.router.current).toBeDefined();
   });
 
   it('loads and routes through the injected host service graph', async () => {
@@ -96,14 +96,16 @@ describe('initAuthenticated', () => {
     expect(loaded[0]?.catalogService).toBe(services.catalog);
     expect(loaded[0]?.getLocale?.()).toBe(services.locale.getLocale());
     expect(routedRegistry).toBe(services.registry);
-    expect(fetchDeviceInfo).toHaveBeenCalledWith(services.mgmtClient);
+    expect(fetchDeviceInfo).toHaveBeenCalledWith(services.mgmtClient, services.rci);
   });
 
   it('loads the sandbox plugin and wires HMR instead of the daemon list in sandbox mode', async () => {
     vi.stubGlobal('__MNDW_SANDBOX__', 'virtual');
     vi.mocked(loadSandboxPlugin).mockResolvedValue(undefined);
 
-    await initAuthenticated(testHostServices());
+    const services = testHostServices();
+
+    await initAuthenticated(services);
 
     expect(loadSandboxPlugin).toHaveBeenCalledWith(expect.objectContaining({
       ...sandboxVirtualImports,
@@ -115,10 +117,10 @@ describe('initAuthenticated', () => {
 
     expect(hmrRunGuard?.()).toBe(true);
     expect(loadPlugins).not.toHaveBeenCalled();
-    expect(createAppRouter).toHaveBeenCalledTimes(1);
+    expect(services.router.current).toBeDefined();
     expect(appState.ready).toBe(true);
 
-    await initAuthenticated(testHostServices());
+    await initAuthenticated(services);
 
     expect(hmrRunGuard?.()).toBe(false);
   });
@@ -127,7 +129,9 @@ describe('initAuthenticated', () => {
     vi.stubGlobal('__MNDW_SANDBOX__', 'url');
     vi.mocked(loadSandboxPlugin).mockResolvedValue(undefined);
 
-    await initAuthenticated(testHostServices());
+    const services = testHostServices();
+
+    await initAuthenticated(services);
 
     expect(sandboxUrlImports).toHaveBeenCalledTimes(1);
     expect(loadSandboxPlugin).toHaveBeenCalledWith(expect.objectContaining({
@@ -137,6 +141,7 @@ describe('initAuthenticated', () => {
     expect(setupSandboxUrlHmr).toHaveBeenCalledTimes(1);
     expect(setupSandboxHmr).not.toHaveBeenCalled();
     expect(loadPlugins).not.toHaveBeenCalled();
+    expect(services.router.current).toBeDefined();
     expect(appState.ready).toBe(true);
   });
 
@@ -149,7 +154,8 @@ describe('initAuthenticated', () => {
       }),
     );
 
-    const pending = initAuthenticated(testHostServices());
+    const services = testHostServices();
+    const pending = initAuthenticated(services);
 
     // Let the awaited host-info settle so we are parked on loadPlugins.
     await Promise.resolve();
@@ -158,28 +164,23 @@ describe('initAuthenticated', () => {
     await Promise.resolve();
 
     expect(loadPlugins).toHaveBeenCalledTimes(1);
-    expect(createAppRouter).not.toHaveBeenCalled();
+    expect(services.router.current).toBeUndefined();
     expect(appState.ready).toBe(false);
 
     resolveLoad();
     await pending;
 
-    expect(createAppRouter).toHaveBeenCalledTimes(1);
+    expect(services.router.current).toBeDefined();
     expect(appState.ready).toBe(true);
   });
 
-  it('does not re-match the current route when a retry rebuilds a ready router', async () => {
-    // The remount after a successful retry re-matches routes; re-navigating here would
-    // mount page plugins twice (see App.svelte retryPluginLoad / pluginLoadRevision).
-    const navigate = vi.fn();
-    const router = {navigate} as unknown as ReturnType<typeof createAppRouter>;
-
+  it('builds a graph router during a ready-state retry', async () => {
     appState.ready = true;
-    vi.mocked(createAppRouter).mockReturnValue(router);
+    const services = testHostServices();
 
-    await initAuthenticated(testHostServices());
+    await initAuthenticated(services);
 
-    expect(navigate).not.toHaveBeenCalled();
+    expect(services.router.current).toBeDefined();
     expect(appState.ready).toBe(true);
   });
 
@@ -205,7 +206,7 @@ describe('initAuthenticated', () => {
     expect(appState.hostInfo).toEqual(newerHostInfo);
     expect(fetchDeviceInfo).toHaveBeenCalledTimes(1);
     expect(loadPlugins).toHaveBeenCalledTimes(1);
-    expect(createAppRouter).toHaveBeenCalledTimes(1);
+    expect(services.router.current).toBeDefined();
     expect(appState.ready).toBe(true);
   });
 
@@ -214,13 +215,15 @@ describe('initAuthenticated', () => {
 
     vi.mocked(fetchHostInfo).mockRejectedValue(new Error('rci down'));
 
-    await initAuthenticated(testHostServices());
+    const services = testHostServices();
+
+    await initAuthenticated(services);
 
     expect(errorSpy).toHaveBeenCalled();
     expect(appState.hostInfo).toBeNull();
     expect(appState.deviceInfo).toEqual(deviceInfo);
     expect(loadPlugins).toHaveBeenCalledTimes(1);
-    expect(createAppRouter).toHaveBeenCalledTimes(1);
+    expect(services.router.current).toBeDefined();
     expect(appState.ready).toBe(true);
 
     errorSpy.mockRestore();
@@ -231,7 +234,9 @@ describe('initAuthenticated', () => {
 
     vi.mocked(fetchDeviceInfo).mockRejectedValue(new Error('device info down'));
 
-    await initAuthenticated(testHostServices());
+    const services = testHostServices();
+
+    await initAuthenticated(services);
 
     expect(errorSpy).toHaveBeenCalled();
     expect(appState.deviceInfo).toBeNull();
@@ -248,9 +253,11 @@ describe('initAuthenticated', () => {
       return Promise.resolve();
     });
 
-    await initAuthenticated(testHostServices());
+    const services = testHostServices();
 
-    expect(createAppRouter).toHaveBeenCalledTimes(1);
+    await initAuthenticated(services);
+
+    expect(services.router.current).toBeDefined();
     expect(appState.ready).toBe(true);
     expect(appState.pluginLoadError).toBe('list');
   });

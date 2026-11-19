@@ -16,9 +16,11 @@ import {PLUGIN_LOAD_TIMEOUT_MS} from '../../../runtime/plugin-loader.js';
 import {replacePluginLoadStates, setPluginLoadState} from '../../../runtime/plugin-load-state.svelte.js';
 import {clearPluginVersionWarnings, setPluginVersionWarnings} from '../../../runtime/plugin-version-warnings.svelte.js';
 import {replaceDepsStatuses} from '../../../state/deps-status.svelte.js';
-import {setLocale} from '../../../services/locale.service.js';
 import InstalledPluginList from './InstalledPluginList.svelte';
 import type {PluginRowState} from './reconcile.js';
+import {createTestLocaleController} from '../../../testing/test-locale.js';
+
+const {setLocale} = createTestLocaleController();
 
 const emptyBackend = {routes: {}};
 

@@ -15,14 +15,14 @@ import {mountWidgetTile} from '../dashboard/widget-mount.js';
 import {appState} from '../state/app.svelte.js';
 import {FALLBACK_DEVICE_INFO} from '../constants.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
-import {createAppRouter} from '../router/create-app-router.js';
-import PagePluginHost from '../pages/PagePluginHost.svelte';
-import {pluginRegistry} from './plugin-registry.js';
-import type {PageListEntry, PluginListEntry, WidgetListEntry} from './plugin-types.js';
 import {createHostServices} from '../host-services.js';
+import PagePluginHost from '../pages/PagePluginHost.svelte';
+import {createTestPluginRegistry} from '../testing/plugin-registry.js';
+import type {PageListEntry, PluginListEntry, WidgetListEntry} from './plugin-types.js';
 import {createHostServicesContext} from '../host-services-context.js';
 
 const pageContexts = vi.hoisted(() => new Map<string, PluginContext>());
+const pluginRegistry = createTestPluginRegistry();
 
 vi.mock('./plugin-context.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./plugin-context.js')>();
@@ -342,10 +342,19 @@ smoke('packed built-in l10n smoke', () => {
 
       document.body.append(container);
 
-      const handle = mountWidgetTile(container, loaded, {
-        context: createSmokeContext(testI18n, name === 'event-logger-widget'),
-        dispose: (): void => {},
-      });
+      const services = createHostServices();
+      const handle = mountWidgetTile(
+        container,
+        loaded,
+        {
+          context: createSmokeContext(testI18n, name === 'event-logger-widget'),
+          dispose: (): void => {},
+        },
+        {
+          errorText: services.locale.hostT('dashboard.widget-error'),
+          pluginStylesheets: services.pluginStylesheets,
+        },
+      );
 
       expect(await handle.whenReady()).toBe(true);
       await flushPlugin(name);
@@ -374,7 +383,8 @@ smoke('packed built-in l10n smoke', () => {
     pluginRegistry.register(loaded);
     replaceDepsStatuses([loaded.entry]);
 
-    const router = createAppRouter();
+    const services = createHostServices();
+    const router = services.router.create(pluginRegistry);
 
     await router.navigate(loaded.entry.route as `/${string}`);
 
@@ -384,7 +394,7 @@ smoke('packed built-in l10n smoke', () => {
 
     const component = mount(PagePluginHost, {
       target,
-      context: createHostServicesContext({...createHostServices(), registry: pluginRegistry}),
+      context: createHostServicesContext({...services, registry: pluginRegistry}),
     });
 
     flushSync();

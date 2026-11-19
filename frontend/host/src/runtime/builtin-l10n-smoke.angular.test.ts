@@ -13,7 +13,7 @@ import {mountWidgetTile} from '../dashboard/widget-mount.js';
 import {appState} from '../state/app.svelte.js';
 import {FALLBACK_DEVICE_INFO} from '../constants.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
-import {pluginRegistry} from './plugin-registry.js';
+import {createTestPluginRegistry} from '../testing/plugin-registry.js';
 import {createTestPluginContext} from './test-plugin-context.js';
 import {decidePackedSmoke} from './packed-smoke-gate.js';
 import {mountPluginWithContext} from './plugin-lifecycle.js';
@@ -21,6 +21,7 @@ import type {PageListEntry, PluginListEntry, WidgetListEntry} from './plugin-typ
 
 const pageContexts = vi.hoisted(() => new Map<string, PluginContext>());
 const tileTitles = vi.hoisted(() => new Map<string, string>());
+const pluginRegistry = createTestPluginRegistry();
 
 vi.mock('./plugin-context.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./plugin-context.js')>();

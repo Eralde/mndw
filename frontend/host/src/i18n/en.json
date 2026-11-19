@@ -42,7 +42,8 @@
     "empty-install-plugins": "Manage plugins",
     "empty-title": "Dashboard is empty",
     "empty-add-widget": "Add a widget to get started.",
-    "widget-removed": "Widget “{label}” removed"
+    "widget-removed": "Widget “{label}” removed",
+    "layout-save-failed": "Dashboard changes were not saved. Browser storage may be unavailable or full."
   },
   "settings": {
     "title": "Settings",
@@ -116,6 +117,8 @@
     "test": "Test",
     "save": "Save",
     "clear-controller-session": "Clear controller access",
+    "clear-controller-session-title": "Clear controller access?",
+    "clear-controller-session-confirm": "Persistent RCI sessions will stop until you save a controller token again.",
     "update-firmware-persistent": "Update device firmware to enable background router access.",
     "controller-token-valid": "Controller token is valid",
     "persistent-extenders-title": "Extenders",

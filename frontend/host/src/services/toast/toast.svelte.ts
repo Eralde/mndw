@@ -8,7 +8,7 @@
 
 import {SvelteMap} from 'svelte/reactivity';
 
-export type ToastVariant = 'success' | 'info' | 'error';
+export type ToastVariant = 'success' | 'info' | 'warning' | 'error';
 
 export interface ToastAction {
   label: string;
@@ -25,8 +25,8 @@ export interface ToastOptions {
   action?: ToastAction;
   /**
    * Milliseconds before auto-dismiss. `0` means sticky (dismissed only by the user).
-   * Omitted falls back to the per-variant default: errors are sticky, the rest
-   * auto-dismiss — an error message (e.g. a dependency conflict) must stay readable.
+   * Omitted falls back to the per-variant default: warnings and errors are sticky;
+   * success and info messages auto-dismiss.
    */
   duration?: number;
 }
@@ -43,6 +43,7 @@ export interface Toast {
 const DEFAULT_DURATIONS: Record<ToastVariant, number> = {
   success: 4000,
   info: 4000,
+  warning: 0,
   error: 0,
 };
 

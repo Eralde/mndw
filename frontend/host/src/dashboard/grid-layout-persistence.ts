@@ -205,7 +205,7 @@ function isDashboardLayout(value: unknown): value is {tiles: unknown[]; mobileOr
     && Array.isArray((value as {tiles?: unknown}).tiles);
 }
 
-export function saveDashboardLayout(layout: DashboardLayout): void {
+export function saveDashboardLayout(layout: DashboardLayout): boolean {
   const persisted: DashboardLayout = {
     tiles: layout.tiles.map(({id, x, y, w, h}) => ({id, x, y, w, h})),
     mobileOrder: [...layout.mobileOrder],
@@ -213,8 +213,12 @@ export function saveDashboardLayout(layout: DashboardLayout): void {
 
   try {
     localStorage.setItem(GRID_LAYOUT_KEY, JSON.stringify(persisted));
+
+    return true;
   } catch (error) {
     console.error('[mndw] Failed to save dashboard layout:', error);
+
+    return false;
   }
 }
 

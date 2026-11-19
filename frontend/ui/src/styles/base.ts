@@ -5,8 +5,17 @@ import {type CSSResult, css} from 'lit';
  * `--mndw-surface-raised` at 3:1.
  */
 export const focusRing: CSSResult = css`
-  outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
+  outline: var(--mndw-focus-w) solid var(--_mndw-focus-ring, var(--mndw-focus-ring));
   outline-offset: 0.0625rem;
+`;
+
+/** Shared danger treatment for controls that expose the invalid or aria-invalid host state. */
+export const invalidField: CSSResult = css`
+  :host([invalid]),
+  :host([aria-invalid='true']) {
+    --_mndw-field-border: var(--mndw-danger);
+    --_mndw-focus-ring: var(--mndw-danger);
+  }
 `;
 
 /** Shared hover treatment for bordered fields. */

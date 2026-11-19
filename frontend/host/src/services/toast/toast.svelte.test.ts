@@ -22,16 +22,17 @@ describe('ToastStore', () => {
     expect(store.toasts.map((toast) => toast.message)).toEqual(['a', 'b']);
   });
 
-  it('defaults info/success to auto-dismiss and errors to sticky', () => {
+  it('defaults info/success to auto-dismiss and warning/error to sticky', () => {
     store.success('done');
+    store.show({message: 'warning', variant: 'warning'});
     store.error('boom');
 
-    expect(store.toasts.map((toast) => toast.variant)).toEqual(['success', 'error']);
+    expect(store.toasts.map((toast) => toast.variant)).toEqual(['success', 'warning', 'error']);
 
     vi.advanceTimersByTime(10000);
 
-    // The success toast auto-dismisses; the error stays until dismissed.
-    expect(store.toasts.map((toast) => toast.variant)).toEqual(['error']);
+    // The success toast auto-dismisses; warning and error stay until dismissed.
+    expect(store.toasts.map((toast) => toast.variant)).toEqual(['warning', 'error']);
   });
 
   it('honors an explicit duration override', () => {

@@ -51,6 +51,7 @@ import {
 } from '../runtime/plugin-load-state.svelte.js';
 
 const PERSIST_DEBOUNCE_MS = 500;
+const LAYOUT_SAVE_TOAST_KEY = 'dashboard-layout-save';
 const REMOVAL_TOAST_KEY = 'dashboard-widget-removal';
 const REMOVAL_TOAST_DURATION_MS = 8000;
 const services = getHostServices();
@@ -230,7 +231,15 @@ function persistNow(
 
   pendingPersist = null;
 
-  saveDashboardLayout(layout);
+  if (saveDashboardLayout(layout)) {
+    toast.dismissKey(LAYOUT_SAVE_TOAST_KEY);
+  } else {
+    toast.show({
+      key: LAYOUT_SAVE_TOAST_KEY,
+      message: hostT('dashboard.layout-save-failed'),
+      variant: 'warning',
+    });
+  }
 }
 
 function scheduleSave(): void {

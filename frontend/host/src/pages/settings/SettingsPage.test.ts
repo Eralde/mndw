@@ -6,6 +6,7 @@ import {MNDW_TOKENS} from '@mndw/sdk';
 
 const {
   downloadDiagnostics,
+  clearController,
   getCapability,
   navigate,
   routerPathname,
@@ -14,6 +15,7 @@ const {
   selfUpdateStatus,
 } = vi.hoisted(() => ({
   downloadDiagnostics: vi.fn(),
+  clearController: vi.fn().mockResolvedValue(undefined),
   getCapability: vi.fn().mockResolvedValue({
     store: {state: 'empty'},
     controller: {support: 'unknown', auth: 'unknown', enabled: false},
@@ -80,7 +82,7 @@ vi.mock('../../services/persistent-rci-session.service.js', async (importOrigina
       getCapability,
       testController: vi.fn(),
       saveController,
-      clearController: vi.fn(),
+      clearController,
       setEnabled,
     },
   };
@@ -103,6 +105,7 @@ import {createHostServicesContext} from '../../host-services-context.js';
 import {mgmtClient} from '../../services/mgmt-client.js';
 import {paletteService} from '../../services/palette.service.js';
 import {toast} from '../../services/toast/toast.svelte.js';
+import {defaultOverlayRuntime} from '../../services/overlay/overlay-manager.svelte.js';
 import {PersistentRciSessionError, persistentRciSessionService} from '../../services/persistent-rci-session.service.js';
 
 const mount = (component: typeof SettingsPage, options: {target: HTMLElement}) => {
@@ -125,6 +128,10 @@ beforeAll(() => {
 
 describe('SettingsPage', () => {
   afterEach(() => {
+    for (const layer of [...defaultOverlayRuntime.store.layers]) {
+      layer.close();
+    }
+
     document.body.innerHTML = '';
     toast.clear();
     vi.mocked(toggleTheme).mockClear();
@@ -135,6 +142,7 @@ describe('SettingsPage', () => {
       stale: false,
     });
     saveController.mockReset();
+    clearController.mockReset().mockResolvedValue(undefined);
     setEnabled.mockReset().mockResolvedValue(undefined);
     downloadDiagnostics.mockReset();
     selfUpdateStatus.mockReset().mockResolvedValue({state: 'idle', version: 'dev'});
@@ -578,6 +586,80 @@ describe('SettingsPage', () => {
     await vi.waitFor(() =>
       expect(target.querySelector('mndw-input[type="password"]')?.getAttribute('placeholder')).toBe('Token is set')
     );
+
+    void unmount(component);
+  });
+
+  it('requires confirmation before clearing controller access', async () => {
+    getCapability.mockResolvedValueOnce({
+      store: {state: 'empty'},
+      controller: {support: 'supported', auth: 'token', enabled: true},
+      extenders: [],
+      stale: false,
+    });
+
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+
+    const clearButton = await vi.waitFor(() => {
+      const value = [...target.querySelectorAll('mndw-button')]
+        .find((button) => button.textContent?.trim() === 'Clear controller access');
+
+      if (value === undefined) {
+        throw new Error('clear controller button not rendered');
+      }
+
+      return value;
+    });
+
+    clearButton.click();
+
+    await vi.waitFor(() => expect(defaultOverlayRuntime.store.layers).toHaveLength(1));
+    expect(defaultOverlayRuntime.store.layers[0]?.contentElement.textContent)
+      .toContain('Persistent RCI sessions will stop until you save a controller token again.');
+    expect(clearController).not.toHaveBeenCalled();
+
+    defaultOverlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[1]?.click();
+
+    await vi.waitFor(() => expect(clearController).toHaveBeenCalledOnce());
+
+    void unmount(component);
+  });
+
+  it('does not clear controller access when confirmation is canceled', async () => {
+    getCapability.mockResolvedValueOnce({
+      store: {state: 'empty'},
+      controller: {support: 'supported', auth: 'token', enabled: true},
+      extenders: [],
+      stale: false,
+    });
+
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+
+    const clearButton = await vi.waitFor(() => {
+      const value = [...target.querySelectorAll('mndw-button')]
+        .find((button) => button.textContent?.trim() === 'Clear controller access');
+
+      if (value === undefined) {
+        throw new Error('clear controller button not rendered');
+      }
+
+      return value;
+    });
+
+    clearButton.click();
+    await vi.waitFor(() => expect(defaultOverlayRuntime.store.layers).toHaveLength(1));
+    defaultOverlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[0]?.click();
+
+    await vi.waitFor(() => expect(defaultOverlayRuntime.store.layers).toHaveLength(0));
+    expect(clearController).not.toHaveBeenCalled();
 
     void unmount(component);
   });

@@ -74,6 +74,16 @@ describe('ToastHost', () => {
     expect(toastEl?.getAttribute('role')).toBe('status');
   });
 
+  it('renders warning toasts with the warning alert style and status role', () => {
+    store.show({message: 'warning', variant: 'warning'});
+    render();
+
+    const toastEl = target.querySelector('.mndw-toast');
+
+    expect(toastEl?.classList.contains('mndw-alert--warning')).toBe(true);
+    expect(toastEl?.getAttribute('role')).toBe('status');
+  });
+
   it('renders and fires an action button', () => {
     const onAction = vi.fn();
 

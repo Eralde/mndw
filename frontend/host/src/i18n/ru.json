@@ -42,7 +42,8 @@
     "empty-install-plugins": "Управление плагинами",
     "empty-title": "Панель управления пуста",
     "empty-add-widget": "Добавьте виджет, чтобы начать.",
-    "widget-removed": "Виджет «{label}» удалён"
+    "widget-removed": "Виджет «{label}» удалён",
+    "layout-save-failed": "Изменения панели управления не сохранены. Хранилище браузера может быть недоступно или заполнено."
   },
   "settings": {
     "title": "Настройки",
@@ -116,6 +117,8 @@
     "test": "Проверить",
     "save": "Сохранить",
     "clear-controller-session": "Удалить доступ к контроллеру",
+    "clear-controller-session-title": "Удалить доступ к контроллеру?",
+    "clear-controller-session-confirm": "Постоянные сессии RCI будут остановлены, пока вы снова не сохраните токен контроллера.",
     "update-firmware-persistent": "Обновите прошивку устройства, чтобы включить фоновый доступ к роутеру.",
     "controller-token-valid": "Токен контроллера действителен",
     "persistent-extenders-title": "Ретрансляторы",

@@ -94,7 +94,7 @@ vi.mock('../layout/breakpoint.js', () => ({
 vi.mock('./grid-layout-persistence.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('./grid-layout-persistence.js')>(),
   loadDashboardLayout: vi.fn(() => null),
-  saveDashboardLayout: vi.fn(),
+  saveDashboardLayout: vi.fn(() => true),
 }));
 
 vi.mock('./widget-counter.js', () => ({
@@ -249,6 +249,8 @@ describe('DashboardPage', () => {
     save.mockReturnValue([]);
     destroy.mockClear();
     vi.mocked(loadDashboardLayout).mockReturnValue(null);
+    vi.mocked(saveDashboardLayout).mockReset()
+      .mockReturnValue(true);
     vi.mocked(pluginRegistry).get.mockReturnValue(undefined);
     vi.mocked(pluginRegistry).getWidgets.mockReturnValue([]);
     vi.mocked(addWidgetTile).mockReturnValue('widget-x:1');
@@ -820,6 +822,42 @@ describe('DashboardPage', () => {
     target.remove();
   });
 
+  it('shows one sticky warning for failed saves and dismisses it after a successful save', () => {
+    const {component, target} = mountPage();
+
+    vi.mocked(saveDashboardLayout)
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(false)
+      .mockReturnValue(true);
+
+    gridHandlers.get('change')?.(new Event('change'));
+    vi.advanceTimersByTime(500);
+
+    expect(toast.toasts).toMatchObject([{
+      key: 'dashboard-layout-save',
+      message: 'Dashboard changes were not saved. Browser storage may be unavailable or full.',
+      variant: 'warning',
+      duration: 0,
+    }]);
+
+    const warningId = toast.toasts[0]?.id;
+
+    gridHandlers.get('change')?.(new Event('change'));
+    vi.advanceTimersByTime(500);
+
+    expect(toast.toasts).toHaveLength(1);
+    expect(toast.toasts[0]?.id).toBe(warningId);
+
+    gridHandlers.get('change')?.(new Event('change'));
+    vi.advanceTimersByTime(500);
+
+    expect(saveDashboardLayout).toHaveBeenCalledTimes(3);
+    expect(toast.toasts).toEqual([]);
+
+    void unmount(component);
+    target.remove();
+  });
+
   it('forwards resize events to the tile registry', () => {
     const {component, target} = mountPage();
     const item = document.createElement('div');
@@ -1076,6 +1114,8 @@ describe('DashboardPage', () => {
     });
     vi.mocked(saveDashboardLayout).mockImplementation(() => {
       events.push('persisted');
+
+      return true;
     });
 
     const {component, target} = mountPage();
@@ -1311,6 +1351,8 @@ describe('DashboardPage', () => {
     ]);
     vi.mocked(saveDashboardLayout).mockImplementation(() => {
       events.push('persisted');
+
+      return true;
     });
 
     const {component, target} = mountPage();

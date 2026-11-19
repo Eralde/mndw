@@ -331,10 +331,10 @@ describe('dashboard layout', () => {
     };
     const tileWithRuntimeState = {...layout.tiles[0], content: 'runtime state'};
 
-    saveDashboardLayout({
+    expect(saveDashboardLayout({
       ...layout,
       tiles: [tileWithRuntimeState as PersistedGridTile],
-    });
+    })).toBe(true);
 
     expect(JSON.parse(localStorage.getItem(GRID_LAYOUT_KEY) ?? '')).toEqual(layout);
   });
@@ -370,10 +370,10 @@ describe('dashboard layout', () => {
       throw saveError;
     });
 
-    saveDashboardLayout({
+    expect(saveDashboardLayout({
       tiles: [{id: 'widget-weather:1', x: 0, y: 0, w: 4, h: 3}],
       mobileOrder: ['widget-weather:1'],
-    });
+    })).toBe(false);
     expect(saveConsoleError).toHaveBeenCalledWith('[mndw] Failed to save dashboard layout:', saveError);
   });
 });

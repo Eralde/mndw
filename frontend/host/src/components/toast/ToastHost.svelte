@@ -20,8 +20,10 @@ const handleBreakpointChange = (event: MediaQueryListEvent): void => {
   store.setMaxToasts(event.matches ? 3 : 4);
 };
 
-// Errors demand attention; success/info are advisory. Maps onto the alert kit.
-function severity(variant: Toast['variant']): 'danger' | 'success' | 'info' {
+// Errors demand attention; warnings, success, and info map onto the alert kit.
+function severity(
+  variant: Toast['variant'],
+): 'danger' | 'success' | 'info' | 'warning' {
   return variant === 'error' ? 'danger' : variant;
 }
 

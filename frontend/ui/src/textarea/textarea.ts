@@ -1,7 +1,7 @@
 import {LitElement, type PropertyDeclarations, type PropertyValues, type TemplateResult, css, html} from 'lit';
 import {FormAssociatedController} from '../forms/form-associated.js';
 import {CommitTracker, TextAnnouncementController, setOrRemove, validityFlagsFrom} from '../forms/text-control.js';
-import {fieldHover, focusRing, hostTypography} from '../styles/base.js';
+import {fieldHover, focusRing, hostTypography, invalidField} from '../styles/base.js';
 
 export const MNDW_TEXTAREA_TAG = 'mndw-textarea';
 
@@ -35,6 +35,8 @@ export class MndwTextarea extends LitElement {
       width: 100%;
     }
 
+    ${invalidField}
+
     :host([disabled]) {
       opacity: 0.5;
     }
@@ -44,7 +46,7 @@ export class MndwTextarea extends LitElement {
       display: flex;
       width: 100%;
       padding: var(--mndw-space-2) var(--mndw-space-3);
-      border: var(--mndw-border-w) solid var(--mndw-border);
+      border: var(--mndw-border-w) solid var(--_mndw-field-border, var(--mndw-border));
       border-radius: var(--mndw-radius-md);
       background: var(--mndw-surface-raised);
       color: var(--mndw-text);

@@ -3,7 +3,7 @@ import {FormAssociatedController} from '../forms/form-associated.js';
 import {CommitTracker, TextAnnouncementController, setOrRemove, validityFlagsFrom} from '../forms/text-control.js';
 import {getMndwUiText} from '../i18n.js';
 import {LocaleController} from '../locale-controller.js';
-import {controlBase, fieldHover, focusRing, hostTypography, textHover} from '../styles/base.js';
+import {controlBase, fieldHover, focusRing, hostTypography, invalidField, textHover} from '../styles/base.js';
 
 export const MNDW_INPUT_TAG = 'mndw-input';
 
@@ -45,6 +45,8 @@ export class MndwInput extends LitElement {
       width: 100%;
     }
 
+    ${invalidField}
+
     :host([disabled]) {
       opacity: 0.5;
     }
@@ -56,7 +58,7 @@ export class MndwInput extends LitElement {
       gap: var(--mndw-space-2);
       align-items: center;
       width: 100%;
-      border: var(--mndw-border-w) solid var(--mndw-border);
+      border: var(--mndw-border-w) solid var(--_mndw-field-border, var(--mndw-border));
       background: var(--mndw-surface-raised);
       color: var(--mndw-text);
     }

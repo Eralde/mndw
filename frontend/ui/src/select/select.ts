@@ -8,7 +8,7 @@ import {LocaleController} from '../locale-controller.js';
 import {type LocalizedPropertyState, createLocalizedProperty} from '../localized-property.js';
 import {type UiCloseReason, type UiLayer, type UiLayerPresentation, getOverlayProvider} from '../overlay.js';
 import {selectPresentation} from '../position/position.js';
-import {controlBase, fieldHover, focusRing, hostTypography} from '../styles/base.js';
+import {controlBase, fieldHover, focusRing, hostTypography, invalidField} from '../styles/base.js';
 import {MNDW_OPTION_CHANGE_EVENT} from './option.js';
 import {type OptionModel, readOptions} from './option-model.js';
 import {SelectPopoverTracker, applySelectPopoverSizing} from './select-popover.js';
@@ -56,6 +56,8 @@ export class MndwSelect extends LitElement {
       border-radius: var(--mndw-radius-md);
     }
 
+    ${invalidField}
+
     :host([disabled]) {
       pointer-events: none;
       opacity: 0.5;
@@ -69,7 +71,7 @@ export class MndwSelect extends LitElement {
       align-items: center;
       justify-content: space-between;
       width: 100%;
-      border: 1px solid var(--mndw-border);
+      border: 1px solid var(--_mndw-field-border, var(--mndw-border));
       background: var(--mndw-surface-raised);
       color: var(--mndw-text);
       text-align: left;

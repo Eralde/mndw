@@ -34,6 +34,9 @@ Replacing it rewires the field. Field generates an `id` if needed, points its la
 description tokens, and prior attribute values are preserved and restored. If a control is not labelable, its
 `aria-labelledby` points to the field label.
 
+Input, textarea, select, and slider controls use a danger-colored border when `invalid` or
+`aria-invalid="true"` is set. Their keyboard focus indicator also uses the danger color in that state.
+
 The control's own accessible name always wins: this includes non-empty `aria-label`, an external
 `aria-labelledby`, a consumer `<label for>` in the same tree, or a control's declared label source. Checkbox slotted
 content and select's `label` property are declared sources. Controls with a changing label source dispatch

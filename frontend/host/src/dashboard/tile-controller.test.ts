@@ -74,7 +74,7 @@ const emptyBackend = {routes: {}};
 
 function widgetPlugin(
   name: string,
-  createInstance: (container: HTMLElement) => PluginInstance | Promise<PluginInstance>,
+  createInstance: (container: HTMLElement, context: PluginContext) => PluginInstance | Promise<PluginInstance>,
 ): LoadedPlugin {
   const entry: WidgetListEntry = {
     name,
@@ -90,7 +90,7 @@ function widgetPlugin(
     size: {w: 4, h: 3},
   };
 
-  return {entry, module: {createInstance: (container) => createInstance(container)}};
+  return {entry, module: {createInstance: (container, context) => createInstance(container, context)}};
 }
 
 function pagePlugin(name: string): LoadedPlugin {
@@ -317,6 +317,72 @@ describe('tile controller', () => {
     removeTileController('widget-retry:1');
 
     expect(mountedHandle.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a mount failure and retries with a fresh context', async () => {
+    const contexts: PluginContext[] = [];
+    const handles: Array<{dispose: ReturnType<typeof vi.fn>}> = [];
+
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('mount-retry', (container, context) => {
+      contexts.push(context);
+
+      if (contexts.length === 1) {
+        return Promise.reject(new Error('initialization failed'));
+      }
+
+      container.textContent = 'Mounted after retry';
+
+      return noop();
+    }));
+    mountWidgetTile.mockImplementation((body: HTMLElement, plugin: LoadedPlugin, context: unknown) => {
+      const result = plugin.module.createInstance(body, (context as {context: PluginContext}).context);
+      const ready = Promise.resolve(result).then(
+        () => true,
+        () => {
+          body.textContent = 'Error loading widget';
+
+          return false;
+        },
+      );
+      const dispose = vi.fn();
+      const handle = {
+        getMounted: vi.fn(() => null),
+        whenReady: vi.fn(() => ready),
+        dispose,
+      };
+
+      handles.push(handle);
+
+      return handle;
+    });
+
+    const controller = ensureTileController(
+      pluginContextServices,
+      pluginRegistry,
+      'mount-retry',
+      'mount-retry:1',
+      vi.fn(),
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const notice = controller?.body.querySelector<HTMLElement>('[role="alert"]');
+    const retryButton = notice?.querySelector<HTMLButtonElement>('.mndw-grid-tile__retry');
+    const firstContext = mountWidgetTile.mock.calls[0]?.[2];
+
+    expect(notice?.querySelector('h3')?.textContent).toBe('Plugin “mount-retry” failed to load');
+    expect(retryButton?.textContent).toBe('Retry');
+
+    retryButton?.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(controller?.body.textContent).toBe('Mounted after retry');
+    expect(mountWidgetTile).toHaveBeenCalledTimes(2);
+    expect(contexts[1]).not.toBe(contexts[0]);
+    expect(handles[0]?.dispose).toHaveBeenCalledOnce();
+    expect(mountWidgetTile.mock.calls[1]?.[2]).not.toBe(firstContext);
   });
 
   it('uses sandbox retry for failed plugin placeholders in sandbox mode', async () => {

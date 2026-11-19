@@ -7,8 +7,8 @@ import '@angular/compiler';
 
 import {AppComponent, PLUGIN_CONTEXT} from './app.component';
 
-export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInstance {
-  const instance = createAngularPluginInstance(el, {
+export async function createInstance(el: HTMLElement, ctx: PluginContext): Promise<PluginInstance> {
+  const instance = await createAngularPluginInstance(el, {
     rootComponent: AppComponent,
     providers: [provideTranslator(ctx.i18n), {provide: PLUGIN_CONTEXT, useValue: ctx}],
     configure: ({component}) => {

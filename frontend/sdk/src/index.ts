@@ -1,18 +1,12 @@
 /** @module @mndw/sdk */
 export type {MndwPlugin, PluginInstance, PluginResizeSize} from './plugin.js';
 export type {EventSource, EventTopic, MndwEvent, PluginEventFacade} from './event-schema.js';
-export {EVENT_CAPABILITY_PATTERN, eventCapabilitySchema} from './event-schema.js';
-export {
-  isPersistentRciCapability,
-  PERSISTENT_RCI_CAPABILITIES,
-  persistentRciCapabilitySchema,
-  pluginCapabilitySchema,
-} from './capabilities.js';
+export {EVENT_CAPABILITY_PATTERN} from './event-schema.js';
+export {isPersistentRciCapability, PERSISTENT_RCI_CAPABILITIES} from './capabilities.js';
 export type {PersistentRciCapability} from './capabilities.js';
 export {PageRouteError} from './context.js';
 export {RciResponseHelper} from '@rci-tools/core';
-export {createPluginRci, PLUGIN_RCI_MANAGER_METHODS} from './rci.js';
-export type {PluginRciManager, PluginRciManagerMethod} from './rci.js';
+export type {PluginRciManager} from './rci.js';
 export type {RciBackgroundProcess, RciQuery} from '@rci-tools/core';
 export type {
   HostNavigation,

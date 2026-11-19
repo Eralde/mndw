@@ -17,6 +17,9 @@ it('exposes exactly the plugin RCI manager methods', () => {
   expectTypeOf<keyof PluginRciManager>().toEqualTypeOf<
     'execute' | 'queue' | 'initBackgroundProcess' | 'queueBackgroundProcess' | 'query'
   >();
+  expectTypeOf<Exclude<keyof PluginRciManager, 'query'>>().toEqualTypeOf<
+    (typeof PLUGIN_RCI_MANAGER_METHODS)[number]
+  >();
 });
 
 it('provides Promise overloads matching queued single and batch results', () => {

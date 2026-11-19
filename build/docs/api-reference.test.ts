@@ -25,6 +25,12 @@ const internalNames = [
   'mwsMemberSchema',
   'createEventSchemaDocument',
   'fetchAll',
+  'PluginRciManagerMethod',
+  'PLUGIN_RCI_MANAGER_METHODS',
+  'createPluginRci',
+  'eventCapabilitySchema',
+  'persistentRciCapabilitySchema',
+  'pluginCapabilitySchema',
 ];
 
 interface GeneratedApi {

@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {persistentRciCapabilitySchema} from './capabilities.js';
+import {type PersistentRciCapability, persistentRciCapabilitySchema} from './capabilities.js';
 
 /**
  * Typed backend client handed to plugins as `context.backend`.
@@ -29,7 +29,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 };
 
-const backendBlockerSchema = z.object({
+/** @internal Exposed to SDK type tests; not re-exported from the package entry. */
+export const backendBlockerSchema = z.object({
   capability: persistentRciCapabilitySchema,
   reason: z.string().min(1),
   prerequisite: z.string().min(1)
@@ -83,13 +84,37 @@ const rejectVariantOnlyFields = (value: unknown): unknown => {
   return value;
 };
 
-const backendStatusSchema = z.preprocess(
+/** @internal Exposed to SDK type tests; not re-exported from the package entry. */
+export const backendStatusSchema = z.preprocess(
   rejectVariantOnlyFields,
   z.discriminatedUnion('state', [blockedStatusSchema, incompatibleStatusSchema, plainStatusSchema]),
 );
 
-export type BackendBlocker = z.infer<typeof backendBlockerSchema>;
-export type BackendStatus = z.infer<typeof backendStatusSchema>;
+export interface BackendBlocker {
+  capability: PersistentRciCapability;
+  reason: string;
+  prerequisite?: string;
+}
+
+export type BackendStatus =
+  | {
+    kind: 'exec' | 'service';
+    state: 'blocked';
+    retryAfterSeconds: number | null;
+    blockers: BackendBlocker[];
+  }
+  | {
+    kind: 'exec' | 'service';
+    state: 'incompatible';
+    retryAfterSeconds: number | null;
+    requiredProtocol: number;
+    supportedProtocols: number[];
+  }
+  | {
+    kind: 'exec' | 'service';
+    state: 'ready' | 'starting' | 'unavailable' | 'maintenance' | 'disabled' | 'not-approved';
+    retryAfterSeconds: number | null;
+  };
 export type BackendStatusState = BackendStatus['state'];
 
 export type BackendRouteTransport = 'http' | 'websocket';

@@ -315,6 +315,7 @@ describe('planCreate', () => {
     expect(app).toContain('padding:var(--mndw-space-4)');
     expect(app).not.toContain('padding:16px');
     expect(fileContents(plan, 'src/index.ts')).toContain('createAngularPluginInstance');
+    expect(fileContents(plan, 'src/index.ts')).toContain('export async function createInstance');
     expect(fileContents(plan, 'src/index.ts')).toContain('provideTranslator');
     expect(fileContents(plan, 'src/index.ts')).not.toContain('createApplication');
     expect(app).toContain('from \'@mndw/sdk/angular\'');

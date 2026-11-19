@@ -38,7 +38,7 @@ export function createMwsMapInstance(
   el: HTMLElement,
   ctx: PluginContext,
   options: MwsInstanceOptions = {},
-): PluginInstance {
+): Promise<PluginInstance> {
   let positions: NodePositionStore | null = null;
   let columns: NodeTableColumnsStore | null = null;
   const themeSubscription = ctx.appearance.theme$.subscribe((theme) => {

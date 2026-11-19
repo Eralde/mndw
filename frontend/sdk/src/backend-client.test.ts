@@ -1,8 +1,10 @@
-import {describe, expect, it, vi} from 'vitest';
+import {describe, expect, expectTypeOf, it, vi} from 'vitest';
+import type {z} from 'zod';
 import * as sdk from './index.js';
 import {
   BackendBadGateway,
   BackendBlocked,
+  type BackendBlocker,
   type BackendDescriptor,
   BackendDisabled,
   BackendError,
@@ -12,13 +14,23 @@ import {
   BackendNotApproved,
   BackendSocketCloseCode,
   BackendStarting,
+  type BackendStatus,
   BackendStatusQueryError,
   BackendTransportMismatch,
   BackendUnavailable,
   BackendUnknownId,
+  backendBlockerSchema,
+  backendStatusSchema,
   createBackendClient,
   isBackendMaintenanceClose,
 } from './backend-client.js';
+
+describe('backend status public types', () => {
+  it('matches the runtime schemas', () => {
+    expectTypeOf<z.infer<typeof backendBlockerSchema>>().toEqualTypeOf<BackendBlocker>();
+    expectTypeOf<z.infer<typeof backendStatusSchema>>().toEqualTypeOf<BackendStatus>();
+  });
+});
 
 describe('backend errors', () => {
   const errors: ReadonlyArray<[string, Error]> = [

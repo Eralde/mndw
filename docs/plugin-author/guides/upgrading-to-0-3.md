@@ -51,12 +51,15 @@ becomes:
 The old `permissions` field now fails validation with `permissions was renamed to capabilities in 0.3`.
 Backend blocker objects use `BackendBlocker.capability` instead of `BackendBlocker.permission`. The SDK vocabulary
 also changed: `PersistentRciPermission` → `PersistentRciCapability`, `PERSISTENT_RCI_PERMISSIONS` →
-`PERSISTENT_RCI_CAPABILITIES`, `persistentRciPermissionSchema` → `persistentRciCapabilitySchema`,
-`pluginPermissionSchema` → `pluginCapabilitySchema`, `isPersistentRciPermission` → `isPersistentRciCapability`,
-`EVENT_PERMISSION_PATTERN` → `EVENT_CAPABILITY_PATTERN`, and `eventPermissionSchema` → `eventCapabilitySchema`.
+`PERSISTENT_RCI_CAPABILITIES`, `isPersistentRciPermission` → `isPersistentRciCapability`, and
+`EVENT_PERMISSION_PATTERN` → `EVENT_CAPABILITY_PATTERN`. Capability schemas and `createPluginRci` are now internal;
+use `isPersistentRciCapability` and `EVENT_CAPABILITY_PATTERN` to check public capability values.
 
 Capabilities already granted on the router survive the upgrade. Settings → Plugins now shows them as
 “Capabilities”.
+
+`createAngularPluginInstance` is now asynchronous: it resolves after the component mounts and rejects if mounting
+fails. Return its promise from `createInstance` (or await it when setup must continue after mounting).
 
 ## Update locale subscriptions
 

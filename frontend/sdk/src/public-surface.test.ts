@@ -49,7 +49,6 @@ const EXPECTED_TYPE_EXPORTS = [
   'PluginInstance',
   'PluginTelemetry',
   'PluginRciManager',
-  'PluginRciManagerMethod',
   'PluginResizeSize',
   'PluginStorage',
   'PluginTimers',
@@ -100,19 +99,14 @@ const EXPECTED_RUNTIME_EXPORTS = [
   'MNDW_TOKENS',
   'PERSISTENT_RCI_CAPABILITIES',
   'KNOWN_TELEMETRY_UNITS',
-  'PLUGIN_RCI_MANAGER_METHODS',
   'RciResponseHelper',
-  'createPluginRci',
   'PageRouteError',
   'SDK_VERSION',
   'TelemetryError',
-  'eventCapabilitySchema',
   'historyStatus',
   'isBackendMaintenanceClose',
   'isKnownTelemetryUnit',
   'isPersistentRciCapability',
-  'persistentRciCapabilitySchema',
-  'pluginCapabilitySchema',
 ];
 
 const EXPECTED_SUBPATHS = [

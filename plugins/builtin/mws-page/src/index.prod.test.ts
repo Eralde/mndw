@@ -108,7 +108,7 @@ describe('production createInstance', () => {
     } as unknown as BackendClient;
     const {ctx, queue} = fakeContext(backend);
     const el = document.createElement('div');
-    const instance = createInstance(el, ctx);
+    const instance = await createInstance(el, ctx);
 
     await vi.waitFor(() => {
       expect(queue).toHaveBeenCalled();

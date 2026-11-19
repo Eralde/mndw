@@ -6,7 +6,7 @@ import {AppComponent} from './app/app.component';
 import {type SettingsDialogArgs, openSettingsDialog} from './open-settings-dialog';
 import {PLUGIN_STORAGE, RCI_MANAGER} from './tokens';
 
-export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInstance {
+export function createInstance(el: HTMLElement, ctx: PluginContext): Promise<PluginInstance> {
   return createAngularPluginInstance(el, {
     rootComponent: AppComponent,
     providers: [

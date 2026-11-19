@@ -19,7 +19,7 @@ describe('generated Angular locale reactivity', () => {
     const i18n = createTestI18n(en, 'en');
     const root = document.createElement('div');
     const context = createTestPluginContext({i18n, kind: 'page'}).context;
-    const instance = createInstance(root, context);
+    const instance = await createInstance(root, context);
     await stabilize();
     const title = root.querySelector('h2');
     const button = root.querySelector('mndw-button');
@@ -46,7 +46,7 @@ describe('generated Angular locale reactivity', () => {
     const fixture = createTestPluginContext({i18n});
     const context = {...fixture.context, setTileTitle} as PluginContext;
     const root = document.createElement('div');
-    const instance = createInstance(root, context);
+    const instance = await createInstance(root, context);
     await stabilize();
 
     expect(setTileTitle).toHaveBeenLastCalledWith(en.l10n.title);
@@ -67,7 +67,7 @@ describe('generated Angular locale reactivity', () => {
     });
     const fixture = createTestPluginContext({i18n, backend: {call} as unknown as BackendClient});
     const root = document.createElement('div');
-    const instance = createInstance(root, fixture.context);
+    const instance = await createInstance(root, fixture.context);
     await stabilize();
 
     root.querySelector('mndw-button')?.dispatchEvent(new MouseEvent('click', {bubbles: true}));

@@ -337,8 +337,9 @@ void values;
 ## Angular lifecycle helpers and overlays
 
 `@mndw/sdk/angular` exports `createAngularPluginInstance` and `mountComponentInOverlay`. The root helper owns
-application creation, root view attachment, cancellation before bootstrap completes, mount-failure cleanup, and
-component/application teardown. Pass `provideTranslator(ctx.i18n)` when the component tree injects `TRANSLATOR`.
+application creation, root view attachment, mount-failure cleanup, and component/application teardown. It returns a
+promise that resolves after mounting; await it from `createInstance` so mount failures reject into the host lifecycle.
+Pass `provideTranslator(ctx.i18n)` when the component tree injects `TRANSLATOR`.
 
 For overlay content, `ctx.overlay.open()` accepts modal or drawer options with optional `title`, `description`,
 `showCloseButton`, sizing, focus, and dismissal settings, plus a `mount(target, layer, signal)` callback. The signal

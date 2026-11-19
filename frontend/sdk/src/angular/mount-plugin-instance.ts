@@ -42,10 +42,10 @@ const runTeardown = (actions: Array<() => void>): void => {
   }
 };
 
-export function createAngularPluginInstance(
+export async function createAngularPluginInstance(
   el: HTMLElement,
   options: AngularPluginInstanceOptions,
-): PluginInstance {
+): Promise<PluginInstance> {
   let appRef: ApplicationRef | null = null;
   let component: ComponentRef<unknown> | null = null;
   let disposed = false;
@@ -64,46 +64,35 @@ export function createAngularPluginInstance(
     }
   };
 
-  createApplication({providers: options.providers})
-    .then((ref) => {
-      if (disposed) {
-        ref.destroy();
+  try {
+    appRef = await createApplication({providers: options.providers});
 
-        return;
-      }
+    const injector = appRef.injector.get(EnvironmentInjector);
 
-      appRef = ref;
+    el.replaceChildren();
+    component = createComponent(options.rootComponent, {hostElement: el, environmentInjector: injector});
+    options.configure?.({appRef, injector, component});
+    appRef.attachView(component.hostView);
 
-      const injector = ref.injector.get(EnvironmentInjector);
+    return {
+      unmount(): void {
+        if (disposed) {
+          return;
+        }
 
-      el.innerHTML = '';
-      component = createComponent(options.rootComponent, {hostElement: el, environmentInjector: injector});
-      options.configure?.({appRef: ref, injector, component});
-      ref.attachView(component.hostView);
-    })
-    .catch((err: unknown) => {
-      if (disposed) {
-        return;
-      }
-
-      disposed = true;
-      console.error('[mndw] Angular plugin mount failed:', err);
-
-      try {
+        disposed = true;
         teardown();
-      } catch (teardownErr) {
-        console.error('[mndw] Angular plugin mount-failure teardown failed:', teardownErr);
-      }
-    });
+      },
+    };
+  } catch (err) {
+    disposed = true;
 
-  return {
-    unmount(): void {
-      if (disposed) {
-        return;
-      }
-
-      disposed = true;
+    try {
       teardown();
-    },
-  };
+    } catch (teardownErr) {
+      console.error('[mndw] Angular plugin mount-failure teardown failed:', teardownErr);
+    }
+
+    throw err;
+  }
 }

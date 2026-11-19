@@ -36,7 +36,12 @@ export interface PluginRciQuery {
   (query: RciQuery | Array<RciQuery>, options?: PluginRciQueryOptions): Promise<TaskResult>;
 }
 
-export type PluginRciManager = Pick<RciManager, PluginRciManagerMethod> & {query: PluginRciQuery};
+export type PluginRciManager =
+  & Pick<
+    RciManager,
+    'execute' | 'queue' | 'initBackgroundProcess' | 'queueBackgroundProcess'
+  >
+  & {query: PluginRciQuery};
 
 function abortError(signal: AbortSignal): unknown {
   return signal.reason === undefined ? new DOMException('The operation was aborted.', 'AbortError') : signal.reason;

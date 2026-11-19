@@ -269,7 +269,8 @@ function hydrateLoadedPlugin(
   }
 
   controller.body.textContent = '';
-  controller.handle = mountWidgetTile(
+
+  const handle = mountWidgetTile(
     controller.body,
     plugin,
     createWidgetContext(
@@ -281,7 +282,24 @@ function hydrateLoadedPlugin(
       controller.setTileTitle,
     ),
   );
+
+  controller.handle = handle;
   controller.pending = false;
+
+  void handle.whenReady().then((ready) => {
+    if (ready || controllers.get(controller.id) !== controller || controller.handle !== handle) {
+      return;
+    }
+
+    renderPluginLoadFailure(controller, controller.onRemoveRequest, () => {
+      if (controllers.get(controller.id) !== controller || controller.handle !== handle) {
+        return;
+      }
+
+      handle.dispose();
+      hydrateLoadedPlugin(controller, plugin, pluginContextServices, registry);
+    });
+  });
 }
 
 /**

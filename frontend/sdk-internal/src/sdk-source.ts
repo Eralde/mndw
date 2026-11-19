@@ -4,6 +4,8 @@ export * from '../../sdk/src/i18n-format.js';
 export * from '../../sdk/src/i18n.js';
 export * from '../../sdk/src/capabilities.js';
 export * from '../../sdk/src/palette.js';
+export {createPluginRci, PLUGIN_RCI_MANAGER_METHODS} from '../../sdk/src/rci.js';
+export type {PluginRciManagerMethod} from '../../sdk/src/rci.js';
 export {createBackendClient} from '../../sdk/src/backend-client.js';
 export type {BackendClientDeps, BackendDescriptor, BackendRouteDescriptor} from '../../sdk/src/backend-client.js';
 export {createTelemetryClient} from '../../sdk/src/telemetry-client.js';

@@ -107,7 +107,7 @@
     }
   },
   "scripts": {
-    "test": "vitest run",
+    "test": "tsc --noEmit -p tsconfig.json && vitest run",
     "generate-manifest-schema": "pnpm --filter @mndw/sdk-internal generate-manifest-schema",
     "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').copyFileSync('src/tokens.css', 'dist/tokens.css'); require('node:fs').copyFileSync('manifest.schema.json', 'dist/manifest.schema.json')\"",
     "prepack": "pnpm run build"

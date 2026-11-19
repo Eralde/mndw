@@ -3,8 +3,15 @@
 import 'zone.js';
 import '@angular/compiler';
 import {ApplicationRef, Component} from '@angular/core';
+import {createApplication} from '@angular/platform-browser';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {createAngularPluginInstance} from './mount-plugin-instance.js';
+
+vi.mock('@angular/platform-browser', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@angular/platform-browser')>();
+
+  return {...actual, createApplication: vi.fn(actual.createApplication)};
+});
 
 @Component({selector: 'root-probe', standalone: true, template: '<span>mounted</span>'})
 class RootComponent {}
@@ -27,13 +34,12 @@ describe('createAngularPluginInstance', () => {
     el?.remove();
   });
 
-  it('mounts the root component into el', async () => {
+  it('resolves after mounting the root component into el', async () => {
     el = document.createElement('div');
     document.body.appendChild(el);
 
-    const instance = createAngularPluginInstance(el, {rootComponent: RootComponent, providers: []});
+    const instance = await createAngularPluginInstance(el, {rootComponent: RootComponent, providers: []});
 
-    await flush();
     expect(el.textContent).toContain('mounted');
     void instance.unmount();
   });
@@ -42,7 +48,7 @@ describe('createAngularPluginInstance', () => {
     el = document.createElement('div');
     document.body.appendChild(el);
 
-    const instance = createAngularPluginInstance(el, {rootComponent: RootComponent, providers: []});
+    const instance = await createAngularPluginInstance(el, {rootComponent: RootComponent, providers: []});
 
     await flush();
 
@@ -57,7 +63,7 @@ describe('createAngularPluginInstance', () => {
     document.body.appendChild(el);
 
     const onUnmount = vi.fn();
-    const instance = createAngularPluginInstance(el, {rootComponent: RootComponent, providers: [], onUnmount});
+    const instance = await createAngularPluginInstance(el, {rootComponent: RootComponent, providers: [], onUnmount});
 
     await flush();
     void instance.unmount();
@@ -69,7 +75,7 @@ describe('createAngularPluginInstance', () => {
     el = document.createElement('div');
     document.body.appendChild(el);
 
-    const instance = createAngularPluginInstance(el, {
+    const instance = await createAngularPluginInstance(el, {
       rootComponent: RootComponent,
       providers: [],
       onUnmount: () => {
@@ -88,7 +94,7 @@ describe('createAngularPluginInstance', () => {
 
     const componentError = new Error('component-destroy-fail');
     let appDestroyed = false;
-    const instance = createAngularPluginInstance(el, {
+    const instance = await createAngularPluginInstance(el, {
       rootComponent: RootComponent,
       providers: [],
       configure: ({appRef, component}) => {
@@ -115,7 +121,7 @@ describe('createAngularPluginInstance', () => {
     document.body.appendChild(el);
 
     const appError = new Error('app-destroy-fail');
-    const instance = createAngularPluginInstance(el, {
+    const instance = await createAngularPluginInstance(el, {
       rootComponent: RootComponent,
       providers: [],
       configure: ({appRef}) => {
@@ -130,36 +136,85 @@ describe('createAngularPluginInstance', () => {
     expect(el.childNodes.length).toBe(0);
   });
 
-  it('cancels a mount when unmounted before createApplication resolves', async () => {
+  it('rejects the original application creation error after cleanup', async () => {
     el = document.createElement('div');
     document.body.appendChild(el);
 
     const onUnmount = vi.fn();
-    const destroySpy = vi.spyOn(ApplicationRef.prototype, 'destroy');
-    const instance = createAngularPluginInstance(el, {rootComponent: RootComponent, providers: [], onUnmount});
+    const appError = new Error('application-fail');
 
-    void instance.unmount();
-    await flush();
+    vi.mocked(createApplication).mockRejectedValueOnce(appError);
+
+    await expect(createAngularPluginInstance(el, {rootComponent: RootComponent, providers: [], onUnmount})).rejects
+      .toBe(
+        appError,
+      );
     expect(onUnmount).toHaveBeenCalledOnce();
-    expect(destroySpy).toHaveBeenCalledOnce();
-    expect(el.textContent).not.toContain('mounted');
+    expect(el.childNodes.length).toBe(0);
   });
 
-  it('runs onUnmount and logs when mounting fails', async () => {
+  it('rejects component creation errors after destroying the application and clearing el', async () => {
     el = document.createElement('div');
     document.body.appendChild(el);
 
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const onUnmount = vi.fn();
+    const appDestroySpy = vi.spyOn(ApplicationRef.prototype, 'destroy');
 
-    createAngularPluginInstance(el, {
+    await expect(createAngularPluginInstance(el, {
       rootComponent: ThrowingRootComponent,
       providers: [],
       onUnmount,
-    });
-    await flush();
+    })).rejects.toThrow('component-fail');
     expect(onUnmount).toHaveBeenCalledOnce();
-    expect(errorSpy).toHaveBeenCalledWith('[mndw] Angular plugin mount failed:', expect.any(Error));
+    expect(appDestroySpy).toHaveBeenCalledOnce();
+    expect(el.childNodes.length).toBe(0);
+  });
+
+  it('rejects configure errors after destroying the component and application', async () => {
+    el = document.createElement('div');
+    document.body.appendChild(el);
+
+    const configureError = new Error('configure-fail');
+    const onUnmount = vi.fn();
+    const appDestroySpy = vi.spyOn(ApplicationRef.prototype, 'destroy');
+
+    await expect(createAngularPluginInstance(el, {
+      rootComponent: RootComponent,
+      providers: [],
+      configure: () => {
+        throw configureError;
+      },
+      onUnmount,
+    })).rejects.toBe(configureError);
+    expect(onUnmount).toHaveBeenCalledOnce();
+    expect(appDestroySpy).toHaveBeenCalledOnce();
+    expect(el.childNodes.length).toBe(0);
+  });
+
+  it('rejects attachView errors after teardown without replacing the original error', async () => {
+    el = document.createElement('div');
+    document.body.appendChild(el);
+
+    const attachError = new Error('attach-view-fail');
+    const teardownError = new Error('teardown-fail');
+    const onUnmount = vi.fn(() => {
+      throw teardownError;
+    });
+    const attachViewSpy = vi.spyOn(ApplicationRef.prototype, 'attachView').mockImplementation(() => {
+      throw attachError;
+    });
+    const appDestroySpy = vi.spyOn(ApplicationRef.prototype, 'destroy');
+
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(createAngularPluginInstance(el, {
+      rootComponent: RootComponent,
+      providers: [],
+      onUnmount,
+    })).rejects.toBe(attachError);
+    expect(attachViewSpy).toHaveBeenCalledOnce();
+    expect(onUnmount).toHaveBeenCalledOnce();
+    expect(appDestroySpy).toHaveBeenCalledOnce();
     expect(el.childNodes.length).toBe(0);
   });
 });

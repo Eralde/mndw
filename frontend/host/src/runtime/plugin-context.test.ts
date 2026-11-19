@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
 import {
   MNDW_TOKENS,
-  PLUGIN_RCI_MANAGER_METHODS,
   PageRouteError,
   type PaletteTokenMap,
   type TelemetryClient,
   type TelemetryGathering,
 } from '@mndw/sdk';
+import {PLUGIN_RCI_MANAGER_METHODS} from '@mndw/sdk-internal';
 import {of} from 'rxjs';
 import {beforeEach, describe, expect, expectTypeOf, it, vi} from 'vitest';
 import {

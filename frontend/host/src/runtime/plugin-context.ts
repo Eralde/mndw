@@ -1,14 +1,17 @@
 import {
   type BackendClient,
   type DeviceInfoData,
-  PLUGIN_RCI_MANAGER_METHODS,
   type PageRoute,
   type PluginContext,
   type TelemetryGathering,
-  createPluginRci,
 } from '@mndw/sdk';
 import {createPluginTimers} from '@mndw/sdk/internal/timers';
-import {type BackendDescriptor, createBackendClient} from '@mndw/sdk-internal';
+import {
+  type BackendDescriptor,
+  PLUGIN_RCI_MANAGER_METHODS,
+  createBackendClient,
+  createPluginRci,
+} from '@mndw/sdk-internal';
 import {filter} from 'rxjs';
 import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
 import {type PluginCatalogCell, createPluginI18n} from '../services/plugin-catalog.service.js';

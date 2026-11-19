@@ -104,13 +104,16 @@ describe('createInstance', () => {
     vi.useRealTimers();
   });
 
-  it('tolerates unmount before Angular bootstrap resolves and leaves the mount empty', async () => {
+  it('resolves after Angular bootstrap and leaves the mount empty after unmount', async () => {
     const {ctx, closeAll} = fakeContext();
     const el = document.createElement('div');
-    const instance = createInstance(el, ctx);
+    const mounting = createInstance(el, ctx);
+
+    expect(typeof mounting.then).toBe('function');
+
+    const instance = await mounting;
 
     instance.unmount();
-    await vi.runAllTimersAsync();
 
     expect(el.childNodes.length).toBe(0);
     expect(closeAll).toHaveBeenCalledOnce();
@@ -121,7 +124,7 @@ describe('createInstance', () => {
     const {ctx, closeAll} = fakeContext();
     const el = document.createElement('div');
     const setAttribute = vi.spyOn(el, 'setAttribute');
-    const instance = createInstance(el, ctx);
+    const instance = await createInstance(el, ctx);
 
     await vi.waitFor(() => {
       expect(el.querySelector('mws-map-app, .mws-page')).not.toBeNull();
@@ -133,10 +136,10 @@ describe('createInstance', () => {
     expect(closeAll).toHaveBeenCalledOnce();
   });
 
-  it('reflects the host theme on the mount element and follows changes', () => {
+  it('reflects the host theme on the mount element and follows changes', async () => {
     const {ctx, setTheme} = fakeContext();
     const el = document.createElement('div');
-    const instance = createInstance(el, ctx);
+    const instance = await createInstance(el, ctx);
 
     expect(el.dataset.mndwTheme).toBe('light');
 
@@ -154,7 +157,7 @@ describe('createInstance', () => {
     const backend = {call, socket: vi.fn(), status: vi.fn()} as unknown as BackendClient;
     const {ctx, queue} = fakeContext(backend);
     const el = document.createElement('div');
-    const instance = createInstance(el, ctx);
+    const instance = await createInstance(el, ctx);
 
     await vi.waitFor(() => {
       expect(el.textContent).toContain('Mock data: 3 extenders · 7 clients');
@@ -178,7 +181,7 @@ describe('createInstance', () => {
     } as unknown as BackendClient;
     const {ctx, queue} = fakeContext(backend);
     const el = document.createElement('div');
-    const instance = createInstance(el, ctx);
+    const instance = await createInstance(el, ctx);
 
     await vi.waitFor(() => {
       expect(queue).toHaveBeenCalled();

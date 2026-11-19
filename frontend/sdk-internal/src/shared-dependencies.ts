@@ -82,7 +82,7 @@ export const SHARED_DEPENDENCIES: SharedDependency[] = [
   {
     specifiers: ['@mndw/ui'],
     bundle: 'mndw-ui',
-    version: '0.2.0',
+    version: '0.3.0',
     entryPoint: '@mndw/ui',
     external: ['d3'],
     framework: 'base',

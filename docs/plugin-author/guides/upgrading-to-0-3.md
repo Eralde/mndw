@@ -4,6 +4,31 @@ Version 0.3 groups related `PluginContext` services and changes the plugin local
 plugin source, tests, and framework adapters before publishing. The [package versioning guide](/guides/project-setup#package-versioning)
 explains how 0.x package ranges work.
 
+## Update package ranges
+
+Change both SDK and UI packages to `^0.3.0`:
+
+```json
+{
+  "dependencies": {
+    "@mndw/sdk": "^0.2.0",
+    "@mndw/ui": "^0.2.0"
+  }
+}
+```
+
+```json
+{
+  "dependencies": {
+    "@mndw/sdk": "^0.3.0",
+    "@mndw/ui": "^0.3.0"
+  }
+}
+```
+
+An installed plugin built for SDK 0.2 shows a warning badge in **Settings → Plugins** when the host provides SDK 0.3.
+A warning below the badge identifies both SDK versions. The plugin can still load, but may not work correctly.
+
 ## Migrate context access
 
 | Before | After |

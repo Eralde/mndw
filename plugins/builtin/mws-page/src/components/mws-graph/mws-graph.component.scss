@@ -235,8 +235,21 @@
       stroke-width: 3;
     }
 
+    &.offline.on-path rect.node-body {
+      filter: drop-shadow(0 0 4px var(--mws-offline-color));
+      stroke: var(--mws-offline-color);
+    }
+
+    &.offline.selected rect.selection-ring {
+      stroke: var(--mws-offline-color);
+    }
+
     &.selected rect.node-body {
       filter: drop-shadow(0 0 6px var(--mndw-accent));
+    }
+
+    &.offline.selected rect.node-body {
+      filter: drop-shadow(0 0 6px var(--mws-offline-color));
     }
 
     &:focus {

@@ -462,7 +462,19 @@ onUnmounted(() => {
 <template>
   <div class="app">
     <header class="app__header">
-      <mndw-button variant="ghost" :aria-label="t('settings')" @click="openSettings">
+      <div class="range-scroll">
+        <mndw-segmented
+          :label="t('history-range')"
+          :value.prop="selectedRange"
+          :disabled="info === null"
+          @mndwchange="onRangeChange"
+        >
+          <mndw-segment v-for="range in DISPLAY_RANGES" :key="String(range.key)" :value="range.key">
+            {{ t(range.label) }}
+          </mndw-segment>
+        </mndw-segmented>
+      </div>
+      <mndw-button class="app__settings" variant="ghost" :aria-label="t('settings')" @click="openSettings">
         <mndw-icon name="settings"></mndw-icon>
       </mndw-button>
     </header>
@@ -471,13 +483,6 @@ onUnmounted(() => {
       {{ t('error') }}
     </div>
     <div v-else>
-      <div class="range-scroll">
-        <mndw-segmented :label="t('history-range')" :value.prop="selectedRange" @mndwchange="onRangeChange">
-          <mndw-segment v-for="range in DISPLAY_RANGES" :key="String(range.key)" :value="range.key">
-            {{ t(range.label) }}
-          </mndw-segment>
-        </mndw-segmented>
-      </div>
       <div v-if="stale" class="app__stale mndw-alert mndw-alert--warning" role="status">
         <span class="app__stale-message">{{ t('stale.message', {time: lastSuccessTime}) }}</span>
         <mndw-button
@@ -548,9 +553,24 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--mndw-space-2);
   margin-bottom: 0.75rem;
-  color: var(--mndw-text-subtle);
-  font-weight: 600;
+}
+
+.app__header mndw-segmented {
+  --mndw-control-h: var(--mndw-control-h-sm);
+}
+
+.app__header mndw-segmented::part(group) {
+  padding: 0;
+}
+
+.app__settings {
+  flex: 0 0 auto;
+}
+
+.app__settings::part(button) {
+  min-height: calc(var(--mndw-control-h-sm) + 2 * var(--mndw-border-w));
 }
 
 .app__loading {
@@ -628,10 +648,9 @@ onUnmounted(() => {
 }
 
 .range-scroll {
-  flex: none;
+  flex: 1 1 0;
   min-width: 0;
   overflow-x: auto;
-  margin-bottom: 0.75rem;
 }
 
 @container device-info-card (min-width: 22rem) {

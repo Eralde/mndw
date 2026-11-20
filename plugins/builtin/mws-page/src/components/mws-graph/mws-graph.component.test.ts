@@ -332,6 +332,18 @@ describe('MwsGraphComponent', () => {
     expect(offlineStyles).toMatch(/rect\.node-body\s*\{[^}]*stroke:\s*var\(--mws-offline-color\);/s);
     expect(offlineStyles).toMatch(/text\.status-line\s*\{[^}]*fill:\s*var\(--mws-offline-color\);/s);
     expect(graphStyles).toMatch(
+      /&\.controller rect\.node-body\s*\{[^}]*stroke-width:\s*3;/s,
+    );
+    expect(graphStyles).toMatch(
+      /&\.offline\.on-path rect\.node-body\s*\{[^}]*filter:\s*drop-shadow\(0 0 4px var\(--mws-offline-color\)\);[^}]*stroke:\s*var\(--mws-offline-color\);/s,
+    );
+    expect(graphStyles).toMatch(
+      /&\.offline\.selected rect\.selection-ring\s*\{[^}]*stroke:\s*var\(--mws-offline-color\);/s,
+    );
+    expect(graphStyles).toMatch(
+      /&\.offline\.selected rect\.node-body\s*\{[^}]*filter:\s*drop-shadow\(0 0 6px var\(--mws-offline-color\)\);/s,
+    );
+    expect(graphStyles).toMatch(
       /&?\.offline\s+text\.name,\s*&?\.offline\s+text\.model\s*\{[^}]*fill:\s*var\(--mndw-text-subtle\);/s,
     );
   });

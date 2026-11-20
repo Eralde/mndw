@@ -75,8 +75,9 @@ describe('LogFilters', () => {
 
     flushSync();
 
-    const filterToggle = host.querySelector<HTMLElement>('mndw-button[data-filter-toggle]');
+    const filterToggle = host.querySelector<HTMLElement & {variant: string}>('mndw-button[data-filter-toggle]');
 
+    expect(filterToggle?.variant).toBe('secondary');
     expect(filterToggle?.getAttribute('aria-expanded')).toBe('false');
     expect(host.textContent).toContain('Showing 2 of 6 items');
 

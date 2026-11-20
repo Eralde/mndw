@@ -40,7 +40,7 @@ function resetFilters(): void {
     <div class="log-filters__summary">
       <mndw-button
         data-filter-toggle
-        variant="ghost"
+        variant="secondary"
         aria-expanded={expanded}
         aria-label={translate(expanded ? 'filter.hide' : 'filter.show')}
         onclick={() => expanded = !expanded}

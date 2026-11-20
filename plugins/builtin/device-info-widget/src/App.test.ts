@@ -241,6 +241,8 @@ describe('App', () => {
     const {app, host} = mountWidgetContext(ctx);
 
     expect(host.querySelector('.app__header > span')).toBeNull();
+    expect(host.querySelector('.app__header .range-scroll')).not.toBeNull();
+    expect(host.querySelector('.app__header .app__settings')).not.toBeNull();
     expect(host.querySelector('.app__header mndw-button')?.getAttribute('aria-label')).toBe(enCatalog.settings);
     expect(setTileTitle).toHaveBeenLastCalledWith(enCatalog.title);
     i18n.setLocale('ru', ruCatalog);
@@ -248,6 +250,22 @@ describe('App', () => {
 
     expect(host.querySelector('.app__header mndw-button')?.getAttribute('aria-label')).toBe(ruCatalog.settings);
     expect(setTileTitle).toHaveBeenLastCalledWith(ruCatalog.title);
+    app.unmount();
+  });
+
+  it.each([
+    ['loading', () => new Observable<unknown>(() => {})],
+    ['error', () => throwError(() => new Error('failed'))],
+  ])('keeps the header controls visible and disables the range while %s', async (_state, queue) => {
+    const {app, host} = mountWidgetContext(createContext(queue));
+
+    await flushPromises();
+
+    expect(host.querySelector('.app__header .range-scroll')).not.toBeNull();
+    expect(host.querySelector('mndw-segmented')?.hasAttribute('disabled')).toBe(true);
+    expect(host.querySelector('.app__header mndw-button')?.getAttribute('aria-label')).toBe(enCatalog.settings);
+    expect(host.querySelector(_state === 'loading' ? '.app__loading' : '[role="alert"]')).not.toBeNull();
+
     app.unmount();
   });
 
@@ -266,18 +284,22 @@ describe('App', () => {
     app.unmount();
   });
 
-  it('renders identity labels in one grid with a full-width divider and keeps the range row from shrinking', async () => {
+  it('renders identity labels in one grid and lets the header range fill free width', async () => {
     const app = mountWidget(successfulResponse);
 
     await flushPromises();
 
     const rangeScroll = document.querySelector<HTMLElement>('.range-scroll');
+    const settings = document.querySelector<HTMLElement>('.app__settings');
     const identity = document.querySelector<HTMLElement>('.app__identity');
     const identityGrid = identity?.querySelector<HTMLElement>('.app__grid');
     const identityLabels = identity?.querySelectorAll('.app__label, .copy-field__label');
     const middleDivider = identity?.querySelector<HTMLElement>('.app__divider--span');
 
-    expect(rangeScroll === null ? '' : getComputedStyle(rangeScroll).flexShrink).toBe('0');
+    expect(rangeScroll === null ? '' : getComputedStyle(rangeScroll).flexGrow).toBe('1');
+    expect(rangeScroll === null ? '' : getComputedStyle(rangeScroll).minWidth).toBe('0');
+    expect(rangeScroll === null ? '' : getComputedStyle(rangeScroll).overflowX).toBe('auto');
+    expect(settings === null ? '' : getComputedStyle(settings).flexShrink).toBe('0');
     expect(identity?.querySelectorAll('.app__grid')).toHaveLength(1);
     expect(identityLabels).toHaveLength(8);
     expect([...identityLabels ?? []].every((label) => label.closest('.app__grid') === identityGrid)).toBe(true);

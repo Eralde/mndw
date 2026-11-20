@@ -34,13 +34,13 @@ const workspacePackageJsonPaths = (): string[] => {
 };
 
 it('pins @rci-tools/core once, in the catalog', () => {
-  expect(workspaceCatalogVersion()).toBe('0.6.0');
+  expect(workspaceCatalogVersion()).toBe('0.6.1');
 });
 
 it('stamps the catalog version into shared dependencies', () => {
   const dependency = SHARED_DEPENDENCIES.find((entry) => entry.specifiers.includes('@rci-tools/core'));
 
-  expect(dependency?.version).toBe('0.6.0');
+  expect(dependency?.version).toBe('0.6.1');
 });
 
 it('declares the published peer range', () => {

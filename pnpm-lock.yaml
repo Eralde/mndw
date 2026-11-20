@@ -7,8 +7,8 @@ settings:
 catalogs:
   default:
     '@rci-tools/core':
-      specifier: 0.6.0
-      version: 0.6.0
+      specifier: 0.6.1
+      version: 0.6.1
     '@sveltejs/package':
       specifier: ^2.5.8
       version: 2.5.8
@@ -178,7 +178,7 @@ importers:
         version: link:../../frontend/ui-vue
       '@rci-tools/core':
         specifier: 'catalog:'
-        version: 0.6.0
+        version: 0.6.1
       '@sveltejs/vite-plugin-svelte':
         specifier: ^5.0.0
         version: 5.1.1(svelte@5.56.8(@typescript-eslint/types@8.57.1))(vite@6.4.3(@types/node@22.19.15)(jiti@2.7.0)(less@4.9.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)(yaml@2.9.0))
@@ -294,7 +294,7 @@ importers:
         version: link:../ui-svelte
       '@rci-tools/core':
         specifier: 'catalog:'
-        version: 0.6.0
+        version: 0.6.1
       gridstack:
         specifier: ^12.6.0
         version: 12.6.0
@@ -395,7 +395,7 @@ importers:
         version: 21.2.18(@angular/common@21.2.18(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))
       '@rci-tools/core':
         specifier: 'catalog:'
-        version: 0.6.0
+        version: 0.6.1
       happy-dom:
         specifier: 20.11.1
         version: 20.11.1
@@ -2540,8 +2540,8 @@ packages:
     engines: {node: '>=20'}
     hasBin: true
 
-  '@rci-tools/core@0.6.0':
-    resolution: {integrity: sha512-Lm4cZzFbOCCese3+uqLQ9GrVZlgvJxhf5OA5EgLFfWn0k4glX7u+RX+tH9ZzvaMf3XYmJOZ60Fe7Sf+NO3oFkA==}
+  '@rci-tools/core@0.6.1':
+    resolution: {integrity: sha512-wcDww+NRrhdbtVRGxgZGVBeH/I/TyLaU7qONfUEDx5XQRKs8ui+adzG0OwgAKIilKmCQ7/F5XYs/QLJlH6MVQQ==}
 
   '@rolldown/binding-android-arm64@1.1.5':
     resolution: {integrity: sha512-lZg8fqIv2v7FF237bwMgzGZEJvGL79/s5knJ/i6FmsGF4XXlzccZ4jb+TrFIxtSSxFtIpdsgrPZeMk1I9AFcyQ==}
@@ -7119,7 +7119,7 @@ snapshots:
     dependencies:
       playwright: 1.62.0
 
-  '@rci-tools/core@0.6.0':
+  '@rci-tools/core@0.6.1':
     dependencies:
       hash-wasm: 4.12.0
       jssha: 3.3.2

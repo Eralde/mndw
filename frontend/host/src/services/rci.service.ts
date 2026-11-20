@@ -1,4 +1,4 @@
-import {FetchTransport, RciManager, SessionManager} from '@rci-tools/core';
+import {RciManager, SessionManager, XHRTransport} from '@rci-tools/core';
 import {EMPTY, type Observable, Subscription, catchError, exhaustMap, tap, timer} from 'rxjs';
 
 export const RCI_HEARTBEAT_INTERVAL_MS = 30_000;
@@ -6,7 +6,7 @@ export const RCI_HEARTBEAT_INTERVAL_MS = 30_000;
 const RCI_HEARTBEAT_QUERY = {path: 'show.system'} as const;
 
 export class RciService {
-  private readonly transport: FetchTransport;
+  private readonly transport: XHRTransport;
   private heartbeatSubscription: Subscription | null = null;
   public readonly driver: RciManager;
   public readonly auth: SessionManager;
@@ -14,7 +14,7 @@ export class RciService {
   constructor() {
     const host = window.location.origin;
 
-    this.transport = new FetchTransport();
+    this.transport = new XHRTransport();
     this.auth = new SessionManager(host, this.transport);
     this.driver = new RciManager(host, this.transport);
   }

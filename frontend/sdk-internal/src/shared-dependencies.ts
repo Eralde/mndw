@@ -46,7 +46,7 @@ export const SHARED_DEPENDENCIES: SharedDependency[] = [
   {
     specifiers: ['@rci-tools/core'],
     bundle: 'rci-tools-core',
-    version: '0.6.0',
+    version: '0.6.1',
     entryPoint: '@rci-tools/core',
     external: ['rxjs', 'hash-wasm'],
     framework: 'base',

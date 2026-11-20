@@ -20,11 +20,16 @@ import {toast} from '../../services/toast/toast.svelte.js';
 import {openHostModal} from '../../services/overlay/host-overlay.js';
 import {getHostServices} from '../../host-services-context.js';
 import {appState} from '../../state/app.svelte.js';
+import {HOST_PATHS} from '../../router/host-routes.js';
 import PackageNameCell from './PackageNameCell.svelte';
 import PackageVersionCell from './PackageVersionCell.svelte';
 import PackageStatusCell from './PackageStatusCell.svelte';
 import {packageActionsRenderer} from './package-actions-renderer.svelte.js';
-import type {PackageRowAction} from './package-actions-renderer.svelte.js';
+import {isProtectedPackage} from './package-protection.js';
+import type {
+  PackageCellRow,
+  PackageRowAction,
+} from './package-actions-renderer.svelte.js';
 import {packageDetailRenderer} from './package-detail-renderer.svelte.js';
 import type {
   PackageDetailCache,
@@ -33,6 +38,7 @@ import type {
 import {compareVersions} from './compare-versions.js';
 import ConfirmActionModal from './ConfirmActionModal.svelte';
 import EmptyState from '../../components/EmptyState.svelte';
+import {observeCompactPanelWidth} from './panel-width.js';
 
 interface Props {
   now?: () => Date;
@@ -41,6 +47,14 @@ interface Props {
 interface ActionFocusTarget {
   packageName: string;
   source: 'primary' | 'detail';
+}
+
+type PackageAction = 'install' | 'remove' | 'upgrade';
+
+interface PackageRow extends PackageEntry {
+  busyAction?: PackageAction;
+  actionsDisabled: boolean;
+  compact: boolean;
 }
 
 const PACKAGE_LIST_TOAST_KEY = 'packages.list';
@@ -53,6 +67,8 @@ function packageActionToastKey(
 }
 
 let {now = () => new Date()}: Props = $props();
+let panelElement: HTMLElement;
+let compactLayout = $state(false);
 const hostServices = getHostServices();
 const hostT = hostServices.locale.hostT;
 const opkgClient = hostServices.opkgClient;
@@ -62,7 +78,11 @@ let freshnessComputedAt = $state<Date | null>(null);
 let checked = new SvelteSet<string>();
 let filter = $state('');
 let filterMode = $state<'all' | 'installed' | 'updates'>('installed');
-let loading = $state(false);
+let filterVersion = $state(0);
+let listLoading = $state(true);
+let checking = $state(false);
+let busyAction = $state<PackageAction | null>(null);
+let busyNames = new SvelteSet<string>();
 let loadError = $state(false);
 let loadErrorMessage = $state('');
 let tableElement = $state<MndwTable<unknown> | null>(null);
@@ -79,15 +99,26 @@ const detailCache: PackageDetailCache = new SvelteMap<string, PackageDetailState
 
 let detailGeneration = 0;
 
+const opkgBusy = $derived(checking || busyNames.size > 0);
+const rows = $derived.by(() =>
+  packages.map((pkg): PackageRow => ({
+    ...pkg,
+    ...(busyNames.has(pkg.name) && busyAction !== null ? {busyAction} : {}),
+    actionsDisabled: opkgBusy,
+    compact: compactLayout,
+  }))
+);
 const filtered = $derived.by(() =>
-  packages.filter((p) => {
+  rows.filter((p) => {
     if (
       filterMode === 'installed' && p.status === 'available'
     ) { return false; }
     if (filterMode === 'updates' && p.status !== 'update_available') {
       return false;
     }
-    return p.name.toLowerCase().includes(filter.toLowerCase());
+    const query = filter.toLowerCase();
+    return p.name.toLowerCase().includes(query)
+      || p.description.toLowerCase().includes(query);
   })
 );
 const selectedCount = $derived(checked.size);
@@ -95,16 +126,21 @@ const updateCount = $derived(
   packages.filter((p) => p.status === 'update_available').length,
 );
 const selected = $derived([...checked]);
-const canInstall = $derived(
-  filtered.some((p) => checked.has(p.name) && p.status === 'available'),
+const selectedPackages = $derived(
+  packages.filter((pkg) => checked.has(pkg.name)),
 );
-const canRemove = $derived(
-  filtered.some((p) =>
-    checked.has(p.name) && p.status !== 'available' && !isProtected(p.name)
-  ),
+const selectedInstallCount = $derived(
+  selectedPackages.filter((pkg) => pkg.status === 'available').length,
 );
-const canUpdate = $derived(
-  filtered.some((p) => checked.has(p.name) && p.status === 'update_available'),
+const selectedRemoveCount = $derived(
+  selectedPackages.filter((pkg) =>
+    pkg.status !== 'available' && !isProtectedPackage(pkg.name)
+  ).length,
+);
+const selectedUpdateCount = $derived(
+  selectedPackages.filter((pkg) =>
+    pkg.status === 'update_available' && !isProtectedPackage(pkg.name)
+  ).length,
 );
 const freshnessLabel = $derived.by(() => {
   if (metadataUpdatedAt === null) { return hostT('packages.never-refreshed'); }
@@ -149,16 +185,16 @@ const freshnessStale = $derived.by(() => {
   return freshnessComputedAt.getTime() - Date.parse(metadataUpdatedAt)
     > 60 * 60 * 1000;
 });
+const freshnessWarning = $derived(metadataUpdatedAt === null || freshnessStale);
 
 async function showAllPackages(): Promise<void> {
+  if (filter !== '' || filterMode !== 'all') {
+    filterVersion += 1;
+  }
   filter = '';
   filterMode = 'all';
   await tick();
   searchInput?.focus();
-}
-
-function isProtected(name: string): boolean {
-  return name === 'mndw' || name === 'lighttpd';
 }
 
 function invalidateDetailCache(): void {
@@ -206,8 +242,13 @@ function retryDetail(name: string): void {
   loadDetail(name);
 }
 
-async function fetchPackages(suppressStatus = false): Promise<void> {
-  loading = true;
+async function fetchPackages(
+  showLoading = packages.length === 0,
+): Promise<void> {
+  if (showLoading) {
+    listLoading = true;
+  }
+
   try {
     const result = await opkgClient.list();
     if (destroyed) {
@@ -221,24 +262,17 @@ async function fetchPackages(suppressStatus = false): Promise<void> {
     loadErrorMessage = '';
     checked.clear();
     toast.dismissKey(PACKAGE_LIST_TOAST_KEY);
-    if (!suppressStatus) {
-      toast.info(hostT('packages.loaded', {count: packages.length}), {
-        key: PACKAGE_LIST_TOAST_KEY,
-      });
-    }
   } catch (error) {
     if (destroyed) {
       return;
     }
-    packages = [];
-    checked.clear();
     loadError = true;
     loadErrorMessage = error instanceof OpkgError
       ? error.message
       : hostT('packages.load-failed');
   } finally {
     if (!destroyed) {
-      loading = false;
+      listLoading = false;
     }
   }
 }
@@ -252,6 +286,7 @@ async function runAction(
     return pkg !== undefined && pkgFilter(pkg);
   });
   if (names.length === 0) { return; }
+  if (opkgBusy) { return; }
   if (action === 'remove') {
     const session = openHostModal<boolean, {
       message: string;
@@ -268,18 +303,22 @@ async function runAction(
     if (destroyed) {
       return;
     }
-    if (event.result) { await executeAction('remove', names); }
+    if (event.result) { await executeAction('remove', names, undefined, true); }
     return;
   }
-  await executeAction(action, names);
+  await executeAction(action, names, undefined, true);
 }
 
 async function executeAction(
   action: 'install' | 'remove' | 'upgrade',
   names: string[],
   focusTarget?: ActionFocusTarget,
+  clearSelectionOnFinish = false,
 ): Promise<void> {
-  loading = true;
+  if (names.length === 0 || opkgBusy) { return; }
+  busyAction = action;
+  busyNames.clear();
+  for (const name of names) { busyNames.add(name); }
   const actionKey = action === 'install'
     ? 'packages.installing'
     : action === 'remove'
@@ -287,27 +326,37 @@ async function executeAction(
     : 'packages.updating';
   const toastKey = packageActionToastKey(action);
   try {
-    const result = action === 'install'
-      ? await opkgClient.install(names)
-      : action === 'remove'
-      ? await opkgClient.remove(names)
-      : await opkgClient.upgrade(names);
+    let successMessage: string | undefined;
+    try {
+      const result = action === 'install'
+        ? await opkgClient.install(names)
+        : action === 'remove'
+        ? await opkgClient.remove(names)
+        : await opkgClient.upgrade(names);
+      successMessage = result.message;
+    } catch (error) {
+      if (destroyed) {
+        return;
+      }
+      toast.error(actionErrorMessage(error, actionKey), {key: toastKey});
+    }
     if (destroyed) {
       return;
     }
-    await fetchPackages(true);
+    await fetchPackages(false);
     if (destroyed) {
       return;
     }
-    toast.success(result.message, {key: toastKey});
-  } catch (error) {
-    if (destroyed) {
-      return;
+    if (successMessage !== undefined) {
+      toast.success(successMessage, {key: toastKey});
     }
-    toast.error(actionErrorMessage(error, actionKey), {key: toastKey});
   } finally {
+    if (clearSelectionOnFinish) {
+      checked.clear();
+    }
     if (!destroyed) {
-      loading = false;
+      busyNames.clear();
+      busyAction = null;
     }
     if (!destroyed && focusTarget !== undefined) {
       await restoreActionFocus(focusTarget);
@@ -342,7 +391,7 @@ async function restoreActionFocus(target: ActionFocusTarget): Promise<void> {
   const action = targetAction
     ?? packageActions[0]
     ?? document.querySelector<HTMLElement>(
-      '.packages-panel .header-actions mndw-button',
+      '.packages-panel .status-row mndw-button',
     );
 
   action?.focus();
@@ -378,13 +427,14 @@ function actionErrorMessage(error: unknown, actionKey: string): string {
 }
 
 async function handleRefresh(): Promise<void> {
-  loading = true;
+  if (opkgBusy) { return; }
+  checking = true;
   try {
     const result = await opkgClient.update();
     if (destroyed) {
       return;
     }
-    await fetchPackages(true);
+    await fetchPackages(false);
     if (destroyed) {
       return;
     }
@@ -399,7 +449,7 @@ async function handleRefresh(): Promise<void> {
     );
   } finally {
     if (!destroyed) {
-      loading = false;
+      checking = false;
     }
   }
 }
@@ -407,12 +457,19 @@ async function handleRefresh(): Promise<void> {
 function handleFilterChange(event: CustomEvent<{value: string}>): void {
   const value = event.detail.value;
   if (
-    value === 'all' || value === 'installed' || value === 'updates'
-  ) { filterMode = value; }
+    (value === 'all' || value === 'installed' || value === 'updates')
+    && value !== filterMode
+  ) {
+    filterMode = value;
+    filterVersion += 1;
+  }
 }
 
 function handleSearchChange(event: CustomEvent<{value: string}>): void {
-  filter = event.detail.value;
+  if (filter !== event.detail.value) {
+    filter = event.detail.value;
+    filterVersion += 1;
+  }
 }
 
 async function removeOne(
@@ -443,16 +500,18 @@ const STATUS_ORDER: Record<PackageEntry['status'], number> = {
   update_available: 1,
   available: 2,
 };
-const nameRenderer = svelteCell<PackageEntry, string>()(PackageNameCell);
+const nameRenderer = svelteCell<PackageCellRow, string>()(PackageNameCell);
 const versionRenderer = svelteCell<PackageEntry, string>()(PackageVersionCell);
 const statusRenderer = svelteCell<PackageEntry, PackageEntry['status']>()(
   PackageStatusCell,
 );
-const detailRenderer = packageDetailRenderer({cache: detailCache,
+const packageDetailCellRenderer = packageDetailRenderer({cache: detailCache,
   load: loadDetail, retry: retryDetail, onRemove: (name) =>
     removeOne(name, 'detail')});
-const actionsRenderer = packageActionsRenderer(
+const packageActionsCellRenderer = packageActionsRenderer(
   (action: PackageRowAction, name: string) => {
+    if (opkgBusy) { return; }
+
     if (action === 'remove') {
       void removeOne(name);
       return;
@@ -460,17 +519,22 @@ const actionsRenderer = packageActionsRenderer(
 
     void executeAction(action, [name], {packageName: name, source: 'primary'});
   },
+  () => {
+    void hostServices.router.current?.navigate(
+      HOST_PATHS.settingsTab['self-update'],
+    );
+  },
 );
 const columns = $derived.by(() => [
-  column<PackageEntry>()({
+  column<PackageCellRow>()({
     id: 'name',
     label: hostT('packages.package'),
     accessor: (row) => row.name,
     sortable: true,
-    width: '11.25rem',
+    width: compactLayout ? '8rem' : '11.25rem',
     renderer: nameRenderer,
   }),
-  column<PackageEntry>()({
+  column<PackageCellRow>()({
     id: 'version',
     label: hostT('packages.version'),
     accessor: (row) => row.version,
@@ -478,7 +542,7 @@ const columns = $derived.by(() => [
     comparator: compareVersions,
     renderer: versionRenderer,
   }),
-  column<PackageEntry>()({
+  column<PackageCellRow>()({
     id: 'status',
     label: hostT('packages.status'),
     accessor: (row) => row.status,
@@ -486,8 +550,11 @@ const columns = $derived.by(() => [
     comparator: (a, b) => STATUS_ORDER[a] - STATUS_ORDER[b],
     renderer: statusRenderer,
   }),
-  column<PackageEntry>()({id: 'actions', label: '', renderer: actionsRenderer}),
+  column<PackageCellRow>()({id: 'actions', label: '',
+    ...(compactLayout ? {width: '6rem'} : {}),
+    renderer: packageActionsCellRenderer}),
 ]);
+const hiddenColumns = $derived(compactLayout ? ['version', 'status'] : []);
 let expanded = new SvelteSet<string>();
 let sortState = $state<SortState | null>(null);
 const tableLabels = $derived.by(() => ({
@@ -522,7 +589,8 @@ $effect(() => {
 });
 
 $effect(() => {
-  const firstKey = filtered[0]?.name;
+  const currentFilterVersion = filterVersion;
+  const firstKey = untrack(() => filtered[0]?.name);
   const table = tableElement as MndwTable<PackageEntry> | null;
   const sequence = ++filterSequence;
 
@@ -533,7 +601,11 @@ $effect(() => {
   void (async () => {
     await table.updateComplete;
 
-    if (sequence !== filterSequence || filtered[0]?.name !== firstKey) {
+    if (
+      sequence !== filterSequence
+      || currentFilterVersion !== filterVersion
+      || untrack(() => filtered[0]?.name) !== firstKey
+    ) {
       return;
     }
 
@@ -543,42 +615,36 @@ $effect(() => {
 
 onMount(() => {
   void fetchPackages();
+  return observeCompactPanelWidth(panelElement, (compact) => {
+    compactLayout = compact;
+  });
 });
 </script>
 
 <section
+  bind:this={panelElement}
   class="packages-panel"
   data-locale={appState.locale}
 >
-  <div class="header-row mndw-table-controls">
-    <div>
-      <h1>{hostT('packages.title')}</h1>
-      <span
-        class:stale={freshnessStale}
-        class="freshness"
-      >{freshnessLabel}</span>
-    </div>
-    <div class="header-actions">
-      <mndw-button
-        variant="secondary"
-        disabled={loading}
-        onclick={() => void handleRefresh()}
-      >{hostT('packages.refresh')}</mndw-button>
-    </div>
+  <div
+    class={`status-row mndw-table-controls mndw-alert ${
+      freshnessWarning ? 'mndw-alert--warning' : 'mndw-alert--info'
+    }${compactLayout ? ' compact' : ''}`}
+  >
+    <span class="freshness">
+      <mndw-icon
+        name={freshnessWarning ? 'circle-alert' : 'info'}
+        aria-hidden="true"
+      ></mndw-icon>
+      {freshnessLabel}
+    </span>
+    <mndw-button
+      variant="secondary"
+      disabled={opkgBusy}
+      onclick={() => void handleRefresh()}
+    >{hostT(checking ? 'packages.checking' : 'packages.refresh')}</mndw-button>
   </div>
   <div class="filter-row mndw-table-controls">
-    <mndw-field
-      class="search-field"
-      label={hostT('packages.search-label')}
-    >
-      <mndw-input
-        bind:this={searchInput}
-        type="search"
-        value={filter}
-        placeholder={hostT('packages.search')}
-        onmndwinput={handleSearchChange}
-      ></mndw-input>
-    </mndw-field>
     <mndw-tabs
       value={filterMode}
       onmndwchange={handleFilterChange}
@@ -589,42 +655,81 @@ onMount(() => {
         hostT('packages.updates', {count: updateCount})
       }</mndw-tab>
     </mndw-tabs>
+    <mndw-field
+      class="search-field"
+      label={hostT('packages.search-label')}
+    >
+      <mndw-input
+        bind:this={searchInput}
+        type="search"
+        value={filter}
+        aria-label={hostT('packages.search-label')}
+        placeholder={hostT('packages.search')}
+        onmndwinput={handleSearchChange}
+      ></mndw-input>
+    </mndw-field>
   </div>
-  {#if selectedCount > 0}
-    <div class="bulk-bar mndw-table-controls">
-      <span class="bulk-label">{hostT('packages.with-selected')}</span>
-      <mndw-button
-        variant="primary"
-        disabled={loading || !canInstall}
-        onclick={() => void runAction('install', (p) => p.status === 'available')}
-      >{hostT('packages.install')}</mndw-button>
+  <div class="selection-row mndw-table-controls">
+    {#if selectedCount === 0}
+      <span class="selection-hint">{hostT('packages.selection-hint')}</span>
+    {:else}
+      <span class="selected-count">{
+        hostT('packages.selection-count', {count: selectedCount})
+      }</span>
+      {#if selectedInstallCount > 0}
+        <mndw-button
+          variant="primary"
+          disabled={opkgBusy}
+          onclick={() =>
+          void runAction('install', (pkg) => pkg.status === 'available')}
+        >{
+          hostT('packages.action-count', {
+            action: hostT('packages.install'),
+            count: selectedInstallCount,
+          })
+        }</mndw-button>
+      {/if}
+      {#if selectedUpdateCount > 0}
+        <mndw-button
+          variant="primary"
+          disabled={opkgBusy}
+          onclick={() =>
+          void runAction('upgrade', (pkg) =>
+            pkg.status === 'update_available'
+            && !isProtectedPackage(pkg.name))}
+        >{
+          hostT('packages.action-count', {
+            action: hostT('packages.update'),
+            count: selectedUpdateCount,
+          })
+        }</mndw-button>
+      {/if}
+      {#if selectedRemoveCount > 0}
+        <mndw-button
+          variant="secondary"
+          disabled={opkgBusy}
+          onclick={() =>
+          void runAction(
+            'remove',
+            (pkg) =>
+              pkg.status !== 'available' && !isProtectedPackage(pkg.name),
+          )}
+        >{
+          hostT('packages.action-count', {
+            action: hostT('packages.remove'),
+            count: selectedRemoveCount,
+          })
+        }</mndw-button>
+      {/if}
       <mndw-button
         variant="secondary"
-        disabled={loading || !canRemove}
-        onclick={() =>
-        void runAction('remove', (p) =>
-          p.status !== 'available' && !isProtected(p.name))}
-      >{hostT('packages.remove')}</mndw-button>
-      <mndw-button
-        variant="primary"
-        disabled={loading || !canUpdate}
-        onclick={() =>
-        void runAction('upgrade', (p) => p.status === 'update_available')}
-      >{hostT('packages.update')}</mndw-button>
-      {#if selectedCount > 0}<span class="selected-count">{
-          hostT('packages.selected', {count: selectedCount})
-        }</span>{/if}
-    </div>
-  {/if}
+        disabled={opkgBusy}
+        onclick={() => checked.clear()}
+      >{hostT('packages.clear-selection')}</mndw-button>
+    {/if}
+  </div>
   <div class="table-wrap">
-    {#if loading}
-      <div
-        class="msg-cell"
-        role="status"
-      >
-        {hostT('packages.loading')}
-      </div>
-    {:else if loadError}
+    {#if loadError}
       <div
         class="mndw-alert mndw-alert--danger package-load-error"
         role="alert"
@@ -632,70 +737,84 @@ onMount(() => {
         <p>{loadErrorMessage}</p>
         <mndw-button
           variant="secondary"
+          disabled={opkgBusy || listLoading}
           onclick={() => void fetchPackages()}
         >{hostT('common.retry')}</mndw-button>
       </div>
-    {:else if filtered.length === 0}
-      <EmptyState
-        mode="compact"
-        title={hostT(
-          packages.length === 0 ? 'packages.empty' : 'packages.no-match',
-        )}
-        text={hostT(
-          packages.length === 0
-            ? 'packages.empty-next'
-            : 'packages.no-match-next',
-        )}
-        action={packages.length === 0
-        ? {label: hostT('packages.refresh'),
-          onActivate: () => void fetchPackages(), variant: 'secondary'}
-        : {label: hostT('packages.show-all'), onActivate: showAllPackages,
-          variant: 'secondary'}}
-      />
-    {:else}
-      <mndw-table
-        bind:this={tableElement}
-        columns={columns}
-        rows={filtered}
-        rowKey="name"
-        virtual
-        rowLabel={(row: PackageEntry) => row.name}
-        selectable
-        selected={selected}
-        expandable
-        toggleAfterColumn="name"
-        expandOn="row"
-        expanded={[...expanded]}
-        expandedRenderer={detailRenderer}
-        columnMenu={false}
-        sortMode="client"
-        sort={sortState}
-        labels={tableLabels}
-        onmndwselectionchange={handleSelectionChange}
-        onmndwsortchange={handleSortChange}
-        onmndwrowexpand={handleRowExpand}
-      ></mndw-table>
+    {/if}
+    {#if listLoading && packages.length === 0}
+      <div
+        class="msg-cell"
+        role="status"
+      >
+        {hostT('packages.loading')}
+      </div>
+    {:else if !(loadError && packages.length === 0)}
+      {#if filtered.length === 0}
+        <EmptyState
+          mode="compact"
+          title={hostT(
+            packages.length === 0 ? 'packages.empty' : 'packages.no-match',
+          )}
+          text={hostT(
+            packages.length === 0
+              ? 'packages.empty-next'
+              : 'packages.no-match-next',
+          )}
+          action={packages.length === 0
+          ? {label: hostT('packages.refresh'),
+            onActivate: () => void fetchPackages(), variant: 'secondary'}
+          : {label: hostT('packages.show-all'), onActivate: showAllPackages,
+            variant: 'secondary'}}
+        />
+      {:else}
+        <mndw-table
+          bind:this={tableElement}
+          columns={columns}
+          rows={filtered}
+          hiddenColumns={hiddenColumns}
+          rowKey="name"
+          virtual
+          rowLabel={(row: PackageEntry) => row.name}
+          selectable
+          selected={selected}
+          expandable
+          toggleAfterColumn="name"
+          expandOn="row"
+          expanded={[...expanded]}
+          expandedRenderer={packageDetailCellRenderer}
+          columnMenu={false}
+          sortMode="client"
+          sort={sortState}
+          labels={tableLabels}
+          onmndwselectionchange={handleSelectionChange}
+          onmndwsortchange={handleSortChange}
+          onmndwrowexpand={handleRowExpand}
+        ></mndw-table>
+      {/if}
     {/if}
   </div>
 </section>
 
 <style>
 .packages-panel { min-width: 0; padding: 1rem; font-family: var(--mndw-font-sans); color: var(--mndw-text); max-width: 75rem; }
-.header-row, .filter-row, .bulk-bar { display: flex; align-items: center; gap: 0.5rem; }
-.header-row { justify-content: space-between; margin-bottom: 0.75rem; }
-h1 { margin: 0; font-size: 1.25rem; font-weight: 600; }
-.header-actions { display: flex; gap: 0.5rem; }
-.freshness { color: var(--mndw-text-subtle); font-size: .75rem; }
-.freshness.stale { color: var(--mndw-warning); }
+.status-row, .filter-row, .selection-row { display: flex; align-items: center; gap: 0.5rem; }
+.freshness { display: flex; align-items: center; gap: 0.5rem; min-width: 0; font-size: .75rem; }
+.freshness mndw-icon { flex: 0 0 auto; font-size: .875rem; }
+.status-row { box-sizing: border-box; width: 100%; min-width: 0; margin-bottom: 0.5rem; flex-wrap: wrap; }
+.status-row > mndw-button { margin-left: auto; }
+.status-row.compact > .freshness { flex-basis: 100%; }
+.status-row.compact > mndw-button { margin-left: 0; }
 .filter-row { min-width: 0; margin-bottom: 0.5rem; flex-wrap: wrap; }
-.search-field { flex: 1; max-width: 20rem; }
-.bulk-bar { margin-bottom: 0.5rem; font-size: .8125rem; }
-.bulk-label, .selected-count { color: var(--mndw-text-subtle); }
+.filter-row > mndw-tabs { flex: 0 0 auto; min-width: max-content; }
+.search-field { flex: 1 1 14rem; min-width: min(100%, 14rem); max-width: 32rem; }
+.selection-row { min-height: var(--mndw-control-h); margin-bottom: 0.5rem; flex-wrap: wrap; font-size: .8125rem; }
+.selection-hint, .selected-count { color: var(--mndw-text-subtle); }
 .table-wrap { min-width: 0; border: 1px solid var(--mndw-border); border-radius: 0.375rem; overflow: hidden; }
 mndw-table { display: block; min-width: 0; font-size: .8125rem; }
 mndw-table::part(viewport) { max-height: calc(100vh - 250px); overflow: auto; }
 mndw-table::part(header-cell) { position: sticky; top: 0; z-index: 1; background: var(--mndw-surface); }
 .msg-cell { text-align: center; padding: 2rem 0.625rem; color: var(--mndw-text-subtle); font-style: italic; }
-.package-load-error { display: grid; justify-items: center; gap: 0.5rem; }
+.package-load-error { display: grid; justify-items: center; gap: 0.5rem; margin: 0.5rem; }
 .package-load-error p { margin: 0; }
 </style>

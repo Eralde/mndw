@@ -41,6 +41,10 @@ function placeholdersOf(message: string): Set<string> {
     }
   }
 
+  for (const match of message.matchAll(/\{([A-Za-z][A-Za-z0-9_-]*)\s*,\s*(?:plural|select|selectordinal)\s*,/g)) {
+    placeholders.add(match[1]);
+  }
+
   return placeholders;
 }
 

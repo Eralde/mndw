@@ -15,7 +15,9 @@ const TONE: Record<ServiceState, string> = {
 
 const toneClass = $derived.by(() => TONE[row.service.state] ?? 'badge-unknown');
 const label = $derived.by(() =>
-  row.rowError ? hostT('services.probe-failed') : row.service.state
+  row.rowError
+    ? hostT('services.probe-failed')
+    : hostT(`services.state-${row.service.state}`)
 );
 </script>
 
@@ -25,7 +27,7 @@ const label = $derived.by(() =>
 {/if}
 
 <style>
-.badge { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 0.625rem; text-transform: capitalize; font-size: .75rem; }
+.badge { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 0.625rem; font-size: .75rem; }
 .badge-running { color: var(--mndw-success); }
 .badge-stopped { color: var(--mndw-warning); }
 .badge-unknown { color: var(--mndw-text-subtle); }

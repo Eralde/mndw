@@ -7,7 +7,9 @@ type Props = {row: PackageEntry; value: PackageEntry['status']; colId: string};
 let {row, value, colId}: Props = $props();
 
 const label = $derived.by(() =>
-  value === 'update_available'
+  value === 'installed'
+    ? hostT('packages.status-installed')
+    : value === 'update_available'
     ? hostT('packages.update-available')
     : value === 'available'
     ? hostT('packages.available')
@@ -21,7 +23,7 @@ const label = $derived.by(() =>
 >{label}</span>
 
 <style>
-.badge { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 0.625rem; font-size: .75rem; text-transform: capitalize; }
+.badge { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 0.625rem; font-size: .75rem; }
 .badge-installed { color: var(--mndw-success); }
 .badge-update_available { color: var(--mndw-warning); }
 .badge-available { color: var(--mndw-text-subtle); }

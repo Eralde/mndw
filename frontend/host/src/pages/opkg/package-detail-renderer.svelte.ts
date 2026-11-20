@@ -1,7 +1,7 @@
 import {svelteCellWith} from '@mndw/ui-svelte';
 import type {CellRenderer} from '@mndw/ui';
 import type {ComponentProps} from 'svelte';
-import type {PackageEntry} from '../../services/opkg-client.js';
+import type {PackageCellRow} from './package-actions-renderer.svelte.js';
 import PackageDetailCell from './PackageDetailCell.svelte';
 import type {PackageDetailCache} from './PackageDetailCell.svelte';
 
@@ -21,10 +21,10 @@ interface PackageDetailExtra {
 
 export function packageDetailRenderer(
   options: PackageDetailRendererOptions,
-): () => CellRenderer<PackageEntry, PackageEntry> {
+): () => CellRenderer<PackageCellRow, PackageCellRow> {
   return svelteCellWith<
-    PackageEntry,
-    PackageEntry,
+    PackageCellRow,
+    PackageCellRow,
     PackageDetailExtra,
     ComponentProps<typeof PackageDetailCell>
   >(

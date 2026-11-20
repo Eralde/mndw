@@ -5,6 +5,20 @@ import {expect, it} from 'vitest';
 
 const globalCss = resolve(dirname(fileURLToPath(import.meta.url)), 'global.css');
 
+it('keeps visually hidden text available to assistive technology', async () => {
+  const source = await readFile(globalCss, 'utf8');
+  const rule = source.match(/\.mndw-visually-hidden\s*\{([^}]*)\}/u)?.[1] ?? '';
+
+  expect(rule).toContain('position: absolute;');
+  expect(rule).toContain('width: 1px;');
+  expect(rule).toContain('height: 1px;');
+  expect(rule).toContain('overflow: hidden;');
+  expect(rule).toContain('clip-path: inset(50%);');
+  expect(rule).toContain('white-space: nowrap;');
+  expect(rule).not.toContain('display: none;');
+  expect(rule).not.toContain('visibility: hidden;');
+});
+
 it('keeps unitless scrollbar-size overrides while scaling fallback steps to rem', async () => {
   const source = await readFile(globalCss, 'utf8');
 

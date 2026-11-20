@@ -1,6 +1,7 @@
 <script lang="ts">
 import {column} from '@mndw/ui';
-import {svelteCell} from '@mndw/ui-svelte';
+import {svelteCell, svelteCellWith} from '@mndw/ui-svelte';
+import type {ComponentProps} from 'svelte';
 import {onMount} from 'svelte';
 import {ServiceError} from '../../services/service-client.js';
 import type {ServiceEntry} from '../../services/service-client.js';
@@ -17,8 +18,11 @@ import {
   serviceActionsRenderer,
 } from './service-actions-renderer.svelte.js';
 import {serviceAutostartRenderer} from './service-autostart-renderer.svelte.js';
+import {observeCompactPanelWidth} from './panel-width.js';
 
 let services = $state<ServiceEntry[]>([]);
+let panelElement: HTMLElement;
+let compactLayout = $state(false);
 const hostServices = getHostServices();
 const hostT = hostServices.locale.hostT;
 const serviceClient = hostServices.serviceClient;
@@ -38,10 +42,21 @@ const rows = $derived.by<ServiceRow[]>(() =>
     service,
     busy,
     rowError: rowErrors[service.name] ?? false,
+    compact: compactLayout,
   }))
 );
 
-const serviceNameRenderer = svelteCell<ServiceRow>()(ServiceNameCell);
+const serviceNameRenderer = svelteCellWith<
+  ServiceRow,
+  unknown,
+  {onToggle: (enabled: boolean) => void},
+  ComponentProps<typeof ServiceNameCell>
+>(
+  ServiceNameCell,
+  (state) => ({
+    onToggle: (enabled) => void toggleBoot(state.row.service, enabled),
+  }),
+);
 const stateRenderer = svelteCell<ServiceRow>()(ServiceStateCell);
 const autostartRenderer = serviceAutostartRenderer((service, enabled) =>
   void toggleBoot(service, enabled)
@@ -54,7 +69,7 @@ const columns = $derived.by(() => [
   column<ServiceRow>()({
     id: 'service',
     label: hostT('services.service'),
-    width: '10rem',
+    width: compactLayout ? '8rem' : '10rem',
     renderer: serviceNameRenderer,
   }),
   column<ServiceRow>()({
@@ -73,7 +88,7 @@ const columns = $derived.by(() => [
   column<ServiceRow>()({
     id: 'actions',
     label: hostT('services.actions'),
-    width: '18rem',
+    width: compactLayout ? '7rem' : '18rem',
     renderer: actionsRenderer,
   }),
 ]);
@@ -317,19 +332,30 @@ async function toggleBoot(
 
 onMount(() => {
   void loadServices();
-  return () => controller?.abort();
+  const disconnectResizeObserver = observeCompactPanelWidth(
+    panelElement,
+    (compact) => {
+      compactLayout = compact;
+    },
+  );
+
+  return () => {
+    disconnectResizeObserver();
+    controller?.abort();
+  };
 });
 </script>
 
 <section
+  bind:this={panelElement}
   class="services-panel"
   data-locale={appState.locale}
 >
-  <div class="header-row mndw-table-controls">
-    <div>
-      <h1>{hostT('services.title')}</h1>
-      <p>{hostT('services.description')}</p>
-    </div>
+  <div
+    class:compact={compactLayout}
+    class="header-row mndw-table-controls"
+  >
+    <p>{hostT('services.description')}</p>
     <mndw-button
       variant="secondary"
       disabled={loading || busy}
@@ -374,7 +400,8 @@ onMount(() => {
         columns={columns}
         rows={rows}
         rowKey={(row: ServiceRow) => row.service.name}
-        min-width="42rem"
+        hiddenColumns={compactLayout ? ['state', 'autostart'] : []}
+        min-width={compactLayout ? '' : '42rem'}
         columnMenu={false}
         rowLabel={(row: ServiceRow) => row.service.label}
         emptyLabel={hostT('services.empty')}
@@ -385,7 +412,7 @@ onMount(() => {
 
 <style>
 .services-panel { min-width: 0; padding: 1rem; font-family: var(--mndw-font-sans); color: var(--mndw-text); max-width: 75rem; }
-.header-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem; }.header-row h1 { margin: 0; font-size: 1.25rem; }.header-row p { margin: 0.25rem 0 0; color: var(--mndw-text-subtle); font-size: .8125rem; }
+.header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }.header-row.compact { flex-wrap: wrap; gap: 0.5rem; }.header-row p { margin: 0; color: var(--mndw-text-subtle); font-size: .8125rem; }.header-row.compact p { min-width: 0; }
 .table-wrap { min-width: 0; border: 1px solid var(--mndw-border); border-radius: 0.375rem; overflow: hidden; }
 mndw-table { display: block; min-width: 0; font-size: .8125rem; }
 mndw-table::part(viewport) { max-height: calc(100vh - 250px); overflow: auto; }

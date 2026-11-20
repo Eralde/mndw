@@ -5,19 +5,31 @@ import type {PackageEntry} from '../../services/opkg-client.js';
 import PackageActionsCell from './PackageActionsCell.svelte';
 
 export type PackageRowAction = 'install' | 'upgrade' | 'remove';
+export type PackageBusyAction = 'install' | 'remove' | 'upgrade';
+
+export interface PackageCellRow extends PackageEntry {
+  busyAction?: PackageBusyAction;
+  actionsDisabled?: boolean;
+  compact?: boolean;
+}
 
 export function packageActionsRenderer(
   onAction: (action: PackageRowAction, name: string) => void,
-): () => CellRenderer<PackageEntry> {
+  onUpdateInSettings: () => void = () => {},
+): () => CellRenderer<PackageCellRow> {
   return svelteCellWith<
-    PackageEntry,
+    PackageCellRow,
     unknown,
-    {onAction: (action: PackageRowAction) => void},
+    {
+      onAction: (action: PackageRowAction) => void;
+      onUpdateInSettings: () => void;
+    },
     ComponentProps<typeof PackageActionsCell>
   >(
     PackageActionsCell,
     (state) => ({
       onAction: (action) => onAction(action, state.row.name),
+      onUpdateInSettings,
     }),
   );
 }

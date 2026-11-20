@@ -1,7 +1,9 @@
 <script lang="ts">
 import {SvelteMap} from 'svelte/reactivity';
 import type {PackageEntry, PackageInfo} from '../../services/opkg-client.js';
+import type {PackageCellRow} from './package-actions-renderer.svelte.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
+import {isProtectedPackage} from './package-protection.js';
 
 export type PackageDetailState =
   | {status: 'pending'; promise: Promise<PackageInfo>}
@@ -11,7 +13,7 @@ export type PackageDetailState =
 export type PackageDetailCache = SvelteMap<string, PackageDetailState>;
 
 type Props = {
-  row: PackageEntry;
+  row: PackageCellRow;
   value: PackageEntry;
   colId: string;
   cache: PackageDetailCache;
@@ -22,7 +24,7 @@ type Props = {
 
 let {row, value, colId, cache, load, retry, onRemove}: Props = $props();
 let packageName = $derived(value.name);
-const isProtected = $derived(row.name === 'mndw' || row.name === 'lighttpd');
+const isProtected = $derived(isProtectedPackage(row.name));
 let detail = $derived.by(() => {
   return cache.get(packageName);
 });
@@ -43,6 +45,7 @@ $effect(() => {
   {:else if detail.status === 'failure'}<p role="alert">{detail.message}</p>
     <mndw-button
       variant="secondary"
+      disabled={row.actionsDisabled === true}
       onclick={() => retry(packageName)}
     >{hostT('common.retry')}</mndw-button>
   {:else if detail.status === 'success'}
@@ -70,6 +73,7 @@ $effect(() => {
   {#if row.status === 'update_available' && !isProtected}
     <mndw-button
       variant="secondary"
+      disabled={row.actionsDisabled === true}
       data-package={packageName}
       data-package-action="detail"
       data-no-expand
@@ -79,8 +83,9 @@ $effect(() => {
 </div>
 
 <style>
-.detail { color: var(--mndw-text); font-family: var(--mndw-font-sans); }
+.detail { display: flex; flex-direction: column; align-items: flex-start; gap: var(--mndw-space-3); padding: var(--mndw-space-3) var(--mndw-space-4); color: var(--mndw-text); font-family: var(--mndw-font-sans); }
+p { margin: 0; }
 dl { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 0.5rem 1rem; margin: 0; max-width: 100%; }
 dt { color: var(--mndw-text-subtle); }
-dd { margin: 0; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+dd { margin: 0; min-width: 0; overflow-wrap: anywhere; word-break: normal; }
 </style>

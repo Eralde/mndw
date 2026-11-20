@@ -35,6 +35,7 @@ function handleTabChange(event: CustomEvent<MndwTabsChangeDetail>): void {
   class="package-manager"
   data-locale={appState.locale}
 >
+  <h1 class="page-title">{hostT('nav.package-manager')}</h1>
   <mndw-tabs
     class="mndw-table-controls"
     value={activeTab}
@@ -54,4 +55,5 @@ function handleTabChange(event: CustomEvent<MndwTabsChangeDetail>): void {
 
 <style>
 .package-manager { min-width: 0; color: var(--mndw-text); }
+.page-title { margin: 0 0 0.75rem; font-size: 1.25rem; font-weight: 600; }
 </style>

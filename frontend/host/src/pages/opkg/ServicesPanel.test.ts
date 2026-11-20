@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
 import {type MndwTable, defineMndwUi} from '@mndw/ui';
-import {mount, unmount} from 'svelte';
-import {beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
+import {flushSync, mount, unmount} from 'svelte';
+import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {ServiceEntry} from '../../services/service-client.js';
 import type {ServiceRow} from './service-row.js';
 import {createHostServices} from '../../host-services.js';
 import {createHostServicesContext} from '../../host-services-context.js';
+import {TestResizeObserver} from './test-resize-observer.js';
 
 const mockList = vi.fn<() => Promise<ServiceEntry[]>>();
 const mockStatus = vi.fn<(name: string, signal?: AbortSignal) => Promise<ServiceEntry>>();
@@ -36,6 +37,7 @@ vi.mock('../../services/service-client.js', async (importOriginal) => {
 });
 
 import ServicesPanel from './ServicesPanel.svelte';
+import PackageManager from './PackageManager.svelte';
 
 function tableRoot(host: HTMLElement): ShadowRoot {
   const table = host.querySelector('mndw-table');
@@ -102,6 +104,8 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  TestResizeObserver.reset();
+  vi.stubGlobal('ResizeObserver', TestResizeObserver);
   mockList.mockReset();
   mockStatus.mockReset();
   mockStart.mockReset();
@@ -110,6 +114,10 @@ beforeEach(() => {
   mockSetEnabled.mockReset();
   openHostModal.mockReset();
   openHostModal.mockReturnValue({closed: Promise.resolve({result: true})});
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('ServicesPanel loading', () => {
@@ -255,9 +263,39 @@ describe('ServicesPanel', () => {
     await vi.waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(rows.length));
     await waitForRendererCells(target, rows.length * 4);
     expect(peak).toBeLessThanOrEqual(3);
-    expect(target.textContent).toContain('running');
+    expect(target.textContent).toContain('Running');
     await unmount(app);
     target.remove();
+  });
+});
+
+describe('PackageManager services heading', () => {
+  it('shows one Entware heading above tabs and keeps the service toolbar together', async () => {
+    const originalPathname = window.location.pathname;
+
+    window.history.replaceState(null, '', '/packages/services');
+    mockList.mockResolvedValue([]);
+
+    const target = createTarget();
+    const app = mount(PackageManager, {target, context});
+
+    try {
+      await vi.waitFor(() => expect(target.querySelector('.header-row')).not.toBeNull());
+
+      const heading = target.querySelector('h1');
+      const toolbar = target.querySelector('.header-row');
+
+      expect(target.querySelectorAll('h1')).toHaveLength(1);
+      expect(heading?.textContent).toBe('Entware');
+      expect(heading?.nextElementSibling?.tagName.toLowerCase()).toBe('mndw-tabs');
+      expect(toolbar?.querySelector('h1')).toBeNull();
+      expect(toolbar?.querySelector('p')?.textContent).toBe('Inspect and control device init services.');
+      expect(toolbar?.querySelector('mndw-button')?.textContent?.trim()).toBe('Refresh states');
+    } finally {
+      await unmount(app);
+      target.remove();
+      window.history.replaceState(null, '', originalPathname);
+    }
   });
 });
 
@@ -307,7 +345,7 @@ describe('ServicesPanel boot controls', () => {
     target.remove();
   });
 
-  it('does not add an undefined tooltip to unprotected action buttons', async () => {
+  it('does not add an undefined title to unprotected action buttons', async () => {
     const row = entry('S99foo', 'running');
 
     mockList.mockResolvedValue([row]);
@@ -321,9 +359,9 @@ describe('ServicesPanel boot controls', () => {
 
     const actionButtons = Array.from(rendererCell(target, 3).querySelectorAll('mndw-button'));
 
-    expect(actionButtons).toHaveLength(3);
+    expect(actionButtons).toHaveLength(2);
+    expect(actionButtons[0]?.getAttribute('title')).toBeNull();
     expect(actionButtons[1]?.getAttribute('title')).toBeNull();
-    expect(actionButtons[2]?.getAttribute('title')).toBeNull();
     await unmount(app);
     target.remove();
   });
@@ -406,6 +444,60 @@ describe('ServicesPanel table sizing', () => {
       '18rem',
     ]);
     expect(table.minWidth).toBe('42rem');
+    await unmount(app);
+    target.remove();
+  });
+});
+
+describe('ServicesPanel compact layout', () => {
+  it('moves service state and autostart into the name cell below the panel-width breakpoint', async () => {
+    const row = {...entry('S01a', 'running', true), pid: 1234};
+
+    mockList.mockResolvedValue([row]);
+    mockStatus.mockResolvedValue(row);
+
+    const target = createTarget();
+    const app = mount(ServicesPanel, {target, context});
+
+    await waitForTable(target);
+
+    const table = target.querySelector<MndwTable<ServiceRow>>('mndw-table');
+
+    if (table === null) {
+      throw new Error('mndw-table not rendered');
+    }
+
+    const panel = target.querySelector('.services-panel');
+
+    if (panel === null) {
+      throw new Error('Expected services panel');
+    }
+
+    const observer = TestResizeObserver.observing(panel);
+
+    observer.resize(360);
+    flushSync();
+
+    await vi.waitFor(() => expect(table.hiddenColumns).toEqual(['state', 'autostart']));
+    expect(table.rows[0]?.compact).toBe(true);
+    expect(table.minWidth).toBe('');
+    expect(table.columns.find((column) => column.id === 'service')?.width).toBe('8rem');
+    await vi.waitFor(() => expect(rendererCell(target, 0).textContent).toContain('Running'));
+    expect(rendererCell(target, 0).textContent).toContain('1234');
+
+    const compactSwitch = rendererCell(target, 0).querySelector('mndw-switch');
+
+    expect(compactSwitch?.getAttribute('aria-label')).toBe('Disable at boot');
+
+    observer.resize(640);
+    flushSync();
+
+    await vi.waitFor(() => expect(table.hiddenColumns).toEqual([]));
+    expect(table.rows[0]?.compact).toBe(false);
+    expect(table.minWidth).toBe('42rem');
+    expect(table.columns.find((column) => column.id === 'service')?.width).toBe('10rem');
+    await vi.waitFor(() => expect(rendererCell(target, 0).querySelector('.compact-details')).toBeNull());
+
     await unmount(app);
     target.remove();
   });

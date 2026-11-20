@@ -35,7 +35,7 @@ describe('serviceAutostartRenderer', () => {
   it('mounts a switch and forwards (service, enabled) through the closed-over callback', () => {
     const calls: Array<{name: string; enabled: boolean}> = [];
     const renderer = serviceAutostartRenderer((service, enabled) => calls.push({name: service.name, enabled}))();
-    const row: ServiceRow = {service: entry({enabledAtBoot: true}), busy: false, rowError: false};
+    const row: ServiceRow = {service: entry({enabledAtBoot: true}), busy: false, rowError: false, compact: false};
 
     renderer.mount({node: host, row, value: undefined, colId: 'autostart'});
     flushSync();
@@ -57,7 +57,8 @@ describe('serviceActionsRenderer', () => {
   it('forwards (action, name) through the closed-over callback', () => {
     const runs: Array<{action: string; name: string}> = [];
     const renderer = serviceActionsRenderer((action, name) => runs.push({action, name}))();
-    const row: ServiceRow = {service: entry({name: 'sshd'}), busy: false, rowError: false};
+    const row: ServiceRow = {service: entry({name: 'sshd', state: 'stopped'}), busy: false, rowError: false,
+      compact: false};
 
     renderer.mount({node: host, row, value: undefined, colId: 'actions'});
     flushSync();
@@ -73,8 +74,10 @@ describe('serviceActionsRenderer', () => {
   it('keeps the action callback bound to the current row after an update', () => {
     const runs: Array<{action: string; name: string}> = [];
     const renderer = serviceActionsRenderer((action, name) => runs.push({action, name}))();
-    const first: ServiceRow = {service: entry({name: 'first'}), busy: false, rowError: false};
-    const second: ServiceRow = {service: entry({name: 'second'}), busy: false, rowError: false};
+    const first: ServiceRow = {service: entry({name: 'first', state: 'stopped'}), busy: false, rowError: false,
+      compact: false};
+    const second: ServiceRow = {service: entry({name: 'second', state: 'stopped'}), busy: false, rowError: false,
+      compact: false};
 
     renderer.mount({node: host, row: first, value: undefined, colId: 'actions'});
     flushSync();

@@ -6,4 +6,6 @@ export interface ServiceRow {
   busy: boolean;
   /** Whether the most recent probe/action for this row failed. */
   rowError: boolean;
+  /** Whether compact panel layout moves state and autostart into the name cell. */
+  compact: boolean;
 }

@@ -84,7 +84,7 @@ describe('PackageManager', () => {
     await unmount(app);
   });
 
-  it('updates package-manager labels after a locale commit', async () => {
+  it('keeps the shared page heading while package labels follow locale', async () => {
     mockList.mockResolvedValue({packages: [], metadataUpdatedAt: null});
 
     const app = mount(PackageManager, {target: host, context});
@@ -99,7 +99,7 @@ describe('PackageManager', () => {
       await setLocale('ru');
       flushSync();
       await vi.waitFor(() => expect(host.textContent).toContain('Пакеты не найдены'));
-      expect(host.textContent).toContain('Пакеты Entware');
+      expect(host.textContent).toContain('Entware');
     } finally {
       await unmount(app);
       await setLocale('en');
@@ -180,7 +180,7 @@ describe('PackageManager', () => {
 
     expect(nameCell?.textContent).toBe('installed');
     expect(nameCell?.getAttribute('title')).toBe('installed');
-    expect(host.querySelector('.badge-installed')?.textContent).toBe('installed');
+    expect(host.querySelector('.badge-installed')?.textContent).toBe('Installed');
     expect(host.querySelector('.badge-update_available')?.textContent).toBe('Update available');
     expect(host.querySelector('.badge-available')?.textContent).toBe('Available');
 
@@ -224,7 +224,7 @@ describe('PackageManager', () => {
     await unmount(app);
   });
 
-  it('hides bulk actions until a package is selected', async () => {
+  it('keeps the selection hint visible before a package is selected', async () => {
     const packages = [
       {name: 'installed', version: '1.0.0', status: 'installed', description: 'Installed package'},
     ] satisfies PackageEntry[];
@@ -239,7 +239,7 @@ describe('PackageManager', () => {
 
     expect(tableRoot(host).querySelectorAll('mndw-checkbox')).toHaveLength(2);
 
-    expect(host.querySelector('.bulk-bar')).toBeNull();
+    expect(host.querySelector('.selection-row .selection-hint')).not.toBeNull();
 
     await unmount(app);
   });

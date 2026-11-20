@@ -90,13 +90,14 @@ describe('PluginUpload', () => {
   it('explains plugin access and manifest capability limits before upload', () => {
     const {component, target} = mountUpload();
     const warning = target.querySelector('[role="note"]');
+    const paragraphs = [...(warning?.querySelectorAll('p') ?? [])].map((paragraph) => paragraph.textContent?.trim());
 
     expect(warning).not.toBeNull();
-    expect(warning?.textContent).toContain('Plugins run with full access.');
-    expect(warning?.textContent).toContain('can call the router API');
-    expect(warning?.textContent).toContain('runs on the router as root');
-    expect(warning?.textContent).toContain('they are not a sandbox');
-    expect(warning?.textContent).toContain('authors you trust');
+    expect(paragraphs).toEqual([
+      'Plugins run with full access.',
+      'A plugin page runs in this dashboard and can call the router API; if it has a backend, that backend runs on the router as root.',
+      'Manifest capabilities describe what the plugin asks for; they are not a sandbox. Install plugins only from authors you trust.',
+    ]);
     expect(warning?.classList.contains('mndw-alert--warning')).toBe(true);
 
     void unmount(component);

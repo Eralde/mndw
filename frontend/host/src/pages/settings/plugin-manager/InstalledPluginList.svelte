@@ -229,7 +229,6 @@ function retryPlugin(name: string): void {
                 presentation.description
               }</span>
             {/if}
-            <span>{item.name}</span>
           </div>
 
           <div class="mndw-installed__metadata">

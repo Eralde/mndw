@@ -133,6 +133,16 @@ describe('InstalledPluginList', () => {
     }
   });
 
+  it('shows the plugin label without repeating its id under the installed identity', () => {
+    const {component, target} = mountInstalledPluginList();
+    const identity = target.querySelector('.mndw-installed__identity');
+
+    expect(identity?.textContent?.trim()).toBe('Network Tools');
+    expect(identity?.textContent).not.toContain('network-tools');
+
+    void unmount(component);
+  });
+
   it('disables an enabled user plugin', () => {
     const onDisable = vi.fn();
     const {component, target} = mountInstalledPluginList({onDisable});
@@ -434,7 +444,7 @@ describe('InstalledPluginList', () => {
 
       expect(badge?.textContent?.trim()).toBe('Собран для другой версии SDK');
       expect(warning?.textContent?.trim())
-        .toBe('Собрано для @mndw/sdk 0.1.6; эта панель предоставляет 0.2.0. Плагин может не работать.');
+        .toBe('Собрано для @mndw/sdk 0.1.6; эта версия mndw предоставляет 0.2.0. Плагин может не работать.');
     } finally {
       await unmount(component);
       await setLocale('en');

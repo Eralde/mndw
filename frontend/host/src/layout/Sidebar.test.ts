@@ -148,10 +148,15 @@ describe('Sidebar', () => {
       void unmount(component);
     });
 
-    it('renders the Plugins section heading', () => {
+    it('renders a separator before plugin links', () => {
       const {component, target} = mountSidebar();
 
-      expect(target.querySelector('.mndw-sidebar__section-label')?.textContent).toBe('Plugins');
+      const separator = target.querySelector('hr.mndw-sidebar__separator');
+
+      expect(separator).not.toBeNull();
+      expect(separator?.tagName).toBe('HR');
+      expect(separator?.textContent).toBe('');
+      expect(separator?.nextElementSibling?.getAttribute('href')).toBe('/alpha-status');
 
       void unmount(component);
     });
@@ -164,7 +169,7 @@ describe('Sidebar', () => {
 
       expect(appState.locale).toBe('ru');
       expect(links(target).map(({text}) => text)).toEqual([
-        'Панель управления',
+        'Дашборд',
         'Entware',
         'Status',
         'Status',
@@ -181,10 +186,10 @@ describe('Sidebar', () => {
       getPages.mockReturnValue([]);
     });
 
-    it('omits the Plugins heading and shows only Dashboard, Entware and Settings', () => {
+    it('omits the separator and shows only Dashboard, Entware and Settings', () => {
       const {component, target} = mountSidebar();
 
-      expect(target.querySelector('.mndw-sidebar__section-label')).toBeNull();
+      expect(target.querySelector('.mndw-sidebar__separator')).toBeNull();
       expect(links(target)).toEqual([
         {text: 'Dashboard', href: '/'},
         {text: 'Entware', href: '/packages'},

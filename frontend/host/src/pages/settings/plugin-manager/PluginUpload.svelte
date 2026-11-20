@@ -298,10 +298,12 @@ function onDrop(event: DragEvent): void {
 
 <div class="mndw-upload">
   <div
-    class="mndw-alert mndw-alert--warning"
+    class="mndw-alert mndw-alert--warning mndw-plugin-risk-warning"
     role="note"
   >
-    {hostT('settings.plugin-risk-warning')}
+    <p>{hostT('settings.plugin-risk-warning-intro')}</p>
+    <p>{hostT('settings.plugin-risk-warning-page')}</p>
+    <p>{hostT('settings.plugin-risk-warning-trust')}</p>
   </div>
 
   <label
@@ -354,6 +356,14 @@ function onDrop(event: DragEvent): void {
   gap: var(--mndw-space-2);
   color: var(--mndw-text);
   font-family: var(--mndw-font-sans);
+}
+
+.mndw-plugin-risk-warning > p {
+  margin: 0;
+}
+
+.mndw-plugin-risk-warning > p + p {
+  margin-top: var(--mndw-space-2);
 }
 
 .mndw-upload__zone {

@@ -64,3 +64,34 @@ it('paints the new tile highlight above content while keeping the close button a
     /\.mndw-grid-tile__close\s*\{[^}]*position: absolute;[^}]*top: 0\.25rem;[^}]*right: 0\.25rem;[^}]*z-index: 2;/u,
   );
 });
+
+it('keeps add-widget columns aligned and focus outlines inside the scroll area', async () => {
+  const source = await readFile(globalCss, 'utf8');
+  const panelRule = source.match(/\.mndw-floating-panel\s*\{([^}]*)\}/u)?.[1] ?? '';
+  const buttonRule = source.match(/\.mndw-floating-panel > mndw-button::part\(button\)\s*\{([^}]*)\}/u)?.[1] ?? '';
+  const wrappingRule = source.match(
+    /\.mndw-floating-panel__label,\s*\.mndw-floating-panel__description\s*\{([^}]*)\}/u,
+  )?.[1] ?? '';
+
+  expect(panelRule).toContain('width: min(520px, calc(100vw - 32px));');
+  expect(panelRule).toContain('padding: calc(var(--mndw-focus-w) + 0.0625rem);');
+  expect(panelRule).toContain('margin: calc(0px - var(--mndw-focus-w) - 0.0625rem);');
+  expect(buttonRule).toContain('display: grid;');
+  expect(buttonRule).toContain('grid-template-columns: minmax(0, 9rem) minmax(0, 1fr);');
+  expect(buttonRule).toContain('column-gap: 0.5rem;');
+  expect(buttonRule).toContain('align-items: start;');
+  expect(buttonRule).toContain('text-align: left;');
+  expect(buttonRule).not.toContain('justify-content: flex-start;');
+  expect(buttonRule).not.toContain('8ch');
+  expect(wrappingRule).toContain('overflow-wrap: anywhere;');
+});
+
+it('insets the plugin navigation separator like sidebar links', async () => {
+  const source = await readFile(globalCss, 'utf8');
+  const separatorRule = source.match(/\.mndw-sidebar__separator\s*\{([^}]*)\}/u)?.[1] ?? '';
+
+  expect(separatorRule).toContain('margin: 0.75rem 1rem;');
+  expect(separatorRule).toContain('border: 0;');
+  expect(separatorRule).toContain('border-top: 1px solid var(--mndw-border);');
+  expect(source).not.toContain('.mndw-sidebar__section-label');
+});

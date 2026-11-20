@@ -17,12 +17,14 @@ let {entry, close}: Props = $props();
     ({entry.name}) {hostT('settings.backend-approval-declaration')}
   </p>
 
-  <p
-    class="mndw-alert mndw-alert--warning"
+  <div
+    class="mndw-alert mndw-alert--warning mndw-plugin-risk-warning"
     role="note"
   >
-    {hostT('settings.plugin-risk-warning')}
-  </p>
+    <p>{hostT('settings.plugin-risk-warning-intro')}</p>
+    <p>{hostT('settings.plugin-risk-warning-page')}</p>
+    <p>{hostT('settings.plugin-risk-warning-trust')}</p>
+  </div>
 
   <CapabilityReview {entry} />
 
@@ -57,6 +59,14 @@ let {entry, close}: Props = $props();
   margin: 0;
   font-size: var(--mndw-text-sm);
   line-height: var(--mndw-leading);
+}
+
+.mndw-plugin-risk-warning > p {
+  margin: 0;
+}
+
+.mndw-plugin-risk-warning > p + p {
+  margin-top: var(--mndw-space-2);
 }
 
 .mndw-approval__actions {

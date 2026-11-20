@@ -138,7 +138,7 @@ $effect(() => {
   </a>
 
   {#if pagePlugins.length > 0}
-    <div class="mndw-sidebar__section-label">{hostT('nav.plugins')}</div>
+    <hr class="mndw-sidebar__separator" />
     {#each pagePlugins as plugin (plugin.name)}
       <a
         href={plugin.route}

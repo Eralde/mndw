@@ -318,7 +318,7 @@ describe('Project home and install pages', () => {
     expect(install).toContain('mipsel-3.4');
     expect(install).toContain('cat /opt/var/lib/mndw/frontend-port');
     expect(install).toContain('opkg upgrade mndw');
-    expect(install).toContain('mndw update');
+    expect(install).toContain('Update mndw');
     expect(install).toContain('MNDW_DEVICE_PORT');
     expect(install).toContain('https://github.com/Eralde/mndw-opkg-feed');
     expect(install).toContain('/guides/validation-and-packaging');

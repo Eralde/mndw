@@ -32,6 +32,16 @@ function addWidget(pluginName: string): void {
   onAddWidget(pluginName);
   close(undefined);
 }
+
+function getWidgetAccessibleName(
+  label: string,
+  description: string | undefined,
+  deps: string,
+): string {
+  return [label, description, deps]
+    .filter((part): part is string => part !== undefined && part !== '')
+    .join(' ');
+}
 </script>
 
 <div class="mndw-floating-panel">
@@ -45,32 +55,31 @@ function addWidget(pluginName: string): void {
     {#each availableWidgets as item (item.widget.entry.name)}
       {@const widget = item.widget}
       {@const deps = getDepsStatus(widget.entry.name)}
+      {@const depsLabel = deps === 'installing'
+      ? hostT('dashboard.preparing')
+      : deps === 'failed'
+      ? hostT('dashboard.unavailable')
+      : ''}
       <mndw-button
         variant="secondary"
+        aria-label={getWidgetAccessibleName(item.label, item.description, depsLabel)}
         onclick={() => addWidget(widget.entry.name)}
       >
-        <span class="mndw-floating-panel__label">{item.label}</span>
-        {#if item.description !== ''}
+        <span class="mndw-floating-panel__label">
+          {item.label}
+          {#if depsLabel !== ''}
+            <br />
+            <span
+              class="mndw-floating-panel__deps {deps === 'failed' ? 'mndw-floating-panel__deps--failed' : ''}"
+            >
+              {depsLabel}
+            </span>
+          {/if}
+        </span>
+        {#if item.description}
           <span class="mndw-floating-panel__description">{
             item.description
           }</span>
-        {/if}
-        <span class="mndw-floating-panel__size">
-          {
-            hostT('dashboard.widget-size', {width: widget.entry.size.w,
-            height: widget.entry.size.h})
-          }
-        </span>
-        {#if deps === 'installing'}
-          <span class="mndw-floating-panel__deps">{
-            hostT('dashboard.preparing')
-          }</span>
-        {:else if deps === 'failed'}
-          <span
-            class="mndw-floating-panel__deps mndw-floating-panel__deps--failed"
-          >
-            {hostT('dashboard.unavailable')}
-          </span>
         {/if}
       </mndw-button>
     {/each}

@@ -105,6 +105,21 @@ func TestListDiscoversBothPrefixesWithoutRunningScripts(t *testing.T) {
 	}
 }
 
+func TestListDoesNotProtectLighttpd(t *testing.T) {
+	m := testExecManager(t, nil)
+
+	writeInitScript(t, m.initDir, "S80lighttpd", true)
+
+	got, err := m.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(got) != 1 || got[0].Name != "S80lighttpd" || got[0].Protected {
+		t.Fatalf("services = %+v, want S80lighttpd unprotected", got)
+	}
+}
+
 func TestListDiscoversExecutableSymlinkTarget(t *testing.T) {
 	m := testExecManager(t, nil)
 	target := filepath.Join(t.TempDir(), "real-service")

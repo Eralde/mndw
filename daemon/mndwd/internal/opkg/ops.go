@@ -67,7 +67,7 @@ func (m *execManager) Update(ctx context.Context) error {
 
 func rejectProtected(packages []string) error {
 	for _, name := range packages {
-		if name == "mndw" || name == "lighttpd" {
+		if name == "mndw" {
 			return &ProtectedPackageError{Name: name}
 		}
 	}

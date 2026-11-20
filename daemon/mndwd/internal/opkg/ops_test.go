@@ -28,6 +28,23 @@ func TestProtectedPackageRejectedBeforeRunner(t *testing.T) {
 	}
 }
 
+func TestLighttpdPackagePassesThroughToRunner(t *testing.T) {
+	calls := 0
+	m := newExecManagerWithRunner(t, func(_ context.Context, args ...string) (string, int, error) {
+		calls++
+
+		if strings.Join(args, " ") != "opkg remove lighttpd" {
+			return "", 0, errors.New("unexpected command: " + strings.Join(args, " "))
+		}
+
+		return "", 0, nil
+	})
+
+	if err := m.Remove(context.Background(), []string{"lighttpd"}); err != nil || calls != 1 {
+		t.Fatalf("Remove(lighttpd) = %v, runner calls = %d; want nil and one call", err, calls)
+	}
+}
+
 // TestExecRemoveDetectsDependencyConflictOnZeroExit pins the fix: opkg refuses a
 // removal with a reverse-dependency warning while exiting 0, and Remove must surface
 // that as a DependencyConflictError instead of reporting success.

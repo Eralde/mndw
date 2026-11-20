@@ -278,7 +278,7 @@ func makeEntryWithAutostart(name, state string, enabled, pinned bool) ServiceEnt
 		State:           state,
 		EnabledAtBoot:   enabled,
 		AutostartPinned: pinned,
-		Protected:       name == "S70mndwd" || name == "S80lighttpd",
+		Protected:       name == "S70mndwd",
 	}
 }
 

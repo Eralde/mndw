@@ -16,6 +16,11 @@
     "loaded": "Device description loaded.",
     "saved": "Device description confirmed by device."
   },
+  "confirm": {
+    "restore-title": "Restore the original description?",
+    "restore-message": "Write back “{value}”?",
+    "restore-label": "Restore original"
+  },
   "validation": {
     "empty": "Enter a non-empty device description.",
     "too-long": "Description must be 64 characters or fewer."

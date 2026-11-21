@@ -1,4 +1,5 @@
 import type {PluginRciManager, RciQuery} from '@mndw/sdk';
+import {type TestPluginContext, createTestPluginContext} from '@mndw/sdk/testing';
 import {flushSync, mount, unmount} from 'svelte';
 import {Observable, Subject, of, throwError} from 'rxjs';
 import {afterEach, describe, expect, it, vi} from 'vitest';
@@ -21,10 +22,16 @@ function fakeRci(handler: Queue): FakeRci {
   return {rci: {queue} as unknown as PluginRciManager, queue};
 }
 
-function mountApp(rci: PluginRciManager): HTMLElement {
+function mountApp(
+  rci: PluginRciManager,
+  fixture: TestPluginContext = createTestPluginContext({overlay: {confirm: () => Promise.resolve(false)}}),
+): HTMLElement {
   const container = createContainer();
 
-  mounted.push(mount(App, {target: container, props: {rci, i18n: createI18n()}}));
+  mounted.push(mount(App, {
+    target: container,
+    props: {rci, i18n: createI18n(), toast: fixture.context.toast, overlay: fixture.context.overlay},
+  }));
   flushSync();
 
   return container;
@@ -131,7 +138,7 @@ describe('RCI device-description widget', () => {
     click(container, 'save');
 
     expect(queue).toHaveBeenCalledWith({path: 'system.description', data: 'New recovered name'});
-    expect(roleText(container, 'status')).toBe('Device description confirmed by device.');
+    expect(roleText(container, 'status')).toBe('Device description loaded.');
   });
 
   it('allows replacing an empty original but never enables Restore for it', () => {
@@ -159,7 +166,8 @@ describe('RCI device-description widget', () => {
     expect(container.textContent).toContain('No non-empty original value is available to restore.');
   });
 
-  it('waits for write and a device confirmation read before showing success', () => {
+  it('waits for write and a device confirmation read before recording one keyed success toast', () => {
+    const fixture = createTestPluginContext({overlay: {confirm: () => Promise.resolve(false)}});
     const write = new Subject<unknown>();
     const confirmation = new Subject<unknown>();
     let readCount = 0;
@@ -172,7 +180,7 @@ describe('RCI device-description widget', () => {
 
       return write;
     });
-    const container = mountApp(rci);
+    const container = mountApp(rci, fixture);
 
     setDescription(container, 'Changed description');
 
@@ -181,7 +189,7 @@ describe('RCI device-description widget', () => {
     expect(queue.mock.calls.map(([query]) => query.path)).toEqual(['show.version', 'system.description']);
     expect(queue).toHaveBeenNthCalledWith(2, {path: 'system.description', data: 'Changed description'});
     expect(roleText(container, 'status')).toBe('Saving device description…');
-    expect(roleText(container, 'status')).not.toBe('Device description confirmed by device.');
+    expect(fixture.toastCalls).toEqual([]);
 
     write.next({status: [{status: 'ok'}]});
     write.complete();
@@ -193,13 +201,22 @@ describe('RCI device-description widget', () => {
       'show.version',
     ]);
     expect(roleText(container, 'status')).toBe('Saving device description…');
+    expect(fixture.toastCalls).toEqual([]);
 
     confirmation.next({description: 'Changed description'});
     confirmation.complete();
     flushSync();
 
     expect(element<HTMLInputElement>(container, 'description').value).toBe('Changed description');
-    expect(roleText(container, 'status')).toBe('Device description confirmed by device.');
+    expect(roleText(container, 'status')).toBe('Device description loaded.');
+    expect(fixture.toastCalls).toEqual([
+      {
+        type: 'success',
+        message: 'Device description confirmed by device.',
+        options: {key: 'saved'},
+        handleId: 1,
+      },
+    ]);
   });
 
   it('ignores a second Save while the accepted write transaction is pending', () => {
@@ -265,12 +282,72 @@ describe('RCI device-description widget', () => {
 
     expect(writeCount).toBe(2);
     expect(queue.mock.calls.filter(([query]) => query.path === 'system.description')).toHaveLength(2);
-    expect(roleText(container, 'status')).toBe('Device description confirmed by device.');
+    expect(roleText(container, 'status')).toBe('Device description loaded.');
   });
 
-  it('restores the original non-empty value through the same write pipeline', () => {
+  it('does not ask before saving a typed value', () => {
+    let readCount = 0;
+    const confirm = vi.fn(() => Promise.resolve(false));
+    const fixture = createTestPluginContext({overlay: {confirm}});
+    const {rci} = fakeRci((query) => {
+      if (query.path === 'show.version') {
+        readCount += 1;
+
+        return of({description: readCount === 1 ? 'Original' : 'Changed description'});
+      }
+
+      return okResponse();
+    });
+    const container = mountApp(rci, fixture);
+
+    setDescription(container, 'Changed description');
+    click(container, 'save');
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(element<HTMLButtonElement>(container, 'restore').disabled).toBe(false);
+  });
+
+  it('asks before restoring and does not write when the user cancels', async () => {
     let readCount = 0;
     const writes: string[] = [];
+    const confirm = vi.fn(() => Promise.resolve(false));
+    const fixture = createTestPluginContext({overlay: {confirm}});
+    const {rci} = fakeRci((query) => {
+      if (query.path === 'show.version') {
+        readCount += 1;
+
+        return of({description: readCount === 1 ? 'Original' : writes[writes.length - 1]});
+      }
+
+      if (typeof query.data !== 'string') {
+        throw new Error('Expected string description write');
+      }
+
+      writes.push(query.data);
+
+      return okResponse();
+    });
+    const container = mountApp(rci, fixture);
+
+    setDescription(container, 'Changed description');
+    click(container, 'save');
+    click(container, 'restore');
+
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    expect(confirm).toHaveBeenCalledWith({
+      title: 'Restore the original description?',
+      message: 'Write back “Original”?',
+      confirmLabel: 'Restore original',
+    });
+    expect(writes).toEqual(['Changed description']);
+    expect(element<HTMLInputElement>(container, 'description').value).toBe('Changed description');
+  });
+
+  it('restores the original non-empty value after confirmation', async () => {
+    let readCount = 0;
+    const writes: string[] = [];
+    const confirm = vi.fn(() => Promise.resolve(true));
+    const fixture = createTestPluginContext({overlay: {confirm}});
     const {rci, queue} = fakeRci((query) => {
       if (query.path === 'show.version') {
         readCount += 1;
@@ -286,7 +363,7 @@ describe('RCI device-description widget', () => {
 
       return okResponse();
     });
-    const container = mountApp(rci);
+    const container = mountApp(rci, fixture);
 
     setDescription(container, 'Changed description');
     click(container, 'save');
@@ -295,10 +372,17 @@ describe('RCI device-description widget', () => {
 
     click(container, 'restore');
 
-    expect(writes).toEqual(['Changed description', 'Original']);
+    await vi.waitFor(() => expect(writes).toEqual(['Changed description', 'Original']));
+    flushSync();
+
+    expect(confirm).toHaveBeenCalledWith({
+      title: 'Restore the original description?',
+      message: 'Write back “Original”?',
+      confirmLabel: 'Restore original',
+    });
     expect(queue).toHaveBeenNthCalledWith(4, {path: 'system.description', data: 'Original'});
     expect(element<HTMLInputElement>(container, 'description').value).toBe('Original');
-    expect(roleText(container, 'status')).toBe('Device description confirmed by device.');
+    expect(roleText(container, 'status')).toBe('Device description loaded.');
   });
 
   it('unsubscribes an active initial read when the component is destroyed', async () => {

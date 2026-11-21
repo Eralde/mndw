@@ -13,7 +13,12 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import type {PluginI18n, PluginRciManager} from '@mndw/sdk';
+import type {
+  OverlayService,
+  PluginI18n,
+  PluginRciManager,
+  PluginToasts,
+} from '@mndw/sdk';
 import {createTranslator} from '@mndw/sdk/svelte';
 import {
   type DescriptionValidation,
@@ -25,9 +30,11 @@ import {
 interface Props {
   rci: PluginRciManager;
   i18n: PluginI18n;
+  toast: PluginToasts;
+  overlay: OverlayService;
 }
 
-let {rci, i18n}: Props = $props();
+let {rci, i18n, toast, overlay}: Props = $props();
 const translator = $derived(createTranslator(i18n));
 // svelte-ignore state_referenced_locally
 const api = createDeviceDescriptionApi(rci);
@@ -41,7 +48,6 @@ let isSaving = $state(false);
 let loadError = $state('');
 let saveError = $state('');
 let validationMessage = $state('');
-let saveSucceeded = $state(false);
 
 const loadIntents = new Subject<void>();
 const saveIntents = new Subject<string>();
@@ -61,8 +67,8 @@ let canRestore = $derived.by(() => {
     && originalDescription !== confirmedDescription;
 });
 
-function translate(key: string): string {
-  return $translator.t(key);
+function translate(key: string, values?: Record<string, unknown>): string {
+  return $translator.t(key, values);
 }
 
 function handleInput(): void {
@@ -72,7 +78,6 @@ function handleInput(): void {
     ? translate(validation.message)
     : '';
   saveError = '';
-  saveSucceeded = false;
 }
 
 function getSaveError(error: unknown): string {
@@ -85,8 +90,18 @@ function submitSave(): void {
   saveIntents.next(description);
 }
 
-function restoreOriginal(): void {
-  if (originalDescription !== undefined) {
+async function restoreOriginal(): Promise<void> {
+  if (originalDescription === undefined) {
+    return;
+  }
+
+  const confirmed = await overlay.confirm({
+    title: translate('confirm.restore-title'),
+    message: translate('confirm.restore-message', {value: originalDescription}),
+    confirmLabel: translate('confirm.restore-label'),
+  });
+
+  if (confirmed) {
     saveIntents.next(originalDescription);
   }
 }
@@ -108,7 +123,6 @@ subscriptions.add(
             description = deviceDescription;
             hasLoaded = true;
             saveError = '';
-            saveSucceeded = false;
             validationMessage = '';
           }),
           catchError(() => {
@@ -143,14 +157,13 @@ subscriptions.add(
         isSaving = true;
         saveError = '';
         validationMessage = '';
-        saveSucceeded = false;
 
         return api.write(value).pipe(
           switchMap(() => api.read()),
           tap((deviceDescription) => {
             confirmedDescription = deviceDescription;
             description = deviceDescription;
-            saveSucceeded = true;
+            toast.success(translate('status.saved'), {key: 'saved'});
           }),
           catchError((error: unknown) => {
             saveError = getSaveError(error);
@@ -264,13 +277,6 @@ onDestroy(() => {
       aria-live="polite"
     >
       {validationMessage}
-    </p>
-  {:else if saveSucceeded}
-    <p
-      role="status"
-      aria-live="polite"
-    >
-      {$translator.t('status.saved')}
     </p>
   {:else if hasLoaded}
     <p

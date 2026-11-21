@@ -4,7 +4,10 @@ import {bindLocale} from '@mndw/sdk/bind-locale';
 import App from './App.svelte';
 
 export function createInstance(container: HTMLElement, ctx: PluginContext): PluginInstance {
-  const app = mount(App, {target: container, props: {rci: ctx.device.rci, i18n: ctx.i18n}});
+  const app = mount(App, {
+    target: container,
+    props: {rci: ctx.device.rci, i18n: ctx.i18n, toast: ctx.toast, overlay: ctx.overlay},
+  });
   const unsubscribeLocale = bindLocale(ctx.i18n, () => {
     if (ctx.kind === 'widget') {
       ctx.setTileTitle(ctx.i18n.t('title'));

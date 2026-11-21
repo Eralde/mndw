@@ -93,6 +93,11 @@ Replace `i18n/en.json` with this catalog:
     "loaded": "Device description loaded.",
     "saved": "Device description confirmed by device."
   },
+  "confirm": {
+    "restore-title": "Restore the original description?",
+    "restore-message": "Write back “{value}”?",
+    "restore-label": "Restore original"
+  },
   "validation": {
     "empty": "Enter a non-empty device description.",
     "too-long": "Description must be 64 characters or fewer."
@@ -126,6 +131,11 @@ Replace `i18n/ru.json` with the matching Russian catalog:
     "saving": "Сохранение описания устройства…",
     "loaded": "Описание устройства загружено.",
     "saved": "Описание подтверждено устройством."
+  },
+  "confirm": {
+    "restore-title": "Восстановить исходное описание?",
+    "restore-message": "Записать обратно «{value}»?",
+    "restore-label": "Восстановить исходное"
   },
   "validation": {
     "empty": "Введите непустое описание устройства.",
@@ -349,7 +359,12 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import type {PluginI18n, PluginRciManager} from '@mndw/sdk';
+import type {
+  OverlayService,
+  PluginI18n,
+  PluginRciManager,
+  PluginToasts,
+} from '@mndw/sdk';
 import {createTranslator} from '@mndw/sdk/svelte';
 import {
   type DescriptionValidation,
@@ -361,9 +376,11 @@ import {
 interface Props {
   rci: PluginRciManager;
   i18n: PluginI18n;
+  toast: PluginToasts;
+  overlay: OverlayService;
 }
 
-let {rci, i18n}: Props = $props();
+let {rci, i18n, toast, overlay}: Props = $props();
 const translator = $derived(createTranslator(i18n));
 // svelte-ignore state_referenced_locally
 const api = createDeviceDescriptionApi(rci);
@@ -377,7 +394,6 @@ let isSaving = $state(false);
 let loadError = $state('');
 let saveError = $state('');
 let validationMessage = $state('');
-let saveSucceeded = $state(false);
 
 const loadIntents = new Subject<void>();
 const saveIntents = new Subject<string>();
@@ -397,8 +413,8 @@ let canRestore = $derived.by(() => {
     && originalDescription !== confirmedDescription;
 });
 
-function translate(key: string): string {
-  return $translator.t(key);
+function translate(key: string, values?: Record<string, unknown>): string {
+  return $translator.t(key, values);
 }
 
 function handleInput(): void {
@@ -408,7 +424,6 @@ function handleInput(): void {
     ? translate(validation.message)
     : '';
   saveError = '';
-  saveSucceeded = false;
 }
 
 function getSaveError(error: unknown): string {
@@ -421,8 +436,18 @@ function submitSave(): void {
   saveIntents.next(description);
 }
 
-function restoreOriginal(): void {
-  if (originalDescription !== undefined) {
+async function restoreOriginal(): Promise<void> {
+  if (originalDescription === undefined) {
+    return;
+  }
+
+  const confirmed = await overlay.confirm({
+    title: translate('confirm.restore-title'),
+    message: translate('confirm.restore-message', {value: originalDescription}),
+    confirmLabel: translate('confirm.restore-label'),
+  });
+
+  if (confirmed) {
     saveIntents.next(originalDescription);
   }
 }
@@ -455,7 +480,6 @@ subscriptions.add(
             description = deviceDescription;
             hasLoaded = true;
             saveError = '';
-            saveSucceeded = false;
             validationMessage = '';
           }),
           catchError(() => {
@@ -500,14 +524,13 @@ subscriptions.add(
         isSaving = true;
         saveError = '';
         validationMessage = '';
-        saveSucceeded = false;
 
         return api.write(value).pipe(
           switchMap(() => api.read()),
           tap((deviceDescription) => {
             confirmedDescription = deviceDescription;
             description = deviceDescription;
-            saveSucceeded = true;
+            toast.success(translate('status.saved'), {key: 'saved'});
           }),
           catchError((error: unknown) => {
             saveError = getSaveError(error);
@@ -538,7 +561,7 @@ onDestroy(() => {
 The transaction is **validate → write → read back → display device value**.
 `filter` blocks invalid input. `exhaustMap` prevents overlapping writes;
 `switchMap` subscribes to the confirmation read after the write succeeds. Only
-that read sets `saveSucceeded`. The returned device value is authoritative;
+that read records the success toast. The returned device value is authoritative;
 the widget displays it even if it differs from the submitted text.
 
 Keeping `catchError` inside the transaction lets a later Save succeed after a
@@ -547,6 +570,15 @@ have changed; the UI reports an error and cannot claim a confirmed result.
 Unsubscribing the aggregate cancels active observable subscriptions on
 unmount. Completing a subject alone would not unsubscribe an active inner
 request.
+
+Restore asks for confirmation because it overwrites the description with a
+value the user did not type; Save does not, because the user just typed that
+value. The dialog names the value that will be written back. A successful save
+is a toast because it reports an outcome; load, save, and validation errors
+stay next to the field, where the user can fix them. The host labels each toast
+with the plugin name and rate-limits new toasts per instance. See
+[Toasts](/guides/frontend-lifecycle#toasts) and
+[overlay confirmation](/guides/frontend-lifecycle#angular-lifecycle-helpers-and-overlays).
 
 Append the controls and feedback:
 
@@ -639,13 +671,6 @@ Append the controls and feedback:
     >
       {validationMessage}
     </p>
-  {:else if saveSucceeded}
-    <p
-      role="status"
-      aria-live="polite"
-    >
-      {$translator.t('status.saved')}
-    </p>
   {:else if hasLoaded}
     <p
       role="status"
@@ -658,9 +683,10 @@ Append the controls and feedback:
 ```
 
 An empty original displays an explanation and disables Restore, but a new
-valid value can still be saved. Restore uses the same validation, write, and
-read-back pipeline as Save. This example uses native controls to keep attention
-on RxJS; the [UI guide](/guides/ui-components) covers shared controls.
+valid value can still be saved. After confirmation, Restore uses the same
+validation, write, and read-back pipeline as Save. This example uses native
+controls to keep attention on RxJS; the [UI guide](/guides/ui-components)
+covers shared controls.
 
 Finish the component with token-based styles:
 
@@ -745,7 +771,12 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import type {PluginI18n, PluginRciManager} from '@mndw/sdk';
+import type {
+  OverlayService,
+  PluginI18n,
+  PluginRciManager,
+  PluginToasts,
+} from '@mndw/sdk';
 import {createTranslator} from '@mndw/sdk/svelte';
 import {
   type DescriptionValidation,
@@ -757,9 +788,11 @@ import {
 interface Props {
   rci: PluginRciManager;
   i18n: PluginI18n;
+  toast: PluginToasts;
+  overlay: OverlayService;
 }
 
-let {rci, i18n}: Props = $props();
+let {rci, i18n, toast, overlay}: Props = $props();
 const translator = $derived(createTranslator(i18n));
 // svelte-ignore state_referenced_locally
 const api = createDeviceDescriptionApi(rci);
@@ -773,7 +806,6 @@ let isSaving = $state(false);
 let loadError = $state('');
 let saveError = $state('');
 let validationMessage = $state('');
-let saveSucceeded = $state(false);
 
 const loadIntents = new Subject<void>();
 const saveIntents = new Subject<string>();
@@ -793,8 +825,8 @@ let canRestore = $derived.by(() => {
     && originalDescription !== confirmedDescription;
 });
 
-function translate(key: string): string {
-  return $translator.t(key);
+function translate(key: string, values?: Record<string, unknown>): string {
+  return $translator.t(key, values);
 }
 
 function handleInput(): void {
@@ -804,7 +836,6 @@ function handleInput(): void {
     ? translate(validation.message)
     : '';
   saveError = '';
-  saveSucceeded = false;
 }
 
 function getSaveError(error: unknown): string {
@@ -817,8 +848,18 @@ function submitSave(): void {
   saveIntents.next(description);
 }
 
-function restoreOriginal(): void {
-  if (originalDescription !== undefined) {
+async function restoreOriginal(): Promise<void> {
+  if (originalDescription === undefined) {
+    return;
+  }
+
+  const confirmed = await overlay.confirm({
+    title: translate('confirm.restore-title'),
+    message: translate('confirm.restore-message', {value: originalDescription}),
+    confirmLabel: translate('confirm.restore-label'),
+  });
+
+  if (confirmed) {
     saveIntents.next(originalDescription);
   }
 }
@@ -840,7 +881,6 @@ subscriptions.add(
             description = deviceDescription;
             hasLoaded = true;
             saveError = '';
-            saveSucceeded = false;
             validationMessage = '';
           }),
           catchError(() => {
@@ -875,14 +915,13 @@ subscriptions.add(
         isSaving = true;
         saveError = '';
         validationMessage = '';
-        saveSucceeded = false;
 
         return api.write(value).pipe(
           switchMap(() => api.read()),
           tap((deviceDescription) => {
             confirmedDescription = deviceDescription;
             description = deviceDescription;
-            saveSucceeded = true;
+            toast.success(translate('status.saved'), {key: 'saved'});
           }),
           catchError((error: unknown) => {
             saveError = getSaveError(error);
@@ -997,13 +1036,6 @@ onDestroy(() => {
     >
       {validationMessage}
     </p>
-  {:else if saveSucceeded}
-    <p
-      role="status"
-      aria-live="polite"
-    >
-      {$translator.t('status.saved')}
-    </p>
   {:else if hasLoaded}
     <p
       role="status"
@@ -1089,7 +1121,10 @@ import {bindLocale} from '@mndw/sdk/bind-locale';
 import App from './App.svelte';
 
 export function createInstance(container: HTMLElement, ctx: PluginContext): PluginInstance {
-  const app = mount(App, {target: container, props: {rci: ctx.device.rci, i18n: ctx.i18n}});
+  const app = mount(App, {
+    target: container,
+    props: {rci: ctx.device.rci, i18n: ctx.i18n, toast: ctx.toast, overlay: ctx.overlay},
+  });
   const unsubscribeLocale = bindLocale(ctx.i18n, () => {
     if (ctx.kind === 'widget') {
       ctx.setTileTitle(ctx.i18n.t('title'));
@@ -1109,6 +1144,8 @@ The host owns authentication and transport. The plugin receives its RCI
 manager rather than constructing device URLs or storing credentials. The host
 draws the widget title, so `src/App.svelte` has no in-widget heading;
 `setTileTitle` in `src/index.ts` keeps it translated when locale changes.
+`ctx.toast` and `ctx.overlay` are instance-scoped services; passing them as
+props keeps the component testable without a host.
 
 ## 7. Check the Save flow
 
@@ -1135,7 +1172,7 @@ import type {PluginRciManager} from '@mndw/sdk';
 import {of} from 'rxjs';
 import {flushSync, mount, unmount} from 'svelte';
 import {expect, it, vi} from 'vitest';
-import {createTestI18n} from '@mndw/sdk/testing';
+import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import App from './App.svelte';
 import en from '../i18n/en.json';
 
@@ -1144,13 +1181,20 @@ it('saves a new description and displays the read-back value', async () => {
     .mockReturnValueOnce(of({description: 'Original'}))
     .mockReturnValueOnce(of({status: [{status: 'ok'}]}))
     .mockReturnValueOnce(of({description: 'Confirmed by device'}));
+  const i18n = createTestI18n(en);
+  const fixture = createTestPluginContext({i18n});
   const root = document.createElement('div');
 
   document.body.append(root);
 
   const app = mount(App, {
     target: root,
-    props: {rci: {queue} as unknown as PluginRciManager, i18n: createTestI18n(en)},
+    props: {
+      rci: {queue} as unknown as PluginRciManager,
+      i18n,
+      toast: fixture.context.toast,
+      overlay: fixture.context.overlay,
+    },
   });
 
   try {
@@ -1174,7 +1218,9 @@ it('saves a new description and displays the read-back value', async () => {
       [{path: 'show.version'}],
     ]);
     expect(input.value).toBe('Confirmed by device');
-    expect(root.textContent).toContain(en.status.saved);
+    expect(fixture.toastCalls).toEqual([
+      {type: 'success', message: en.status.saved, options: {key: 'saved'}, handleId: 1},
+    ]);
   } finally {
     await unmount(app);
     root.remove();
@@ -1189,8 +1235,10 @@ npm test
 ```
 
 **Checkpoint:** the adapter and UI smoke tests pass without a device. The UI
-test checks initial read → trimmed write → confirmation read, and displays the
-returned device value rather than the submitted input. RCI mocks remain
+test checks initial read → trimmed write → confirmation read, displays the
+returned device value rather than the submitted input, and asserts the keyed
+success toast recorded by the fixture. After Save, the user sees that toast
+instead of an inline success line; errors still appear inline. RCI mocks remain
 observables; `async` is used only for Svelte's `unmount` cleanup.
 
 For broader coverage, see the optional
@@ -1218,10 +1266,13 @@ Open the printed local URL and complete the host's normal device login flow.
 
 1. Wait for “Device description loaded.” Record the displayed value.
 2. Enter a temporary description, for example `Tutorial test`, and select Save.
-3. Wait for “Device description confirmed by device.” The input now contains
-   the value returned by the subsequent `show.version` read.
-4. Select Restore original and wait for the same confirmation. Check that the
-   input contains the value recorded in step 1.
+   Save does not ask for confirmation.
+3. Wait for the “Device description confirmed by device.” toast. The host shows
+   the plugin label above the message. The input now contains the value returned
+   by the subsequent `show.version` read.
+4. Select Restore original, confirm the dialog naming the value to write back,
+   and wait for the same toast. Check that the input contains the value recorded
+   in step 1.
 5. Stop with Ctrl-C. A reload/remount captures a new original, so finish the
    round trip before editing frontend code or reloading the page.
 

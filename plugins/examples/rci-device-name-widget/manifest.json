@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "name": "rci-device-name-widget",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "widget",
   "label": "Device Description",
   "description": "View and update the router's device description.",

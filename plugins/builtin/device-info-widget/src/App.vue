@@ -464,6 +464,7 @@ onUnmounted(() => {
     <header class="app__header">
       <div class="range-scroll">
         <mndw-segmented
+          size="sm"
           :label="t('history-range')"
           :value.prop="selectedRange"
           :disabled="info === null"
@@ -474,7 +475,7 @@ onUnmounted(() => {
           </mndw-segment>
         </mndw-segmented>
       </div>
-      <mndw-button class="app__settings" variant="ghost" :aria-label="t('settings')" @click="openSettings">
+      <mndw-button class="app__settings" size="sm" variant="ghost" :aria-label="t('settings')" @click="openSettings">
         <mndw-icon name="settings"></mndw-icon>
       </mndw-button>
     </header>
@@ -487,6 +488,7 @@ onUnmounted(() => {
         <span class="app__stale-message">{{ t('stale.message', {time: lastSuccessTime}) }}</span>
         <mndw-button
           class="app__stale-retry"
+          size="sm"
           variant="ghost"
           :disabled="retryInFlight"
           :aria-busy="retryInFlight ? 'true' : null"
@@ -557,20 +559,8 @@ onUnmounted(() => {
   margin-bottom: 0.75rem;
 }
 
-.app__header mndw-segmented {
-  --mndw-control-h: var(--mndw-control-h-sm);
-}
-
-.app__header mndw-segmented::part(group) {
-  padding: 0;
-}
-
 .app__settings {
   flex: 0 0 auto;
-}
-
-.app__settings::part(button) {
-  min-height: calc(var(--mndw-control-h-sm) + 2 * var(--mndw-border-w));
 }
 
 .app__loading {
@@ -598,11 +588,6 @@ onUnmounted(() => {
 .app__stale-retry {
   flex: 0 0 auto;
   font-size: var(--mndw-text-xs);
-}
-
-.app__stale-retry::part(button) {
-  min-height: var(--mndw-control-h-sm);
-  padding: 0 var(--mndw-space-2);
 }
 
 .app__grid {

@@ -30,12 +30,21 @@ Wraps a native inner `<input>` with delegated focus and emits `mndwinput` and `m
 </mndw-field>
 ```
 
+### Sizes
+
+```html demo
+<div class="mndw-toolbar">
+  <mndw-input style="width: 12rem" size="sm" aria-label="Small input" placeholder="Small"></mndw-input>
+  <mndw-input style="width: 12rem" size="md" aria-label="Medium input" placeholder="Medium"></mndw-input>
+</div>
+```
+
 ## Reference
 
 The host owns form participation. A real native `<input>` in the shadow root owns editing, caret, selection, IME, and
 masking; the shadow root delegates focus, so a `<label for>` click or `.focus()` reaches it.
 
-Properties are `value`, `type` (`text`, `password`, `search`, `number`, or `url`; default `text`, with other values
+`size` accepts `sm` or `md` and defaults to `md`. Properties are `value`, `type` (`text`, `password`, `search`, `number`, or `url`; default `text`, with other values
 falling back to `text`), `placeholder`,
 `readonly`, `min`, `max`, `step`, `maxlength`, `autocomplete`, and shared `name`, `disabled`, `required`, and
 `invalid`. `value` is state and does not reflect; its authored attribute remains the form-reset default. Parts are

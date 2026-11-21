@@ -3,7 +3,16 @@ import {FormAssociatedController} from '../forms/form-associated.js';
 import {CommitTracker, TextAnnouncementController, setOrRemove, validityFlagsFrom} from '../forms/text-control.js';
 import {getMndwUiText} from '../i18n.js';
 import {LocaleController} from '../locale-controller.js';
-import {controlBase, fieldHover, focusRing, hostTypography, invalidField, textHover} from '../styles/base.js';
+import {
+  type MndwControlSize,
+  controlBase,
+  controlSize,
+  fieldHover,
+  focusRing,
+  hostTypography,
+  invalidField,
+  textHover,
+} from '../styles/base.js';
 
 export const MNDW_INPUT_TAG = 'mndw-input';
 
@@ -22,6 +31,7 @@ export class MndwInput extends LitElement {
   public static override readonly shadowRootOptions: ShadowRootInit = {mode: 'open', delegatesFocus: true};
 
   public static readonly properties: PropertyDeclarations = {
+    size: {type: String, reflect: true},
     value: {type: String},
     type: {type: String, reflect: true},
     placeholder: {type: String, reflect: true},
@@ -44,6 +54,8 @@ export class MndwInput extends LitElement {
       display: inline-block;
       width: 100%;
     }
+
+    ${controlSize}
 
     ${invalidField}
 
@@ -129,6 +141,7 @@ export class MndwInput extends LitElement {
     }
   `;
 
+  declare public size: MndwControlSize;
   declare public value: string;
   declare public type: MndwInputType;
   declare public placeholder: string;
@@ -161,6 +174,7 @@ export class MndwInput extends LitElement {
 
   constructor() {
     super();
+    this.size = 'md';
     this.value = '';
     this.type = 'text';
     this.placeholder = '';

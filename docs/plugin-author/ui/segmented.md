@@ -24,9 +24,24 @@ The host has `role="radiogroup"` and manages slotted `<mndw-segment>` choices.
 </mndw-segmented>
 ```
 
+### Sizes
+
+```html demo
+<div class="mndw-toolbar">
+  <mndw-segmented size="sm" label="Small range" value="day">
+    <mndw-segment value="day">Day</mndw-segment>
+    <mndw-segment value="week">Week</mndw-segment>
+  </mndw-segmented>
+  <mndw-segmented size="md" label="Medium range" value="day">
+    <mndw-segment value="day">Day</mndw-segment>
+    <mndw-segment value="week">Week</mndw-segment>
+  </mndw-segmented>
+</div>
+```
+
 ## Reference
 
-The group owns `value`, `label`, and shared `name`, `disabled`, `required`, and `invalid`; `value` is state and does
+The group owns `value`, `label`, `size`, and shared `name`, `disabled`, `required`, and `invalid`; `size` accepts `sm` or `md` and defaults to `md`, and `value` is state and does
 not reflect. Part `group` is the segmented container. `mndwchange` carries `detail: {value: string}` and fires on
 user activation only. Each `<mndw-segment>` carries required `value` and `disabled`, both reflected, and exposes part
 `segment`; a segment without a value is ignored.

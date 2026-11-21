@@ -31,10 +31,19 @@ Buttons support four visual variants and native button types.
 <mndw-button variant="ghost" aria-label="Settings"><mndw-icon name="settings"></mndw-icon></mndw-button>
 ```
 
+### Sizes
+
+```html demo
+<div class="mndw-toolbar">
+  <mndw-button size="sm">Small</mndw-button>
+  <mndw-button size="md">Medium</mndw-button>
+</div>
+```
+
 ## Reference
 
 `variant` accepts `primary`, `secondary`, `ghost`, or `danger`; it defaults to `secondary`. `type` accepts `button`,
-`submit`, or `reset` and defaults to `button`. `disabled` disables the control. The inner native button exposes
+`submit`, or `reset` and defaults to `button`. `size` accepts `sm` or `md` and defaults to `md`. `disabled` disables the control. The inner native button exposes
 `part="button"`; `aria-label` names it when its slotted content is only an icon.
 
 ARIA state attributes authored on the host — `aria-label`, `aria-expanded`, `aria-pressed`, `aria-haspopup` — are

@@ -1,6 +1,10 @@
 // @vitest-environment happy-dom
 import {describe, expect, it, vi} from 'vitest';
 import {defineComponents, mount} from '../testing/index.js';
+import {MndwInput} from '../input/input.js';
+import {MndwSelect} from '../select/select.js';
+import {MndwSegment} from '../segmented/segment.js';
+import {MndwSegmented} from '../segmented/segmented.js';
 import {MNDW_BUTTON_TAG, MndwButton, type MndwButtonVariant} from './button.js';
 
 defineComponents([MNDW_BUTTON_TAG, MndwButton]);
@@ -21,6 +25,30 @@ describe('<mndw-button>', () => {
 
     expect(element.variant).toBe('secondary');
     expect(element.getAttribute('variant')).toBe('secondary');
+  });
+
+  it('reflects size and uses small metrics only for sm', async () => {
+    const element = await mount('<mndw-button>Cancel</mndw-button>', MNDW_BUTTON_TAG);
+
+    expect(element.getAttribute('size')).toBe('md');
+
+    Reflect.set(element, 'size', 'sm');
+    await element.updateComplete;
+
+    expect(element.getAttribute('size')).toBe('sm');
+
+    const cssText = MndwButton.styles.cssText;
+
+    expect(cssText).toContain(':host([size=\'sm\'])');
+    expect(cssText).toContain('--mndw-control-h-sm');
+    expect(cssText).toContain('var(--mndw-space-2)');
+    expect(cssText).toContain('min-height: var(--mndw-control-h)');
+
+    Reflect.set(element, 'size', 'compact');
+    await element.updateComplete;
+
+    expect(element.getAttribute('size')).toBe('compact');
+    expect(cssText).not.toContain(':host([size=\'compact\'])');
   });
 
   it('exposes the inner button as a part', async () => {
@@ -211,6 +239,31 @@ describe('<mndw-button>', () => {
 
     expect(getComputedStyle(element).fontSize).toBe('18px');
     expect(MndwButton.styles.cssText).toContain('font-size: inherit');
+  });
+});
+
+describe('control size alignment', () => {
+  it('keeps button, input, select, and segmented outer heights aligned', () => {
+    const controlStyles = [MndwButton.styles, MndwInput.styles, MndwSelect.styles];
+
+    for (const styles of controlStyles) {
+      const cssText = styles.cssText;
+
+      expect(cssText).toContain('box-sizing: border-box');
+      expect(cssText).toContain('min-height: var(--mndw-control-h)');
+      expect(cssText).toContain('--mndw-control-h: var(--mndw-control-h-sm)');
+    }
+
+    expect(MndwSegment.styles.cssText).toContain('min-height: var(--_mndw-control-height, var(--mndw-control-h))');
+
+    const segmentedStyles = MndwSegmented.styles.cssText;
+
+    expect(segmentedStyles).toContain('box-sizing: border-box');
+    expect(segmentedStyles).toContain('min-height: var(--mndw-control-h)');
+    expect(segmentedStyles).toContain('padding: 0.125rem');
+    expect(segmentedStyles).toContain(
+      '--_mndw-control-height: calc(var(--mndw-control-h) - 2 * var(--mndw-border-w) - 2 * 0.125rem)',
+    );
   });
 });
 

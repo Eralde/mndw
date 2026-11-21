@@ -44,6 +44,16 @@ export const textHover: CSSResult = css`
   color: var(--mndw-text);
 `;
 
+export type MndwControlSize = 'sm' | 'md';
+
+/** Small controls override the shared height and horizontal padding without changing typography. */
+export const controlSize: CSSResult = css`
+  :host([size='sm']) {
+    --mndw-control-h: var(--mndw-control-h-sm);
+    --_mndw-control-padding: var(--mndw-space-2);
+  }
+`;
+
 /**
  * Metrics every control shares, so a select and a button line up when adjacent.
  *
@@ -56,7 +66,7 @@ export const textHover: CSSResult = css`
 export const controlBase: CSSResult = css`
   box-sizing: border-box;
   min-height: var(--mndw-control-h);
-  padding: 0 var(--mndw-space-3);
+  padding: 0 var(--_mndw-control-padding, var(--mndw-space-3));
   border-radius: var(--mndw-radius-md);
   font-family: inherit;
   font-size: inherit;

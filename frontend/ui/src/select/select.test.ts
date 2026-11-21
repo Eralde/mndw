@@ -161,6 +161,30 @@ describe('<mndw-select> trigger', () => {
     expect(element.hasAttribute('tabindex')).toBe(false);
   });
 
+  it('reflects size and uses small metrics only for sm', async () => {
+    const element = await mount('<mndw-select label="Interface"></mndw-select>');
+
+    expect(element.getAttribute('size')).toBe('md');
+
+    Reflect.set(element, 'size', 'sm');
+    await element.updateComplete;
+
+    expect(element.getAttribute('size')).toBe('sm');
+
+    const cssText = MndwSelect.styles.cssText;
+
+    expect(cssText).toContain(':host([size=\'sm\'])');
+    expect(cssText).toContain('--mndw-control-h-sm');
+    expect(cssText).toContain('var(--mndw-space-2)');
+    expect(cssText).toContain('min-height: var(--mndw-control-h)');
+
+    Reflect.set(element, 'size', 'compact');
+    await element.updateComplete;
+
+    expect(element.getAttribute('size')).toBe('compact');
+    expect(cssText).not.toContain(':host([size=\'compact\'])');
+  });
+
   it('opens when the host receives activation', async () => {
     const element = await mount();
 

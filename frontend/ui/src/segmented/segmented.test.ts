@@ -50,6 +50,34 @@ describe('<mndw-segmented> semantics', () => {
     expect(element.name).toBe('');
   });
 
+  it('reflects size and uses small metrics only for sm', async () => {
+    const element = await mount(THREE_SEGMENTS);
+
+    expect(element.getAttribute('size')).toBe('md');
+
+    Reflect.set(element, 'size', 'sm');
+    await element.updateComplete;
+
+    expect(element.getAttribute('size')).toBe('sm');
+
+    const cssText = MndwSegmented.styles.cssText;
+
+    expect(cssText).toContain(':host([size=\'sm\'])');
+    expect(cssText).toContain('--mndw-control-h-sm');
+    expect(cssText).toContain('var(--mndw-space-2)');
+    expect(cssText).toContain('min-height: var(--mndw-control-h)');
+    expect(cssText).toContain('padding: 0.125rem');
+    expect(cssText).toContain(
+      '--_mndw-control-height: calc(var(--mndw-control-h) - 2 * var(--mndw-border-w) - 2 * 0.125rem)',
+    );
+
+    Reflect.set(element, 'size', 'compact');
+    await element.updateComplete;
+
+    expect(element.getAttribute('size')).toBe('compact');
+    expect(cssText).not.toContain(':host([size=\'compact\'])');
+  });
+
   it('carries horizontal radiogroup semantics without a host tabindex', async () => {
     const element = await mount(THREE_SEGMENTS);
 

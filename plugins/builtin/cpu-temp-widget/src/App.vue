@@ -219,7 +219,7 @@ onUnmounted(() => {
 <template>
   <div class="app">
     <div class="range-scroll">
-      <mndw-segmented :label="t('history-range')" :value.prop="selectedRange" @mndwchange="onRangeChange">
+      <mndw-segmented size="sm" :label="t('history-range')" :value.prop="selectedRange" @mndwchange="onRangeChange">
         <mndw-segment v-for="range in RANGES" :key="range.key" :value="range.key">
           {{ t(range.label) }}
         </mndw-segment>
@@ -229,6 +229,7 @@ onUnmounted(() => {
       <span class="app__stale-message">{{ t('stale.message', {time: lastSuccessTime}) }}</span>
       <mndw-button
         class="app__stale-retry"
+        size="sm"
         variant="ghost"
         :disabled="requestInFlight"
         :aria-busy="requestInFlight ? 'true' : null"
@@ -252,6 +253,7 @@ onUnmounted(() => {
         <span>{{ t('error') }}</span>
         <mndw-button
           class="app__stale-retry"
+          size="sm"
           variant="ghost"
           :disabled="requestInFlight"
           :aria-busy="requestInFlight ? 'true' : null"
@@ -323,11 +325,6 @@ onUnmounted(() => {
 .app__stale-retry {
   flex: 0 0 auto;
   font-size: var(--mndw-text-xs);
-}
-
-.app__stale-retry::part(button) {
-  min-height: var(--mndw-control-h-sm);
-  padding: 0 var(--mndw-space-2);
 }
 
 .range-scroll {

@@ -25,7 +25,20 @@ Renders one Lucide symbol from the shared sprite; `name` and `label` configure i
 <mndw-icon name="x"></mndw-icon>
 ```
 
+### Sizes
+
+```html demo
+<mndw-icon name="settings" size="sm"></mndw-icon>
+<mndw-icon name="settings" size="md"></mndw-icon>
+<mndw-icon name="settings" size="lg"></mndw-icon>
+<mndw-icon name="settings" size="xl"></mndw-icon>
+```
+
+`sm` is 1rem, `md` 1.25rem, `lg` 1.5rem, and `xl` 2rem square.
+
 ### Size with CSS
+
+Without `size`, the icon follows the surrounding `font-size`:
 
 ```html demo
 <mndw-icon name="settings" style="font-size: 16px"></mndw-icon>
@@ -81,8 +94,10 @@ empty: labeled icons use `role="img"` with `aria-label`, while unlabeled icons a
 The inner SVG is never focusable and exposes `part="svg"`. For an icon-only button, put the accessible name on the
 button and leave the icon unlabeled.
 
-Size comes from CSS. The host is `1em` square, so `width`, `height`, or `font-size` controls it. Color inherits through
-`currentColor`. `name` and `label` reflect to attributes.
+Size comes from CSS. `size` accepts `sm` (1rem), `md` (1.25rem), `lg` (1.5rem), or `xl` (2rem) and reflects to
+the attribute. Without `size` — or with an unknown value — the host stays `1em` square and follows the surrounding
+`font-size`; explicit `width` or `height` still overrides either. Color inherits through `currentColor`. `name`,
+`label`, and `size` reflect to attributes.
 
 The host configures the shared sprite URL with `iconSpriteUrl`. Without it, icons render empty SVGs and make no
 requests. Standalone use must provide a URL explicitly; `defineMndwUi()` without arguments remains valid and preserves

@@ -3,7 +3,7 @@ import {type MndwLabelSource, dispatchLabelChange} from '../field/field.js';
 import {FormAssociatedController} from '../forms/form-associated.js';
 import {getMndwUiText} from '../i18n.js';
 import {LocaleController} from '../locale-controller.js';
-import {focusRing, hostTypography} from '../styles/base.js';
+import {type MndwControlSize, controlSize, focusRing, hostTypography} from '../styles/base.js';
 import {MNDW_SEGMENT_CHANGE_EVENT, MNDW_SEGMENT_TAG, type MndwSegment} from './segment.js';
 
 export const MNDW_SEGMENTED_TAG = 'mndw-segmented';
@@ -26,6 +26,7 @@ export class MndwSegmented extends LitElement {
 
   public static readonly properties: PropertyDeclarations = {
     value: {type: String},
+    size: {type: String, reflect: true},
     label: {type: String},
     disabled: {type: Boolean, reflect: true},
     required: {type: Boolean, reflect: true},
@@ -40,18 +41,26 @@ export class MndwSegmented extends LitElement {
       display: inline-flex;
     }
 
+    ${controlSize}
+
     :host([disabled]) {
       pointer-events: none;
       opacity: 0.5;
     }
 
     [part='group'] {
+      box-sizing: border-box;
+      min-height: var(--mndw-control-h);
       display: inline-flex;
       gap: var(--mndw-space-1);
-      padding: var(--mndw-space-1);
+      padding: 0.125rem;
       border: var(--mndw-border-w) solid var(--mndw-border);
       border-radius: var(--mndw-radius-md);
       background: var(--mndw-surface);
+    }
+
+    ::slotted(mndw-segment) {
+      --_mndw-control-height: calc(var(--mndw-control-h) - 2 * var(--mndw-border-w) - 2 * 0.125rem);
     }
 
     ::slotted(mndw-segment:focus-visible) {
@@ -62,6 +71,7 @@ export class MndwSegmented extends LitElement {
   `;
 
   declare public value: string;
+  declare public size: MndwControlSize;
   declare public label: string;
   declare public disabled: boolean;
   declare public required: boolean;
@@ -84,6 +94,7 @@ export class MndwSegmented extends LitElement {
   constructor() {
     super();
     this.value = '';
+    this.size = 'md';
     this.label = '';
     this.disabled = false;
     this.required = false;

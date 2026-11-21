@@ -4,6 +4,8 @@ import {getIconSpriteUrl, subscribeIconSpriteUrl} from './sprite-config.js';
 
 export const MNDW_ICON_TAG = 'mndw-icon';
 
+export type MndwIconSize = 'sm' | 'md' | 'lg' | 'xl';
+
 const ICON_VIEW_BOX = '0 0 24 24';
 
 export function mndwIconHref(name: MndwIconName): string {
@@ -20,6 +22,7 @@ export class MndwIcon extends LitElement {
   public static readonly properties: PropertyDeclarations = {
     name: {type: String, reflect: true},
     label: {type: String, reflect: true},
+    size: {type: String, reflect: true},
   };
 
   public static override readonly styles = css`
@@ -29,6 +32,26 @@ export class MndwIcon extends LitElement {
       height: 1em;
       flex: none;
       vertical-align: -0.125em;
+    }
+
+    :host([size='sm']) {
+      width: 1rem;
+      height: 1rem;
+    }
+
+    :host([size='md']) {
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+
+    :host([size='lg']) {
+      width: 1.5rem;
+      height: 1.5rem;
+    }
+
+    :host([size='xl']) {
+      width: 2rem;
+      height: 2rem;
     }
 
     svg {
@@ -41,6 +64,8 @@ export class MndwIcon extends LitElement {
   declare public name: MndwIconName | '';
 
   declare public label: string;
+
+  declare public size: MndwIconSize | undefined;
 
   constructor() {
     super();

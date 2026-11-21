@@ -41,9 +41,22 @@ Uses slotted `<mndw-option>` children and emits `mndwchange`.
 </mndw-select>
 ```
 
+### Sizes
+
+```html demo
+<div class="mndw-toolbar">
+  <mndw-select style="width: 12rem" size="sm" label="Small" value="lan">
+    <mndw-option value="lan">LAN</mndw-option>
+  </mndw-select>
+  <mndw-select style="width: 12rem" size="md" label="Medium" value="lan">
+    <mndw-option value="lan">LAN</mndw-option>
+  </mndw-select>
+</div>
+```
+
 ## Reference
 
-`<mndw-select>` is form-associated. Its properties are `value`, `placeholder`, `label`, `name`, `disabled`, `required`,
+`<mndw-select>` is form-associated. `size` accepts `sm` or `md` and defaults to `md`. Its properties are `value`, `placeholder`, `label`, `name`, `disabled`, `required`,
 `invalid`, and `panelClass` (attribute `panel-class`). `value` is state and does not reflect; the authored `value`
 attribute is the form-reset default. An empty or unmatched select is omitted from `FormData`; a disabled `<fieldset>`
 disables it. User selection emits `mndwchange` with `detail: {value: string}`. The host carries `role="combobox"`,

@@ -8,7 +8,15 @@ import {LocaleController} from '../locale-controller.js';
 import {type LocalizedPropertyState, createLocalizedProperty} from '../localized-property.js';
 import {type UiCloseReason, type UiLayer, type UiLayerPresentation, getOverlayProvider} from '../overlay.js';
 import {selectPresentation} from '../position/position.js';
-import {controlBase, fieldHover, focusRing, hostTypography, invalidField} from '../styles/base.js';
+import {
+  type MndwControlSize,
+  controlBase,
+  controlSize,
+  fieldHover,
+  focusRing,
+  hostTypography,
+  invalidField,
+} from '../styles/base.js';
 import {MNDW_OPTION_CHANGE_EVENT} from './option.js';
 import {type OptionModel, readOptions} from './option-model.js';
 import {SelectPopoverTracker, applySelectPopoverSizing} from './select-popover.js';
@@ -36,6 +44,7 @@ export class MndwSelect extends LitElement {
   public static readonly mndwLabelSource: MndwLabelSource = 'label-property';
 
   public static readonly properties: PropertyDeclarations = {
+    size: {type: String, reflect: true},
     value: {type: String},
     placeholder: {type: String},
     disabled: {type: Boolean, reflect: true},
@@ -55,6 +64,8 @@ export class MndwSelect extends LitElement {
       width: 100%;
       border-radius: var(--mndw-radius-md);
     }
+
+    ${controlSize}
 
     ${invalidField}
 
@@ -102,6 +113,7 @@ export class MndwSelect extends LitElement {
     }
   `;
 
+  declare public size: MndwControlSize;
   declare public value: string;
   declare public placeholder: string | undefined;
   declare public disabled: boolean;
@@ -148,6 +160,7 @@ export class MndwSelect extends LitElement {
   constructor() {
     super();
     this.placeholderState = createLocalizedProperty<string | undefined>(this, 'placeholder');
+    this.size = 'md';
     this.value = '';
     this.disabled = false;
     this.required = false;

@@ -36,6 +36,7 @@ export class MndwSegment extends LitElement {
     [part='segment'] {
       ${controlBase}
 
+      min-height: var(--_mndw-control-height, var(--mndw-control-h));
       display: inline-flex;
       align-items: center;
       justify-content: center;

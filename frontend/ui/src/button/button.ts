@@ -1,9 +1,11 @@
 import {LitElement, type PropertyDeclarations, type TemplateResult, css, html, nothing} from 'lit';
 import {FormAssociatedController} from '../forms/form-associated.js';
 import {
+  type MndwControlSize,
   accentHover,
   controlBase,
   controlHover,
+  controlSize,
   focusRing,
   hostTypography,
   surfaceHover,
@@ -24,6 +26,7 @@ export class MndwButton extends LitElement {
 
   public static properties: PropertyDeclarations = {
     variant: {type: String, reflect: true},
+    size: {type: String, reflect: true},
     disabled: {type: Boolean, reflect: true},
     type: {type: String},
     ariaLabel: {type: String, attribute: 'aria-label'},
@@ -39,6 +42,8 @@ export class MndwButton extends LitElement {
 
       display: inline-block;
     }
+
+    ${controlSize}
 
     :host([disabled]) {
       pointer-events: none;
@@ -108,6 +113,7 @@ export class MndwButton extends LitElement {
   `;
 
   declare public variant: MndwButtonVariant;
+  declare public size: MndwControlSize;
   declare public disabled: boolean;
   declare public type: 'button' | 'submit' | 'reset';
   declare public ariaLabel: string;
@@ -129,6 +135,7 @@ export class MndwButton extends LitElement {
     super();
 
     this.variant = 'secondary';
+    this.size = 'md';
     this.disabled = false;
     this.type = 'button';
     this.ariaLabel = '';

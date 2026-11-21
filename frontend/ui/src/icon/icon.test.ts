@@ -162,6 +162,59 @@ describe('<mndw-icon> rendering', () => {
   });
 });
 
+describe('<mndw-icon> size', () => {
+  it('reflects an explicit size and clears it again', async () => {
+    const icon = await mount('<mndw-icon></mndw-icon>', MNDW_ICON_TAG);
+
+    expect(icon.size).toBeUndefined();
+    expect(icon.hasAttribute('size')).toBe(false);
+
+    icon.size = 'lg';
+    await icon.updateComplete;
+
+    expect(icon.getAttribute('size')).toBe('lg');
+
+    icon.size = undefined;
+    await icon.updateComplete;
+
+    expect(icon.hasAttribute('size')).toBe(false);
+  });
+
+  it.each(
+    [
+      ['sm', '16px'],
+      ['md', '20px'],
+      ['lg', '24px'],
+      ['xl', '32px'],
+    ] as const,
+  )('maps size=%s to a %s edge', async (size, edge) => {
+    const icon = await mount(`<mndw-icon size=${size}></mndw-icon>`, MNDW_ICON_TAG);
+
+    expect(getComputedStyle(icon).width).toBe(edge);
+    expect(getComputedStyle(icon).height).toBe(edge);
+  });
+
+  it.each(
+    [
+      ['no size attribute', '<mndw-icon></mndw-icon>'],
+      ['an unknown size', '<mndw-icon size="huge"></mndw-icon>'],
+    ] as const,
+  )('keeps the 1em edge with %s', async (_label, markup) => {
+    // 18px matches none of the four size edges, so a fallback that accidentally selected one
+    // of them would not pass.
+    document.body.style.fontSize = '18px';
+
+    try {
+      const icon = await mount(markup, MNDW_ICON_TAG);
+
+      expect(getComputedStyle(icon).width).toBe('18px');
+      expect(getComputedStyle(icon).height).toBe('18px');
+    } finally {
+      document.body.style.removeProperty('font-size');
+    }
+  });
+});
+
 describe('public icon sprite helpers', () => {
   it('returns an empty href without a sprite and matches the rendered icon href', async () => {
     expect(mndwIconHref('activity')).toBe('');

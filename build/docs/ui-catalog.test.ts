@@ -94,6 +94,7 @@ describe('UI component sidebar catalog', () => {
       'slider',
       'tabs',
       'tooltip',
+      'progress',
       'scroll-area',
       'table',
       'line-chart',

@@ -11,6 +11,7 @@ import {setIconSpriteUrl} from './icon/sprite-config.js';
 import {MNDW_INPUT_TAG, MndwInput} from './input/input.js';
 import {adaptOverlayService} from './overlay-adapter.js';
 import {setOverlayProvider} from './overlay.js';
+import {MNDW_PROGRESS_TAG, MndwProgress} from './progress/progress.js';
 import {MNDW_OPTION_TAG, MndwOption} from './select/option.js';
 import {MNDW_SELECT_PANEL_TAG, MndwSelectPanel} from './select/select-panel.js';
 import {MNDW_SELECT_TAG, MndwSelect} from './select/select.js';
@@ -30,6 +31,7 @@ import {MNDW_TABLE_TAG, MndwTable} from './table/table.js';
 
 export {MNDW_BUTTON_TAG, MndwButton} from './button/button.js';
 export type {MndwButtonVariant} from './button/button.js';
+export type {MndwControlSize} from './styles/base.js';
 export {MNDW_BAR_CHART_TAG, MndwBarChart} from './charts/bar-chart.js';
 export {MNDW_LINE_CHART_TAG, MndwLineChart} from './charts/line-chart.js';
 export {MNDW_SPARKLINE_TAG, MndwSparkline} from './charts/sparkline.js';
@@ -65,6 +67,7 @@ export {MNDW_ICON_NAMES} from './icon/generated/names.js';
 export {MNDW_ICON_TAG, MndwIcon, mndwIconHref} from './icon/icon.js';
 export {subscribeIconSpriteUrl as subscribeMndwIconSprite} from './icon/sprite-config.js';
 export type {MndwIconName} from './icon/generated/names.js';
+export type {MndwIconSize} from './icon/icon.js';
 export {MNDW_INPUT_TAG, MNDW_INPUT_TYPES, MndwInput} from './input/input.js';
 export type {MndwInputChangeDetail, MndwInputType} from './input/input.js';
 export {MNDW_OPTION_TAG, MndwOption} from './select/option.js';
@@ -72,6 +75,7 @@ export {MNDW_SELECT_PANEL_TAG, MndwSelectPanel} from './select/select-panel.js';
 export {MNDW_SELECT_TAG, MndwSelect} from './select/select.js';
 export type {MndwSelectChangeDetail} from './select/select.js';
 export {MNDW_OPTION_CHANGE_EVENT} from './select/option.js';
+export {MNDW_PROGRESS_TAG, MndwProgress} from './progress/progress.js';
 export {MNDW_SCROLL_AREA_TAG, MndwScrollArea} from './scroll-area/scroll-area.js';
 export {MNDW_SEGMENT_CHANGE_EVENT, MNDW_SEGMENT_TAG, MndwSegment} from './segmented/segment.js';
 export {MNDW_SEGMENTED_TAG, MndwSegmented} from './segmented/segmented.js';
@@ -179,6 +183,7 @@ const REGISTRY: [string, CustomElementConstructor][] = [
   [MNDW_INPUT_TAG, MndwInput],
   [MNDW_LINE_CHART_TAG, MndwLineChart],
   [MNDW_OPTION_TAG, MndwOption],
+  [MNDW_PROGRESS_TAG, MndwProgress],
   [MNDW_SCROLL_AREA_TAG, MndwScrollArea],
   [MNDW_SELECT_PANEL_TAG, MndwSelectPanel],
   [MNDW_SELECT_TAG, MndwSelect],

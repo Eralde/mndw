@@ -86,6 +86,7 @@ The shared class layer styles host and plugin light DOM. Use semantic HTML and k
 - `.mndw-alert` supports `--danger`, `--success`, `--warning`, and `--info`; its title and body use `.mndw-alert__title` and `.mndw-alert__body`. Markup owns its role and live-region behavior.
 - `.mndw-badge` and `.mndw-status-dot` support `--danger`, `--success`, `--warning`, and `--info`. Add `aria-hidden="true"` to decorative dots.
 - `.mndw-progress` is indeterminate; consumer markup supplies progress semantics and busy state. `.mndw-spinner` is decorative and adds no role.
+- For a known value, use `<mndw-progress>`; it keeps the bar width and its `aria-value*` in sync.
 - `.mndw-empty` styles an empty-state container; consumer markup supplies its heading and status semantics.
 - `.mndw-link` styles a native `<a>` with readable text color, underline, hover, and `:focus-visible` states; the consumer owns `href` and navigation.
 - `.mndw-field` groups a label, control, hint, and error. Use `.mndw-field__label`, `.mndw-field__hint`, and `.mndw-field__error`; wire IDs with `for` and `aria-describedby`, and set `aria-invalid` when needed.

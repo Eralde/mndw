@@ -13,6 +13,7 @@ import {
   MNDW_INPUT_TAG,
   MNDW_LINE_CHART_TAG,
   MNDW_OPTION_TAG,
+  MNDW_PROGRESS_TAG,
   MNDW_SCROLL_AREA_TAG,
   MNDW_SEGMENTED_TAG,
   MNDW_SEGMENT_TAG,
@@ -47,6 +48,7 @@ import {
   MndwLineChart,
   type MndwLineChartProps,
   type MndwOption,
+  type MndwProgress,
   type MndwScrollArea,
   type MndwSelect,
   type MndwSelectPanel,
@@ -82,6 +84,7 @@ const REGISTERED_TAGS = [
   MNDW_FIELD_TAG,
   MNDW_INPUT_TAG,
   MNDW_OPTION_TAG,
+  MNDW_PROGRESS_TAG,
   MNDW_SCROLL_AREA_TAG,
   MNDW_SELECT_PANEL_TAG,
   MNDW_SELECT_TAG,
@@ -115,6 +118,7 @@ describe('defineMndwUi', () => {
     expectTypeOf(document.querySelector('mndw-select-panel')).toEqualTypeOf<MndwSelectPanel | null>();
     expectTypeOf(document.querySelector('mndw-option')).toEqualTypeOf<MndwOption | null>();
     expectTypeOf(document.querySelector('mndw-scroll-area')).toEqualTypeOf<MndwScrollArea | null>();
+    expectTypeOf(document.querySelector('mndw-progress')).toEqualTypeOf<MndwProgress | null>();
     expectTypeOf(document.querySelector('mndw-line-chart')).toEqualTypeOf<MndwLineChart | null>();
     expectTypeOf(document.querySelector('mndw-bar-chart')).toEqualTypeOf<MndwBarChart | null>();
     expectTypeOf(document.querySelector('mndw-sparkline')).toEqualTypeOf<MndwSparkline | null>();

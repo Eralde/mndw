@@ -92,6 +92,13 @@ export const UI_CATALOG: readonly UiCatalogEntry[] = [
     tags: ['mndw-tooltip'],
   },
   {
+    slug: 'progress',
+    title: '<mndw-progress>',
+    sidebarTitle: '&lt;mndw-progress&gt;',
+    summary: 'role="progressbar" through ElementInternals; value/max when known, indeterminate without a value.',
+    tags: ['mndw-progress'],
+  },
+  {
     slug: 'scroll-area',
     title: '<mndw-scroll-area>',
     sidebarTitle: '&lt;mndw-scroll-area&gt;',

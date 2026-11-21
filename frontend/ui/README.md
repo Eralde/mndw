@@ -28,6 +28,7 @@ The host calls `defineMndwUi()` once because custom element registration is page
 | [`<mndw-slider>`](https://eralde.github.io/mndw/ui/slider) | Numeric range with pointer drag. |
 | [`<mndw-tabs>`](https://eralde.github.io/mndw/ui/tabs) | Owns tab selection and ARIA for `<mndw-tab>` and `<mndw-tab-panel>`. |
 | [`<mndw-tooltip>`](https://eralde.github.io/mndw/ui/tooltip) | Describes its first slotted element on hover and focus. |
+| [`<mndw-progress>`](https://eralde.github.io/mndw/ui/progress) | `value`/`max` bar, or indeterminate without a value; role and ARIA live in `ElementInternals`. |
 | [`<mndw-scroll-area>`](https://eralde.github.io/mndw/ui/scroll-area) | Native viewport with a visible scrollbar when content overflows. |
 | [`<mndw-table>`](https://eralde.github.io/mndw/ui/table) | Framework-neutral table with properties for rows and columns; includes `<mndw-column-menu>`. |
 | [`<mndw-line-chart>`](https://eralde.github.io/mndw/ui/line-chart) | Timestamped multi-series line and area chart. |

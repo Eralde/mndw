@@ -67,7 +67,7 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
 
   const resultEl = document.createElement('div');
 
-  resultEl.className = `${WIDGET_CLASS}__result`;
+  resultEl.className = `${WIDGET_CLASS}__status`;
 
   rootEl.append(controls, resultEl);
   container.append(rootEl);

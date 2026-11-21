@@ -124,10 +124,10 @@ describe('createInstance', () => {
     submitForm(container);
 
     expect(container.textContent).toContain('Looking up example.com');
-    expect(queryElement<HTMLElement>(container, '.mndw-dns-lookup-widget__result').getAttribute('aria-live')).toBe(
+    expect(queryElement<HTMLElement>(container, '.mndw-dns-lookup-widget__status').getAttribute('aria-live')).toBe(
       'polite',
     );
-    expect(queryElement<HTMLElement>(container, '.mndw-dns-lookup-widget__result').getAttribute('aria-busy')).toBe(
+    expect(queryElement<HTMLElement>(container, '.mndw-dns-lookup-widget__status').getAttribute('aria-busy')).toBe(
       'true',
     );
 
@@ -276,7 +276,7 @@ describe('createInstance', () => {
       expect(container.textContent).toContain('127.0.0.1');
       expect(container.textContent).toContain('::1');
       expect(container.textContent).toContain('1.5 ms');
-      expect(queryElement<HTMLElement>(container, '.mndw-dns-lookup-widget__result').getAttribute('aria-busy'))
+      expect(queryElement<HTMLElement>(container, '.mndw-dns-lookup-widget__status').getAttribute('aria-busy'))
         .toBeNull();
     });
   });
@@ -333,7 +333,7 @@ describe('createInstance', () => {
     const button = queryElement<MndwButton>(container, '.mndw-dns-lookup-widget__btn');
     const label = queryElement<HTMLLabelElement>(container, '.mndw-dns-lookup-widget__label');
     const hint = queryElement<HTMLElement>(container, '.mndw-dns-lookup-widget__hint');
-    const result = queryElement<HTMLElement>(container, '.mndw-dns-lookup-widget__result');
+    const result = queryElement<HTMLElement>(container, '.mndw-dns-lookup-widget__status');
 
     expect(label.textContent).toBe('Hostname label EN');
     expect(hint.textContent).toBe('Hostname hint EN');
@@ -350,7 +350,7 @@ describe('createInstance', () => {
     expect(label.textContent).toBe('Имя RU');
     expect(hint.textContent).toBe('Подсказка RU');
     expect(button.textContent).toBe('Найти RU');
-    expect(container.querySelector('.mndw-dns-lookup-widget__result')).toBe(result);
+    expect(container.querySelector('.mndw-dns-lookup-widget__status')).toBe(result);
     expect(result.textContent).toContain('Простой RU');
   });
 });

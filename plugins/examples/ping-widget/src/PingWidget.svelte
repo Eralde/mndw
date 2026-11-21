@@ -288,6 +288,20 @@ onMount(() => {
 <div class="ping-widget">
   <div class="header">
     <div class="header-actions">
+      <mndw-field
+        class="poll-field"
+        label={t('field.poll')}
+      >
+        <mndw-input
+          type="number"
+          min="1"
+          max="30"
+          step="1"
+          value={String(pollSeconds)}
+          onmndwinput={(event: CustomEvent<{value: string}>) =>
+          pollSeconds = Number(event.detail.value)}
+        ><span slot="suffix">s</span></mndw-input>
+      </mndw-field>
       <mndw-button
         variant="secondary"
         disabled={loading}
@@ -325,17 +339,6 @@ onMount(() => {
     >
       {t('action.add')}
     </mndw-button>
-    <mndw-field label={t('field.poll')}>
-      <mndw-input
-        type="number"
-        min="1"
-        max="30"
-        step="1"
-        value={String(pollSeconds)}
-        onmndwinput={(event: CustomEvent<{value: string}>) =>
-        pollSeconds = Number(event.detail.value)}
-      ><span slot="suffix">s</span></mndw-input>
-    </mndw-field>
   </div>
 
   {#if message}
@@ -355,7 +358,7 @@ onMount(() => {
       <colgroup>
         <col class="col-host" />
         <col class="col-last" />
-        <col class="col-avg" />
+        <col class="col-avg col-secondary" />
         <col class="col-optional col-median" />
         <col class="col-optional col-min" />
         <col class="col-optional col-max" />
@@ -368,7 +371,7 @@ onMount(() => {
         <tr>
           <th>{t('table.host')}</th>
           <th>{t('table.last')}</th>
-          <th>{t('table.average')}</th>
+          <th class="stat-secondary">{t('table.average')}</th>
           <th class="stat-optional">{t('table.median')}</th>
           <th class="stat-optional">{t('table.min')}</th>
           <th class="stat-optional">{t('table.max')}</th>
@@ -449,7 +452,7 @@ onMount(() => {
                 {/if}
               </td>
               <td class="stat-value">{formatMs(row.lastMs)}</td>
-              <td class="stat-value">{formatMs(row.avgMs)}</td>
+              <td class="stat-value stat-secondary">{formatMs(row.avgMs)}</td>
               <td class="stat-value stat-optional">{formatMs(row.medianMs)}</td>
               <td class="stat-value stat-optional">{formatMs(row.minMs)}</td>
               <td class="stat-value stat-optional">{formatMs(row.maxMs)}</td>
@@ -509,16 +512,26 @@ onMount(() => {
 .header-actions {
   display: flex;
   flex: 0 0 auto;
-  align-items: center;
-  gap: var(--mndw-space-1);
+  align-items: end;
+  gap: var(--mndw-space-2);
 }
 
+.header-actions :global(mndw-field.poll-field) {
+  width: 6rem;
+}
+
+.header-actions :global(mndw-input) {
+  display: block;
+  width: 100%;
+}
+
+/* Fields carry a label above the input; bottom alignment keeps the button level with the inputs. */
 .controls {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto auto;
-  gap: var(--mndw-space-1);
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
+  gap: var(--mndw-space-1) var(--mndw-space-2);
   min-width: 0;
-  align-items: center;
+  align-items: end;
 }
 
 .controls :global(mndw-field) {
@@ -531,7 +544,7 @@ onMount(() => {
 }
 
 .controls :global(mndw-button.add-host-button) {
-  align-self: end;
+  justify-self: start;
 }
 
 .ping-widget :global(mndw-button) {
@@ -626,8 +639,11 @@ thead {
 }
 
 :global(.ping-widget th) {
+  overflow: hidden;
   color: var(--mndw-text);
   font-weight: var(--mndw-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 :global(.ping-widget .stats-row:last-child td) {
@@ -650,8 +666,10 @@ thead {
 }
 
 :global(.ping-widget mndw-button.host-display)::part(button) {
-  width: 100%;
+  flex-direction: column;
   justify-content: flex-start;
+  align-items: flex-start;
+  width: 100%;
   padding: 0;
   border: 0;
   background: transparent;
@@ -746,9 +764,34 @@ thead {
   }
 }
 
-@media (max-width: 45rem) {
+@container ping-widget (max-width: 359px) {
   .controls {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .col-host {
+    width: 38%;
+  }
+
+  .col-last {
+    width: 16%;
+  }
+
+  .col-loss {
+    width: 18%;
+  }
+
+  .col-actions {
+    width: 28%;
+  }
+
+  :global(.ping-widget .actions-cell) {
+    padding-inline: var(--mndw-space-1);
+  }
+
+  .ping-widget :global(.col-secondary),
+  .ping-widget :global(.stat-secondary) {
+    display: none;
   }
 }
 </style>

@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "name": "dns-lookup-widget",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "widget",
   "label": "DNS Lookup",
   "description": "Look up DNS records for a hostname.",

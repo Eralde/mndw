@@ -71,6 +71,13 @@ export const UI_CATALOG: readonly UiCatalogEntry[] = [
     tags: ['mndw-segmented', 'mndw-segment'],
   },
   {
+    slug: 'radio-group',
+    title: '<mndw-radio-group>',
+    sidebarTitle: '&lt;mndw-radio-group&gt;',
+    summary: 'role="radiogroup" with slotted <mndw-radio> children. Emits mndwchange.',
+    tags: ['mndw-radio-group', 'mndw-radio'],
+  },
+  {
     slug: 'slider',
     title: '<mndw-slider>',
     sidebarTitle: '&lt;mndw-slider&gt;',
@@ -109,7 +116,8 @@ export const UI_CATALOG: readonly UiCatalogEntry[] = [
     slug: 'table',
     title: '<mndw-table>',
     sidebarTitle: '&lt;mndw-table&gt;',
-    summary: 'Framework-neutral data table; columns/rows as properties, controlled sort/selection/visibility, custom light-DOM cell renderers.',
+    summary:
+      'Framework-neutral data table; columns/rows as properties, controlled sort/selection/visibility, custom light-DOM cell renderers.',
     tags: ['mndw-table', 'mndw-column-menu'],
   },
   {

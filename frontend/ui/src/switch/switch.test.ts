@@ -21,6 +21,36 @@ describe('<mndw-switch> semantics', () => {
     expect(element.name).toBe('');
   });
 
+  it('reflects size and keeps the checked thumb at the end of the small track', async () => {
+    const element = await mount('<mndw-switch></mndw-switch>', MNDW_SWITCH_TAG);
+
+    expect(element.getAttribute('size')).toBe('md');
+
+    Reflect.set(element, 'size', 'sm');
+    await element.updateComplete;
+
+    expect(element.getAttribute('size')).toBe('sm');
+
+    const cssText = MndwSwitch.styles.cssText;
+
+    expect(cssText).toContain(':host([size=\'sm\'])');
+    expect(cssText).toContain('--_mndw-switch-w: 1.875rem');
+    expect(cssText).toContain('--_mndw-switch-h: 1rem');
+    expect(cssText).toContain('--_mndw-switch-travel: calc(var(--mndw-switch-w) - var(--mndw-switch-h))');
+    expect(cssText).toContain(
+      '--_mndw-switch-travel: calc(var(--_mndw-switch-w) - var(--_mndw-switch-h) + 2 * var(--mndw-border-w))',
+    );
+    expect(cssText).toContain('width: calc(var(--_mndw-switch-h) - 0.5rem)');
+    expect(cssText).toContain('transform: translateX(var(--_mndw-switch-travel))');
+    expect(cssText).toContain('gap: var(--mndw-space-1)');
+
+    Reflect.set(element, 'size', 'compact');
+    await element.updateComplete;
+
+    expect(element.getAttribute('size')).toBe('compact');
+    expect(cssText).not.toContain(':host([size=\'compact\'])');
+  });
+
   it('carries switch semantics and the tab stop on the host', async () => {
     const element = await mount('<mndw-switch></mndw-switch>', MNDW_SWITCH_TAG);
 

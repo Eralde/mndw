@@ -25,6 +25,7 @@ The host calls `defineMndwUi()` once because custom element registration is page
 | [`<mndw-field>`](https://eralde.github.io/mndw/ui/field) | Light-DOM label, hint, and error wrapper. |
 | [`<mndw-select>`](https://eralde.github.io/mndw/ui/select) | Slotted `<mndw-option>` children; emits `mndwchange`. |
 | [`<mndw-segmented>`](https://eralde.github.io/mndw/ui/segmented) | Radiogroup with slotted `<mndw-segment>` children. |
+| [`<mndw-radio-group>`](https://eralde.github.io/mndw/ui/radio-group) | Radiogroup with slotted `<mndw-radio>` children. |
 | [`<mndw-slider>`](https://eralde.github.io/mndw/ui/slider) | Numeric range with pointer drag. |
 | [`<mndw-tabs>`](https://eralde.github.io/mndw/ui/tabs) | Owns tab selection and ARIA for `<mndw-tab>` and `<mndw-tab-panel>`. |
 | [`<mndw-tooltip>`](https://eralde.github.io/mndw/ui/tooltip) | Describes its first slotted element on hover and focus. |

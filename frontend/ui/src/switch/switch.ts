@@ -1,6 +1,6 @@
 import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} from 'lit';
 import {FormAssociatedController, FormLabelController} from '../forms/form-associated.js';
-import {accentHover, focusRing, hostTypography, surfaceHover} from '../styles/base.js';
+import {type MndwControlSize, accentHover, focusRing, hostTypography, surfaceHover} from '../styles/base.js';
 
 export const MNDW_SWITCH_TAG = 'mndw-switch';
 
@@ -22,11 +22,16 @@ export class MndwSwitch extends LitElement {
     invalid: {type: Boolean, reflect: true},
     value: {type: String, reflect: true},
     name: {type: String, reflect: true},
+    size: {type: String, reflect: true},
   };
 
   public static override readonly styles = css`
     :host {
       ${hostTypography}
+
+      --_mndw-switch-w: var(--mndw-switch-w);
+      --_mndw-switch-h: var(--mndw-switch-h);
+      --_mndw-switch-travel: calc(var(--mndw-switch-w) - var(--mndw-switch-h));
 
       display: inline-flex;
       gap: var(--mndw-space-2);
@@ -34,6 +39,15 @@ export class MndwSwitch extends LitElement {
       color: var(--mndw-text);
       cursor: pointer;
       user-select: none;
+    }
+
+    :host([size='sm']) {
+      --_mndw-switch-w: 1.875rem;
+      --_mndw-switch-h: 1rem;
+      /* The token difference leaves the thumb short of the far edge by both borders. */
+      --_mndw-switch-travel: calc(var(--_mndw-switch-w) - var(--_mndw-switch-h) + 2 * var(--mndw-border-w));
+
+      gap: var(--mndw-space-1);
     }
 
     :host([disabled]) {
@@ -49,13 +63,13 @@ export class MndwSwitch extends LitElement {
     [part='track'] {
       position: relative;
       display: inline-flex;
-      width: var(--mndw-switch-w);
-      height: var(--mndw-switch-h);
+      width: var(--_mndw-switch-w);
+      height: var(--_mndw-switch-h);
       flex: 0 0 auto;
       align-items: center;
       padding: 0.125rem;
       border: var(--mndw-border-w) solid var(--mndw-border);
-      border-radius: var(--mndw-switch-h);
+      border-radius: var(--_mndw-switch-h);
       background: var(--mndw-surface);
       box-sizing: border-box;
       transition: background var(--mndw-duration-fast) var(--mndw-easing);
@@ -79,8 +93,8 @@ export class MndwSwitch extends LitElement {
     }
 
     [part='thumb'] {
-      width: calc(var(--mndw-switch-h) - 0.5rem);
-      height: calc(var(--mndw-switch-h) - 0.5rem);
+      width: calc(var(--_mndw-switch-h) - 0.5rem);
+      height: calc(var(--_mndw-switch-h) - 0.5rem);
       border-radius: 50%;
       background: var(--mndw-text-subtle);
       transition: transform var(--mndw-duration-fast) var(--mndw-easing);
@@ -88,7 +102,7 @@ export class MndwSwitch extends LitElement {
 
     :host([checked]) [part='thumb'] {
       background: var(--mndw-accent-contrast);
-      transform: translateX(calc(var(--mndw-switch-w) - var(--mndw-switch-h)));
+      transform: translateX(var(--_mndw-switch-travel));
     }
   `;
 
@@ -98,6 +112,7 @@ export class MndwSwitch extends LitElement {
   declare public invalid: boolean;
   declare public value: string;
   declare public name: string;
+  declare public size: MndwControlSize;
 
   private readonly formState = new FormAssociatedController(this, {
     isExplicitlyDisabled: () => this.disabled,
@@ -117,6 +132,7 @@ export class MndwSwitch extends LitElement {
     this.invalid = false;
     this.value = 'on';
     this.name = '';
+    this.size = 'md';
     this.addEventListener('click', this.onClick);
     this.addEventListener('keydown', this.onKeyDown);
   }

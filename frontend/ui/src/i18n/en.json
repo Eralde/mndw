@@ -31,6 +31,11 @@
       "required": "Please select an option."
     }
   },
+  "radio-group": {
+    "validation": {
+      "required": "Please select an option."
+    }
+  },
   "table": {
     "selectRow": "Select {rowName}",
     "selectAll": "Select all",

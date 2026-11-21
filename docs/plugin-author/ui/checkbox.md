@@ -23,9 +23,19 @@ Emits `mndwchange` and participates in forms with `name`, `value`, `required`, a
 <mndw-checkbox required invalid>Accept the terms</mndw-checkbox>
 ```
 
+### Sizes
+
+```html demo
+<div class="mndw-toolbar">
+  <mndw-checkbox size="sm">Small</mndw-checkbox>
+  <mndw-checkbox size="md">Medium</mndw-checkbox>
+</div>
+```
+
 ## Reference
 
-`checked`, `indeterminate`, `disabled`, `required`, `invalid`, `name`, and `value` configure the control. The
+`checked`, `indeterminate`, `disabled`, `required`, `invalid`, `name`, and `value` configure the control. `size`
+accepts `sm` or `md` and defaults to `md`; it shrinks the box and the label gap without changing the font size. The
 checkbox is form-associated through `ElementInternals`; unchecked controls are omitted from `FormData`, while checked
 controls submit `value` (default `on`). Form reset restores authored defaults, and a disabled `<fieldset>` disables
 the checkbox. `required` participates in native form validation.

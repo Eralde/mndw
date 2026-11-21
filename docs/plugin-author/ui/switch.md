@@ -17,10 +17,21 @@ The host has `role="switch"`; the toggle takes effect immediately and emits `mnd
 <mndw-field label="Managed setting"><mndw-switch checked disabled></mndw-switch></mndw-field>
 ```
 
+### Sizes
+
+```html demo
+<div class="mndw-toolbar">
+  <mndw-switch size="sm">Small</mndw-switch>
+  <mndw-switch size="md">Medium</mndw-switch>
+</div>
+```
+
 ## Reference
 
-`checked` and `value` reflect. `value` defaults to `on` and is the token submitted while the switch is on. The shared
-form properties are `name`, `disabled`, `required`, and `invalid`. Parts are `track`, `thumb`, and `label`.
+`checked` and `value` reflect. `value` defaults to `on` and is the token submitted while the switch is on. `size`
+accepts `sm` or `md` and defaults to `md`; it shrinks the track, the thumb, and the label gap without changing the font
+size. The shared form properties are `name`, `disabled`, `required`, and `invalid`. Parts are `track`, `thumb`, and
+`label`.
 
 `mndwchange` carries `{checked: boolean}` and fires on user activation, not on a programmatic write. Space and Enter
 toggle the host. The host carries `role="switch"`, the tab stop, and keyboard handling; the shadow track and thumb are

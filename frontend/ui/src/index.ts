@@ -12,6 +12,8 @@ import {MNDW_INPUT_TAG, MndwInput} from './input/input.js';
 import {adaptOverlayService} from './overlay-adapter.js';
 import {setOverlayProvider} from './overlay.js';
 import {MNDW_PROGRESS_TAG, MndwProgress} from './progress/progress.js';
+import {MNDW_RADIO_GROUP_TAG, MndwRadioGroup} from './radio/radio-group.js';
+import {MNDW_RADIO_TAG, MndwRadio} from './radio/radio.js';
 import {MNDW_OPTION_TAG, MndwOption} from './select/option.js';
 import {MNDW_SELECT_PANEL_TAG, MndwSelectPanel} from './select/select-panel.js';
 import {MNDW_SELECT_TAG, MndwSelect} from './select/select.js';
@@ -76,6 +78,9 @@ export {MNDW_SELECT_TAG, MndwSelect} from './select/select.js';
 export type {MndwSelectChangeDetail} from './select/select.js';
 export {MNDW_OPTION_CHANGE_EVENT} from './select/option.js';
 export {MNDW_PROGRESS_TAG, MndwProgress} from './progress/progress.js';
+export {MNDW_RADIO_GROUP_TAG, MndwRadioGroup} from './radio/radio-group.js';
+export type {MndwRadioGroupChangeDetail} from './radio/radio-group.js';
+export {MNDW_RADIO_CHANGE_EVENT, MNDW_RADIO_TAG, MndwRadio} from './radio/radio.js';
 export {MNDW_SCROLL_AREA_TAG, MndwScrollArea} from './scroll-area/scroll-area.js';
 export {MNDW_SEGMENT_CHANGE_EVENT, MNDW_SEGMENT_TAG, MndwSegment} from './segmented/segment.js';
 export {MNDW_SEGMENTED_TAG, MndwSegmented} from './segmented/segmented.js';
@@ -184,6 +189,8 @@ const REGISTRY: [string, CustomElementConstructor][] = [
   [MNDW_LINE_CHART_TAG, MndwLineChart],
   [MNDW_OPTION_TAG, MndwOption],
   [MNDW_PROGRESS_TAG, MndwProgress],
+  [MNDW_RADIO_GROUP_TAG, MndwRadioGroup],
+  [MNDW_RADIO_TAG, MndwRadio],
   [MNDW_SCROLL_AREA_TAG, MndwScrollArea],
   [MNDW_SELECT_PANEL_TAG, MndwSelectPanel],
   [MNDW_SELECT_TAG, MndwSelect],

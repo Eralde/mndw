@@ -91,6 +91,7 @@ describe('UI component sidebar catalog', () => {
       'field',
       'select',
       'segmented',
+      'radio-group',
       'slider',
       'tabs',
       'tooltip',

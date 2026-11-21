@@ -3,7 +3,7 @@ import {type MndwLabelSource, dispatchLabelChange} from '../field/field.js';
 import {FormAssociatedController, FormLabelController} from '../forms/form-associated.js';
 import {getMndwUiText} from '../i18n.js';
 import {LocaleController} from '../locale-controller.js';
-import {accentHover, focusRing, hostTypography, surfaceHover} from '../styles/base.js';
+import {type MndwControlSize, accentHover, focusRing, hostTypography, surfaceHover} from '../styles/base.js';
 
 export const MNDW_CHECKBOX_TAG = 'mndw-checkbox';
 
@@ -26,11 +26,14 @@ export class MndwCheckbox extends LitElement {
     invalid: {type: Boolean, reflect: true},
     value: {type: String, reflect: true},
     name: {type: String, reflect: true},
+    size: {type: String, reflect: true},
   };
 
   public static override readonly styles = css`
       :host {
         ${hostTypography}
+
+        --_mndw-checkbox-size: 1.125rem;
 
         display: inline-flex;
         align-items: center;
@@ -38,6 +41,12 @@ export class MndwCheckbox extends LitElement {
         color: var(--mndw-text);
         cursor: pointer;
         user-select: none;
+      }
+
+      :host([size='sm']) {
+        --_mndw-checkbox-size: 1rem;
+
+        gap: var(--mndw-space-1);
       }
 
       :host([disabled]) {
@@ -57,8 +66,8 @@ export class MndwCheckbox extends LitElement {
       [part='box'] {
         position: relative;
         display: inline-grid;
-        width: 1.125rem;
-        height: 1.125rem;
+        width: var(--_mndw-checkbox-size);
+        height: var(--_mndw-checkbox-size);
         place-items: center;
         border: 1px solid var(--mndw-border);
         border-radius: var(--mndw-radius-sm);
@@ -106,6 +115,10 @@ export class MndwCheckbox extends LitElement {
         font-size: 0;
       }
 
+      :host([size='sm'][indeterminate]) [part='mark'] {
+        width: 0.5rem;
+      }
+
       :host(:focus-visible) {
         outline: none;
       }
@@ -122,6 +135,7 @@ export class MndwCheckbox extends LitElement {
   declare public invalid: boolean;
   declare public value: string;
   declare public name: string;
+  declare public size: MndwControlSize;
 
   private readonly formState = new FormAssociatedController(this, {
     isExplicitlyDisabled: () => this.disabled,
@@ -145,6 +159,7 @@ export class MndwCheckbox extends LitElement {
     this.invalid = false;
     this.value = 'on';
     this.name = '';
+    this.size = 'md';
     this.labelObserver = new MutationObserver(() => {
       dispatchLabelChange(this);
     });

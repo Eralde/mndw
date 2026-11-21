@@ -25,6 +25,34 @@ describe('<mndw-checkbox>', () => {
     expect(element.getAttribute('aria-checked')).toBe('false');
   });
 
+  it('reflects size and shrinks the box and mark only for sm', async () => {
+    const element = await mount('<mndw-checkbox>Show offline</mndw-checkbox>', MNDW_CHECKBOX_TAG);
+
+    expect(element.getAttribute('size')).toBe('md');
+
+    Reflect.set(element, 'size', 'sm');
+    await element.updateComplete;
+
+    expect(element.getAttribute('size')).toBe('sm');
+
+    const cssText = MndwCheckbox.styles.cssText;
+
+    expect(cssText).toContain(':host([size=\'sm\'])');
+    expect(cssText).toContain('--_mndw-checkbox-size: 1.125rem');
+    expect(cssText).toContain('--_mndw-checkbox-size: 1rem');
+    expect(cssText).toMatch(
+      /:host\(\[size='sm'\]\[indeterminate\]\)\s+\[part='mark'\]\s*\{[^}]*width: 0\.5rem;/,
+    );
+    expect(cssText).toContain('gap: var(--mndw-space-1)');
+    expect(cssText).toContain('width: var(--_mndw-checkbox-size)');
+
+    Reflect.set(element, 'size', 'compact');
+    await element.updateComplete;
+
+    expect(element.getAttribute('size')).toBe('compact');
+    expect(cssText).not.toContain(':host([size=\'compact\'])');
+  });
+
   it('dispatches mndwlabelchange when slotted label text changes', async () => {
     const element = await mount('<mndw-checkbox>Show offline</mndw-checkbox>', MNDW_CHECKBOX_TAG);
     const listener = vi.fn();

@@ -110,6 +110,35 @@ describe('<mndw-textarea> properties', () => {
   });
 });
 
+describe('<mndw-textarea> size', () => {
+  it('reflects it and shrinks only the inner padding for sm', async () => {
+    const element = await mount('<mndw-textarea rows="5"></mndw-textarea>', MNDW_TEXTAREA_TAG);
+
+    expect(element.getAttribute('size')).toBe('md');
+
+    Reflect.set(element, 'size', 'sm');
+    await element.updateComplete;
+
+    expect(element.getAttribute('size')).toBe('sm');
+
+    const {cssText} = MndwTextarea.styles;
+
+    expect(cssText).toContain(':host([size=\'sm\'])');
+    expect(cssText).toContain('--_mndw-textarea-padding: var(--mndw-space-1) var(--mndw-space-2)');
+    expect(cssText).toContain(
+      'padding: var(--_mndw-textarea-padding, var(--mndw-space-2) var(--mndw-space-3))',
+    );
+    // The size is padding only: rows still set the height.
+    expect(inner(element).getAttribute('rows')).toBe('5');
+
+    Reflect.set(element, 'size', 'compact');
+    await element.updateComplete;
+
+    expect(element.getAttribute('size')).toBe('compact');
+    expect(cssText).not.toContain(':host([size=\'compact\'])');
+  });
+});
+
 describe('<mndw-textarea> autosize', () => {
   it('keeps rows and adds no inline height while autosize is off', async () => {
     const element = await mount('<mndw-textarea></mndw-textarea>', MNDW_TEXTAREA_TAG);

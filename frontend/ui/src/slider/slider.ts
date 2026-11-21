@@ -1,6 +1,14 @@
 import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} from 'lit';
 import {FormAssociatedController, FormLabelController} from '../forms/form-associated.js';
-import {accentHover, focusRing, hostTypography, invalidField, surfaceHover} from '../styles/base.js';
+import {
+  type MndwControlSize,
+  accentHover,
+  controlSize,
+  focusRing,
+  hostTypography,
+  invalidField,
+  surfaceHover,
+} from '../styles/base.js';
 
 export const MNDW_SLIDER_TAG = 'mndw-slider';
 
@@ -35,6 +43,7 @@ export class MndwSlider extends LitElement {
   public static readonly properties: PropertyDeclarations = {
     // State, so it does not reflect: the `value` attribute stays the default that reset restores.
     value: {type: Number},
+    size: {type: String, reflect: true},
     min: {type: Number, reflect: true},
     max: {type: Number, reflect: true},
     step: {type: Number, reflect: true},
@@ -60,6 +69,18 @@ export class MndwSlider extends LitElement {
       user-select: none;
     }
 
+    ${controlSize}
+
+    /*
+     * The small size shrinks the thumb and track together. The thumb stays centred at either height:
+     * top: 50% anchors it to the track's middle and the percentage translate offsets half of its
+     * own rendered height.
+     */
+    :host([size='sm']) {
+      --_mndw-slider-track-h: 0.1875rem;
+      --_mndw-slider-thumb-size: 0.875rem;
+    }
+
     ${invalidField}
 
     :host([disabled]) {
@@ -74,9 +95,9 @@ export class MndwSlider extends LitElement {
 
     [part='track'] {
       position: relative;
-      height: var(--mndw-slider-track-h);
+      height: var(--_mndw-slider-track-h, var(--mndw-slider-track-h));
       flex: 1 1 auto;
-      border-radius: var(--mndw-slider-track-h);
+      border-radius: var(--_mndw-slider-track-h, var(--mndw-slider-track-h));
       background: var(--mndw-surface);
       box-shadow: 0 0 0 var(--mndw-border-w) var(--_mndw-field-border, transparent);
     }
@@ -97,8 +118,8 @@ export class MndwSlider extends LitElement {
     [part='thumb'] {
       position: absolute;
       top: 50%;
-      width: var(--mndw-slider-thumb-size);
-      height: var(--mndw-slider-thumb-size);
+      width: var(--_mndw-slider-thumb-size, var(--mndw-slider-thumb-size));
+      height: var(--_mndw-slider-thumb-size, var(--mndw-slider-thumb-size));
       border: var(--mndw-border-w) solid var(--mndw-accent-contrast);
       border-radius: 50%;
       background: var(--mndw-accent);
@@ -132,6 +153,7 @@ export class MndwSlider extends LitElement {
   `;
 
   declare public value: number;
+  declare public size: MndwControlSize;
   declare public min: number;
   declare public max: number;
   declare public step: number;
@@ -156,6 +178,7 @@ export class MndwSlider extends LitElement {
   constructor() {
     super();
     this.value = DEFAULT_MIN;
+    this.size = 'md';
     this.min = DEFAULT_MIN;
     this.max = DEFAULT_MAX;
     this.step = DEFAULT_STEP;

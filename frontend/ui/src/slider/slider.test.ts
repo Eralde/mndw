@@ -174,6 +174,37 @@ describe('<mndw-slider> semantics', () => {
   });
 });
 
+describe('<mndw-slider> size', () => {
+  it('reflects it and shrinks the row, track, and thumb only for sm', async () => {
+    const element = await mount('<mndw-slider value="30"></mndw-slider>', MNDW_SLIDER_TAG);
+
+    expect(element.getAttribute('size')).toBe('md');
+
+    Reflect.set(element, 'size', 'sm');
+    await element.updateComplete;
+
+    expect(element.getAttribute('size')).toBe('sm');
+
+    const {cssText} = MndwSlider.styles;
+
+    expect(cssText).toContain(':host([size=\'sm\'])');
+    expect(cssText).toContain('--mndw-control-h-sm');
+    expect(cssText).toContain('--_mndw-slider-track-h: 0.1875rem');
+    expect(cssText).toContain('--_mndw-slider-thumb-size: 0.875rem');
+    expect(cssText).toContain('height: var(--_mndw-slider-track-h, var(--mndw-slider-track-h))');
+    expect(cssText).toContain('width: var(--_mndw-slider-thumb-size, var(--mndw-slider-thumb-size))');
+    // The thumb is centred by a percentage offset from the track's middle, so it needs no size math.
+    expect(cssText).toContain('top: 50%');
+    expect(cssText).toContain('transform: translate(-50%, -50%)');
+
+    Reflect.set(element, 'size', 'compact');
+    await element.updateComplete;
+
+    expect(element.getAttribute('size')).toBe('compact');
+    expect(cssText).not.toContain(':host([size=\'compact\'])');
+  });
+});
+
 describe('<mndw-slider> value normalization', () => {
   it('clamps a value outside the range', async () => {
     const element = await mount('<mndw-slider min="10" max="20" value="99"></mndw-slider>', MNDW_SLIDER_TAG);

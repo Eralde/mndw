@@ -26,10 +26,20 @@ import {mount} from '../.vitepress/theme/ui-demos/slider.js';
 <mndw-field label="Managed power"><mndw-slider min="0" max="100" value="65" disabled></mndw-slider></mndw-field>
 ```
 
+### Sizes
+
+```html demo
+<div class="mndw-toolbar">
+  <mndw-slider style="width: 12rem" size="sm" value="40" aria-label="Small volume"></mndw-slider>
+  <mndw-slider style="width: 12rem" size="md" value="40" aria-label="Medium volume"></mndw-slider>
+</div>
+```
+
 ## Reference
 
-Properties are numeric `value`, `min`, `max`, and `step` (defaults `0`, `100`, and `1`, with `value` defaulting to
-`min`), `valueFormatter(value)`, and shared `name`, `disabled`, `required`, and `invalid`. `valueFormatter` is a
+Properties are `size`, numeric `value`, `min`, `max`, and `step` (defaults `0`, `100`, and `1`, with `value` defaulting
+to `min`), `valueFormatter(value)`, and shared `name`, `disabled`, `required`, and `invalid`. `size` accepts `sm` or
+`md` and defaults to `md`; `sm` shortens the row and shrinks the track and thumb together. `valueFormatter` is a
 property-only callback. Parts are `track`, `fill`, `thumb`, and `output`. `min`, `max`, and `step` reflect; `value` does
 not and its attribute remains the form-reset default.
 

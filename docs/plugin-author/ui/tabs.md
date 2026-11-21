@@ -30,11 +30,27 @@ The container owns an internal tab list, active value, and the child elements' A
 </mndw-tabs>
 ```
 
+### Sizes
+
+```html demo
+<div class="mndw-toolbar">
+  <mndw-tabs size="sm" value="sm-week">
+    <mndw-tab id="sm-day">Day</mndw-tab>
+    <mndw-tab id="sm-week">Week</mndw-tab>
+  </mndw-tabs>
+  <mndw-tabs size="md" value="md-week">
+    <mndw-tab id="md-day">Day</mndw-tab>
+    <mndw-tab id="md-week">Week</mndw-tab>
+  </mndw-tabs>
+</div>
+```
+
 ## Reference
 
-`<mndw-tabs>` carries `value`, the active tab's `id`, and part `tablist`. It has no role of its own; the role is on
-an internal wrapper around the tabs. `mndwchange` carries `{value: string}` and fires on user activation. Tabs are
-view state, not form data.
+`<mndw-tabs>` carries `value`, the active tab's `id`, `size`, and part `tablist`. `size` accepts `sm` or `md` and
+defaults to `md`; it applies to every tab in the set, and a `size` on a single `<mndw-tab>` is not supported. The
+group has no role of its own; the role is on an internal wrapper around the tabs. `mndwchange` carries
+`{value: string}` and fires on user activation. Tabs are view state, not form data.
 
 `<mndw-tab>` carries a required `id` and `disabled`, with part `tab`. `<mndw-tab-panel>` carries `for`, pointing at
 the tab id, receives a generated `mndw-tab-panel-N` id if none is supplied, and exposes part `panel`. The panel

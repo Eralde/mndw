@@ -1,7 +1,7 @@
 import {LitElement, type PropertyDeclarations, type PropertyValues, type TemplateResult, css, html} from 'lit';
 import {FormAssociatedController} from '../forms/form-associated.js';
 import {CommitTracker, TextAnnouncementController, setOrRemove, validityFlagsFrom} from '../forms/text-control.js';
-import {fieldHover, focusRing, hostTypography, invalidField} from '../styles/base.js';
+import {type MndwControlSize, fieldHover, focusRing, hostTypography, invalidField} from '../styles/base.js';
 
 export const MNDW_TEXTAREA_TAG = 'mndw-textarea';
 
@@ -16,6 +16,7 @@ export class MndwTextarea extends LitElement {
   public static override readonly shadowRootOptions: ShadowRootInit = {mode: 'open', delegatesFocus: true};
 
   public static readonly properties: PropertyDeclarations = {
+    size: {type: String, reflect: true},
     value: {type: String},
     rows: {type: Number, reflect: true},
     autosize: {type: Boolean, reflect: true},
@@ -35,6 +36,14 @@ export class MndwTextarea extends LitElement {
       width: 100%;
     }
 
+    /*
+     * Padding is the only metric that follows the size: the height still comes from rows and the
+     * font size stays put, so a small textarea keeps the same readable text.
+     */
+    :host([size='sm']) {
+      --_mndw-textarea-padding: var(--mndw-space-1) var(--mndw-space-2);
+    }
+
     ${invalidField}
 
     :host([disabled]) {
@@ -45,7 +54,7 @@ export class MndwTextarea extends LitElement {
       box-sizing: border-box;
       display: flex;
       width: 100%;
-      padding: var(--mndw-space-2) var(--mndw-space-3);
+      padding: var(--_mndw-textarea-padding, var(--mndw-space-2) var(--mndw-space-3));
       border: var(--mndw-border-w) solid var(--_mndw-field-border, var(--mndw-border));
       border-radius: var(--mndw-radius-md);
       background: var(--mndw-surface-raised);
@@ -85,6 +94,7 @@ export class MndwTextarea extends LitElement {
     }
   `;
 
+  declare public size: MndwControlSize;
   declare public value: string;
   declare public rows: number;
   declare public autosize: boolean;
@@ -112,6 +122,7 @@ export class MndwTextarea extends LitElement {
 
   constructor() {
     super();
+    this.size = 'md';
     this.value = '';
     this.rows = 3;
     this.autosize = false;

@@ -128,6 +128,37 @@ describe('<mndw-tabs> structure', () => {
   });
 });
 
+describe('<mndw-tabs> size', () => {
+  it('reflects it on the group and lets sm reach the tabs by inheritance', async () => {
+    const element = await mount(THREE_TABS);
+
+    expect(element.getAttribute('size')).toBe('md');
+
+    Reflect.set(element, 'size', 'sm');
+    await element.updateComplete;
+
+    expect(element.getAttribute('size')).toBe('sm');
+
+    // Tabs are light-DOM children, so the group's host custom properties reach the tab's part.
+    const groupCss = MndwTabs.styles.cssText;
+
+    expect(groupCss).toContain(':host([size=\'sm\'])');
+    expect(groupCss).toContain('--mndw-control-h-sm');
+    expect(groupCss).toContain('--_mndw-control-padding: var(--mndw-space-2)');
+
+    const tabCss = MndwTab.styles.cssText;
+
+    expect(tabCss).toContain('min-height: var(--mndw-control-h)');
+    expect(tabCss).toContain('padding: 0 var(--_mndw-control-padding, var(--mndw-space-3))');
+
+    Reflect.set(element, 'size', 'compact');
+    await element.updateComplete;
+
+    expect(element.getAttribute('size')).toBe('compact');
+    expect(groupCss).not.toContain(':host([size=\'compact\'])');
+  });
+});
+
 describe('<mndw-tabs> relationships', () => {
   it('wires reciprocal aria-controls and aria-labelledby', async () => {
     const element = await mount(THREE_TABS);

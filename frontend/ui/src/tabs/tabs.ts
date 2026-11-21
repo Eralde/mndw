@@ -1,5 +1,5 @@
 import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} from 'lit';
-import {hostTypography} from '../styles/base.js';
+import {type MndwControlSize, controlSize, hostTypography} from '../styles/base.js';
 import {MNDW_TAB_PANEL_TAG, type MndwTabPanel} from './tab-panel.js';
 import {MNDW_TAB_TAG, type MndwTab} from './tab.js';
 
@@ -36,6 +36,7 @@ export class MndwTabs extends LitElement {
   public static readonly properties: PropertyDeclarations = {
     // State, not configuration, so it does not reflect.
     value: {type: String},
+    size: {type: String, reflect: true},
   };
 
   public static override readonly styles = css`
@@ -45,6 +46,8 @@ export class MndwTabs extends LitElement {
       display: block;
     }
 
+    ${controlSize}
+
     [part='tablist'] {
       display: flex;
       gap: var(--mndw-space-1);
@@ -53,6 +56,7 @@ export class MndwTabs extends LitElement {
   `;
 
   declare public value: string;
+  declare public size: MndwControlSize;
 
   private readonly observer: MutationObserver;
   private ownedTabs: MndwTab[] = [];
@@ -63,6 +67,7 @@ export class MndwTabs extends LitElement {
   constructor() {
     super();
     this.value = '';
+    this.size = 'md';
     this.observer = new MutationObserver(this.onMutations);
     this.addEventListener('click', this.onClick);
     this.addEventListener('keydown', this.onKeyDown);

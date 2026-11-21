@@ -99,6 +99,7 @@ type Config struct {
 	ServiceActionTimeout              time.Duration
 	SelfUpdate                        SelfUpdateService
 	TelemetryController               TelemetryController
+	TelemetrySession                  TelemetrySession
 	EventPublisher                    ManagementEventPublisher
 }
 
@@ -133,6 +134,7 @@ type telemetryAPI struct {
 	store      StateStore
 	logger     *slog.Logger
 	controller TelemetryController
+	session    TelemetrySession
 	events     managementPublisher
 	actionRoot context.Context
 	mu         sync.Mutex
@@ -193,7 +195,7 @@ func New(cfg Config) *Handler {
 	logger := cfg.Logger
 	publisher := managementPublisher{publisher: cfg.EventPublisher, logger: logger}
 
-	return &Handler{
+	handler := &Handler{
 		plugins: &pluginsAPI{
 			stagingDir:           cfg.StagingDir,
 			userPluginsDir:       cfg.UserPluginsDir,
@@ -215,6 +217,7 @@ func New(cfg Config) *Handler {
 			store:      cfg.Store,
 			logger:     logger,
 			controller: cfg.TelemetryController,
+			session:    cfg.TelemetrySession,
 			events:     publisher,
 			actionRoot: cfg.ServiceActionRoot,
 		},
@@ -227,6 +230,10 @@ func New(cfg Config) *Handler {
 			actionTimeout: cfg.ServiceActionTimeout,
 		},
 	}
+
+	handler.telemetry.watchSessionLoss(cfg.ServiceActionRoot)
+
+	return handler
 }
 
 // Register wires the management routes onto mux. Method-qualified patterns give a

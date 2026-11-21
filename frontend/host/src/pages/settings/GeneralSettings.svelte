@@ -67,6 +67,7 @@ let destroyed = false;
 let telemetryEnabled = $state(false);
 let telemetryLoading = $state(true);
 let telemetryError = $state('');
+let unsubscribeTelemetryGathering: (() => void) | undefined;
 // Mirrors daemon `SessionPresent()` for telemetry availability.
 let telemetrySessionPresent = $derived.by(() => {
   const support = persistentCapability?.controller.support;
@@ -93,6 +94,7 @@ $effect(() => {
 });
 
 onMount(() => {
+  subscribeToTelemetryGathering();
   void refreshPersistentCapability();
   void refreshTelemetry();
 });
@@ -104,6 +106,8 @@ onDestroy(() => {
   capabilityPollController?.abort();
 
   capabilityPollController = null;
+  unsubscribeTelemetryGathering?.();
+  unsubscribeTelemetryGathering = undefined;
 });
 
 async function refreshPersistentCapability(): Promise<void> {
@@ -155,6 +159,20 @@ async function refreshTelemetry(): Promise<void> {
       telemetryLoading = false;
     }
   }
+}
+
+function subscribeToTelemetryGathering(): void {
+  if (unsubscribeTelemetryGathering !== undefined) {
+    return;
+  }
+
+  unsubscribeTelemetryGathering = services.telemetryGathering.subscribe(() => {
+    const gathering = services.telemetryGathering.get();
+
+    if (gathering !== null) {
+      telemetryEnabled = gathering.enabled;
+    }
+  });
 }
 
 function setTelemetryEnabled(
@@ -715,6 +733,7 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
         <a
           href="#mndw-background-router-access"
           onclick={focusBackgroundRouterAccess}
+          class="mndw-link"
         >
           {hostT('settings.telemetry-session-link')}
         </a>

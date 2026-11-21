@@ -17,6 +17,18 @@ const testController = vi.fn<(token: string) => Promise<ControllerTestResult>>()
 const getTelemetry = vi.fn<() => Promise<{enabled: boolean}>>();
 const setTelemetry = vi.fn<(enabled: boolean) => Promise<void>>();
 const reportTelemetryGathering = vi.fn<(enabled: boolean) => void>();
+const telemetryGatheringListeners = new Set<() => void>();
+let telemetryGatheringEnabled: boolean | null = null;
+const getTelemetryGathering = vi.fn((): {enabled: boolean} | null => {
+  return telemetryGatheringEnabled === null ? null : {enabled: telemetryGatheringEnabled};
+});
+const subscribeTelemetryGathering = vi.fn((listener: () => void): () => void => {
+  telemetryGatheringListeners.add(listener);
+
+  return (): void => {
+    telemetryGatheringListeners.delete(listener);
+  };
+});
 const refreshPalette = vi.fn<() => Promise<void>>();
 
 const disabledCapability: PersistentRciCapability = {
@@ -44,7 +56,12 @@ function createServices(): HostServices {
     ...services,
     locale: localeServices.locale,
     mgmtClient: {...services.mgmtClient, getTelemetry, setTelemetry},
-    telemetryGathering: {...services.telemetryGathering, report: reportTelemetryGathering},
+    telemetryGathering: {
+      ...services.telemetryGathering,
+      get: getTelemetryGathering,
+      subscribe: subscribeTelemetryGathering,
+      report: reportTelemetryGathering,
+    },
     palette: {...services.palette, refreshPalette},
     persistentRci: services.persistentRci,
   };
@@ -84,6 +101,16 @@ function changeTelemetry(enabled: boolean): void {
   flushSync();
 }
 
+function publishTelemetryGathering(enabled: boolean): void {
+  telemetryGatheringEnabled = enabled;
+
+  for (const listener of telemetryGatheringListeners) {
+    listener();
+  }
+
+  flushSync();
+}
+
 beforeAll(() => {
   defineMndwUi();
 });
@@ -95,6 +122,12 @@ beforeEach(() => {
   getTelemetry.mockReset().mockResolvedValue({enabled: false});
   setTelemetry.mockReset().mockResolvedValue(undefined);
   reportTelemetryGathering.mockReset();
+  telemetryGatheringListeners.clear();
+  telemetryGatheringEnabled = null;
+  getTelemetryGathering.mockReset().mockImplementation(() => {
+    return telemetryGatheringEnabled === null ? null : {enabled: telemetryGatheringEnabled};
+  });
+  subscribeTelemetryGathering.mockClear();
   refreshPalette.mockReset().mockResolvedValue(undefined);
 });
 
@@ -144,6 +177,7 @@ describe('GeneralSettings telemetry section', () => {
 
     target.querySelector<HTMLAnchorElement>('#mndw-telemetry a')?.click();
 
+    expect(target.querySelector<HTMLAnchorElement>('#mndw-telemetry a')?.classList.contains('mndw-link')).toBe(true);
     expect(scrollIntoView).toHaveBeenCalledOnce();
     expect(document.activeElement).toBe(routerAccessSection);
   });
@@ -301,6 +335,44 @@ describe('GeneralSettings telemetry section', () => {
     retry?.click();
     await vi.waitFor(() => expect(getCapability).toHaveBeenCalledTimes(2));
     await vi.waitFor(() => expect(target.querySelector('.mndw-alert[role="alert"]')).toBeNull());
+  });
+});
+
+describe('GeneralSettings telemetry initial state', () => {
+  it('uses the fresh management state instead of cached gathering state', async () => {
+    getCapability.mockResolvedValueOnce(enabledCapability);
+    getTelemetry.mockResolvedValueOnce({enabled: false});
+    telemetryGatheringEnabled = true;
+
+    render();
+
+    await vi.waitFor(() => expect(telemetrySwitch().disabled).toBe(false));
+    expect(telemetrySwitch().checked).toBe(false);
+  });
+
+  it('subscribes to gathering updates when telemetry starts off', async () => {
+    getCapability.mockResolvedValueOnce(enabledCapability);
+    getTelemetry.mockResolvedValueOnce({enabled: false});
+
+    render();
+
+    await vi.waitFor(() => expect(subscribeTelemetryGathering).toHaveBeenCalledOnce());
+  });
+});
+
+describe('GeneralSettings telemetry gathering updates', () => {
+  it('reflects gathering changes published by the daemon', async () => {
+    getCapability.mockResolvedValueOnce(enabledCapability);
+    getTelemetry.mockResolvedValueOnce({enabled: true});
+
+    render();
+
+    await vi.waitFor(() => expect(telemetrySwitch().checked).toBe(true));
+    expect(subscribeTelemetryGathering).toHaveBeenCalledOnce();
+
+    publishTelemetryGathering(false);
+
+    expect(telemetrySwitch().checked).toBe(false);
   });
 });
 

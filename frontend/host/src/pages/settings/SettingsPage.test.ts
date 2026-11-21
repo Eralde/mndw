@@ -55,6 +55,22 @@ vi.mock('../../services/theme.service.js', async (importOriginal) => {
     },
   };
 });
+vi.mock('../../services/telemetry-gathering.service.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../services/telemetry-gathering.service.js')>();
+
+  return {
+    ...original,
+    createTelemetryGatheringService: () => {
+      return {
+        get: () => null,
+        subscribe: (_listener: () => void) => {
+          return () => {};
+        },
+        report: (_enabled: boolean) => {},
+      };
+    },
+  };
+});
 vi.mock('../../services/palette.service.js', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../services/palette.service.js')>();
 

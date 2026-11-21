@@ -7,8 +7,35 @@ import (
 
 	rci "mndw.local/rci"
 	"mndwd/internal/mgmt"
+	"mndwd/internal/rcisession"
 	"mndwd/internal/telemetry"
 )
+
+type telemetrySessionAdapter struct {
+	service *rcisession.Service
+}
+
+func adaptTelemetrySession(service *rcisession.Service) mgmt.TelemetrySession {
+	if service == nil {
+		return nil
+	}
+
+	return telemetrySessionAdapter{service: service}
+}
+
+func (s telemetrySessionAdapter) AuthModeKnown() bool {
+	mode := s.service.AuthMode()
+
+	return mode == rcisession.AuthModeToken || mode == rcisession.AuthModeNone
+}
+
+func (s telemetrySessionAdapter) SessionPresent() bool {
+	return s.service.SessionPresent()
+}
+
+func (s telemetrySessionAdapter) SubscribeMutations(observer func()) func() {
+	return s.service.SubscribeMutations(observer)
+}
 
 type telemetryAssembly struct {
 	capability *telemetry.Capability

@@ -251,6 +251,7 @@ type mgmtServices struct {
 	service              initd.Manager
 	capabilityController mgmt.PersistentRCICapabilityController
 	telemetryController  mgmt.TelemetryController
+	telemetrySession     mgmt.TelemetrySession
 	events               *events.InternalPublisher
 }
 
@@ -391,6 +392,7 @@ func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store
 		service:              serviceMgr,
 		capabilityController: access.session.capabilityController,
 		telemetryController:  access.telemetry.controller,
+		telemetrySession:     adaptTelemetrySession(access.session.service),
 		events:               internalPublisher,
 	})
 	deviceFetcher, deviceInfoErr := deviceinfo.NewHTTPFetcher(cfg.DeviceURL, logger, deviceinfo.FetcherOptions{})
@@ -551,6 +553,7 @@ func registerMgmt(mux *http.ServeMux, core daemonCore, intake *httpx.BodyIntake,
 		ServiceActionRoot:                 core.lifetime,
 		SelfUpdate:                        services.selfUpdate,
 		TelemetryController:               services.telemetryController,
+		TelemetrySession:                  services.telemetrySession,
 		EventPublisher:                    services.events,
 	})
 

@@ -17,9 +17,17 @@ type TelemetryController interface {
 	SetEnabled(context.Context, bool) error
 }
 
+type TelemetrySession interface {
+	AuthModeKnown() bool
+	SessionPresent() bool
+	SubscribeMutations(func()) func()
+}
+
 type telemetrySettingsDTO struct {
 	Enabled bool `json:"enabled"`
 }
+
+const telemetrySessionLossDetail = "disabled: background router access removed"
 
 func (h *telemetryAPI) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/mgmt/telemetry", h.handleTelemetryGet)
@@ -69,39 +77,44 @@ func (h *telemetryAPI) handleTelemetryPut(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if err := h.transition(incoming.Enabled, telemetryAuditDetail(incoming.Enabled)); err != nil {
+		httpx.WriteError(w, h.logger, err)
+
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *telemetryAPI) transition(enabled bool, detail string) *httpx.APIError {
 	h.mu.Lock()
 
 	defer h.mu.Unlock()
+
+	if enabled && (h.session == nil || !h.session.SessionPresent()) {
+		return httpx.NewError(http.StatusConflict, httpx.CodeConflict, "background router access is required for telemetry")
+	}
+
+	oldEnabled := h.store.Snapshot().Settings.BackgroundTelemetry
+
+	if oldEnabled == enabled {
+		return nil
+	}
 
 	transitionCtx, cancel := context.WithTimeout(h.actionRoot, serviceActionTimeout)
 
 	defer cancel()
 
-	oldEnabled := h.store.Snapshot().Settings.BackgroundTelemetry
-
-	if oldEnabled == incoming.Enabled {
-		w.WriteHeader(http.StatusNoContent)
-
-		return
-	}
-
-	if err := h.controller.SetEnabled(transitionCtx, incoming.Enabled); err != nil {
+	if err := h.controller.SetEnabled(transitionCtx, enabled); err != nil {
 		if rollbackErr := h.controller.SetEnabled(transitionCtx, oldEnabled); rollbackErr != nil {
 			h.logger.Error("telemetry runtime rollback failed", "error", rollbackErr)
 		}
 
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadGateway, httpx.CodeBackendUnavailable, "could not change telemetry gathering"))
-
-		return
+		return httpx.NewError(http.StatusBadGateway, httpx.CodeBackendUnavailable, "could not change telemetry gathering")
 	}
 
 	if err := h.store.Mutate(func(st *state.State) error {
-		st.Settings.BackgroundTelemetry = incoming.Enabled
-		detail := "disabled"
-
-		if incoming.Enabled {
-			detail = "enabled"
-		}
+		st.Settings.BackgroundTelemetry = enabled
 
 		st.AppendAudit("telemetry", "", detail)
 
@@ -111,16 +124,59 @@ func (h *telemetryAPI) handleTelemetryPut(w http.ResponseWriter, r *http.Request
 			h.logger.Error("telemetry rollback failed", "error", rollbackErr)
 		}
 
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "could not save telemetry setting"))
-
-		return
+		return httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "could not save telemetry setting")
 	}
 
 	h.events.publish("telemetry.gathering_changed", func(publisher ManagementEventPublisher) error {
-		return publisher.PublishTelemetryGatheringChanged(contractEvents.TelemetryGatheringChangedPayload{Enabled: incoming.Enabled})
+		return publisher.PublishTelemetryGatheringChanged(contractEvents.TelemetryGatheringChangedPayload{Enabled: enabled})
 	})
 
-	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func telemetryAuditDetail(enabled bool) string {
+	if enabled {
+		return "enabled"
+	}
+
+	return "disabled"
+}
+
+func (h *telemetryAPI) watchSessionLoss(ctx context.Context) {
+	if ctx == nil || ctx.Err() != nil || h.session == nil || h.controller == nil {
+		return
+	}
+
+	changes := make(chan struct{}, 1)
+	wake := func() {
+		select {
+		case changes <- struct{}{}:
+		default:
+		}
+	}
+
+	unsubscribe := h.session.SubscribeMutations(wake)
+
+	wake()
+
+	go func() {
+		defer unsubscribe()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-changes:
+				if !h.session.AuthModeKnown() || h.session.SessionPresent() {
+					continue
+				}
+
+				if err := h.transition(false, telemetrySessionLossDetail); err != nil {
+					h.logger.Error("could not disable telemetry after background router access was removed", "error", err)
+				}
+			}
+		}
+	}()
 }
 
 func (h *telemetryAPI) writeTelemetryDecodeError(w http.ResponseWriter, err error) {

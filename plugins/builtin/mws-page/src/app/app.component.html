@@ -23,7 +23,7 @@
           <strong>{{ t('extra-features.setup.title') }}</strong>
           <span>{{ extraFeaturesSetupBody() }}</span>
           @if (hostSettingsHref(); as settingsHref) {
-            <a [href]="settingsHref" (click)="navigateToHostSettings($event)">{{ t('extra-features.setup.action') }}</a>
+            <a class="mndw-link" [href]="settingsHref" (click)="navigateToHostSettings($event)">{{ t('extra-features.setup.action') }}</a>
           }
         </div>
         <button

@@ -107,6 +107,10 @@ const contracts = [
     markup: 'semantic article/section/div card container with no injected role',
   },
   {
+    selector: '.mndw-link',
+    markup: 'native <a> text link with hover and :focus-visible states; consumer-owned href and navigation',
+  },
+  {
     selector: '.mndw-toolbar',
     markup: 'semantic toolbar container with consumer-owned role/name',
   },
@@ -223,5 +227,21 @@ describe('kit.css class contract', () => {
     expect(reducedMotion).toContain('.mndw-spinner');
     expect(reducedMotion).toContain('.mndw-progress::before');
     expect(reducedMotion).toMatch(/animation-duration:\s*(?:2\.4s|3s)/u);
+  });
+});
+
+describe('mndw-link contract', () => {
+  it('keeps links readable with text colour, underline, hover, and focus ring', async () => {
+    const css = await readFile(resolve(process.cwd(), 'src/styles/kit.css'), 'utf8');
+    const link = css.match(/\.mndw-link \{[^}]*\}/u)?.[0] ?? '';
+    const hover = css.match(/\.mndw-link:hover \{[^}]*\}/u)?.[0] ?? '';
+
+    expect(link).toMatch(/color:\s*var\(--mndw-text\)/u);
+    expect(link).toMatch(/text-decoration:\s*underline/u);
+    expect(hover).toMatch(/text-decoration-thickness:\s*0\.125rem/u);
+    expect(hover).not.toMatch(/(?:^|\s)color:/u);
+    expect(css).toMatch(
+      /\.mndw-link:focus-visible \{[^}]*outline:\s*var\(--mndw-focus-w\) solid var\(--mndw-focus-ring\)/u,
+    );
   });
 });

@@ -630,12 +630,6 @@ body {
   color: var(--mndw-text-subtle);
 }
 
-/* Text colour + underline: --mndw-accent on --mndw-bg is below 4.5:1 in the dark theme. */
-.mndw-empty-state__link {
-  color: var(--mndw-text);
-  text-decoration: underline;
-}
-
 .mndw-empty-state--compact {
   position: static;
   display: flex;

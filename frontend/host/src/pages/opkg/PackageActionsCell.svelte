@@ -59,7 +59,7 @@ const progressLabel = $derived.by(() => {
       class="mndw-visually-hidden"
     >{hostT('packages.protected')}</span></span>
 {:else if action === 'upgrade' && isProtected}<a
-    class="settings-update-link"
+    class="settings-update-link mndw-link"
     class:compact-action={row.compact}
     href={HOST_PATHS.settingsTab['self-update']}
     onclick={(event) => {
@@ -87,7 +87,7 @@ const progressLabel = $derived.by(() => {
   font-size: var(--mndw-text-xs);
 }
 mndw-button.compact-action { max-width: 100%; }
-.settings-update-link { display: inline-flex; min-height: var(--mndw-control-h); align-items: center; padding-inline: var(--mndw-space-3); color: var(--mndw-accent); font-size: var(--mndw-text-xs); }
+.settings-update-link { display: inline-flex; min-height: var(--mndw-control-h); align-items: center; padding-inline: var(--mndw-space-3); font-size: var(--mndw-text-xs); }
 .settings-update-link.compact-action { max-width: 100%; box-sizing: border-box; overflow: hidden; padding-inline: var(--mndw-space-2); text-overflow: ellipsis; white-space: nowrap; }
 .action-label.compact-action {
   max-width: 100%;

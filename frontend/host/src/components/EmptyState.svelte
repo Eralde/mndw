@@ -24,7 +24,7 @@ let {title, text, mode = 'dashboard', action}: Props = $props();
   <p class="mndw-empty-state__text">{text}</p>
   {#if action?.href !== undefined}
     <a
-      class="mndw-empty-state__link"
+      class="mndw-link"
       href={action.href}
     >{action.label}</a>
   {:else if action?.onActivate !== undefined}

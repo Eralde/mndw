@@ -52,6 +52,12 @@ The shared class layer styles host and plugin light DOM. Use semantic HTML and k
 </p>
 ```
 
+### Text links
+
+```html demo
+<a class="mndw-link" href="/settings/general">Open settings</a>
+```
+
 ### Field and table
 
 ```html demo
@@ -81,6 +87,7 @@ The shared class layer styles host and plugin light DOM. Use semantic HTML and k
 - `.mndw-badge` and `.mndw-status-dot` support `--danger`, `--success`, `--warning`, and `--info`. Add `aria-hidden="true"` to decorative dots.
 - `.mndw-progress` is indeterminate; consumer markup supplies progress semantics and busy state. `.mndw-spinner` is decorative and adds no role.
 - `.mndw-empty` styles an empty-state container; consumer markup supplies its heading and status semantics.
+- `.mndw-link` styles a native `<a>` with readable text color, underline, hover, and `:focus-visible` states; the consumer owns `href` and navigation.
 - `.mndw-field` groups a label, control, hint, and error. Use `.mndw-field__label`, `.mndw-field__hint`, and `.mndw-field__error`; wire IDs with `for` and `aria-describedby`, and set `aria-invalid` when needed.
 - `.mndw-field` styles layout and labels; it does not paint a native input's border or background. Use a UI control such as `<mndw-input>` or style native form controls in consumer CSS.
 - `.mndw-table` styles native table markup. `.mndw-table--sticky-head` opts into a sticky header, and native `aria-sort` communicates sort state.

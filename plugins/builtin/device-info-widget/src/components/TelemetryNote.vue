@@ -44,7 +44,7 @@ const navigate = (event: MouseEvent): void => {
 <template>
   <p class="telemetry-note" role="status">
     {{ message }}
-    <a v-if="href !== undefined" :href="href" @click="navigate">{{ linkLabel }}</a>
+    <a v-if="href !== undefined" class="mndw-link" :href="href" @click="navigate">{{ linkLabel }}</a>
   </p>
 </template>
 
@@ -53,10 +53,5 @@ const navigate = (event: MouseEvent): void => {
   margin: 0 0 0.5rem;
   color: var(--mndw-text-muted);
   font-size: var(--mndw-text-sm);
-}
-
-.telemetry-note a {
-  color: inherit;
-  font-weight: 600;
 }
 </style>

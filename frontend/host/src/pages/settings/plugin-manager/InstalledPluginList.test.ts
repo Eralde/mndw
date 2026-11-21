@@ -106,7 +106,7 @@ describe('InstalledPluginList', () => {
 
     expect(emptyState).not.toBeNull();
     expect(emptyState?.textContent).toContain('No plugins installed.');
-    expect(target.querySelector('.mndw-empty-state__link')?.getAttribute('href')).toBe('#mndw-plugin-upload');
+    expect(target.querySelector('.mndw-empty-state .mndw-link')?.getAttribute('href')).toBe('#mndw-plugin-upload');
 
     void unmount(component);
   });

@@ -118,6 +118,31 @@
   }
 }
 
+/* Text colour + underline: --mndw-accent on --mndw-bg is below 4.5:1 in the dark theme. Hover thickens the
+   underline instead of changing colour, so contrast holds in both states. */
+.mndw-link {
+  border-radius: var(--mndw-radius-sm);
+  color: var(--mndw-text);
+  text-decoration: underline;
+  text-decoration-thickness: 0.0625rem;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+
+.mndw-link:hover {
+  text-decoration-thickness: 0.125rem;
+}
+
+.mndw-link:focus-visible {
+  outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
+  outline-offset: 0.0625rem;
+}
+
+/* Inside a coloured alert the link keeps the alert colour; the underline marks it. */
+.mndw-alert .mndw-link {
+  color: inherit;
+}
+
 .mndw-empty {
   display: flex;
   flex-direction: column;

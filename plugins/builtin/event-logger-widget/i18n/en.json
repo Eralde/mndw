@@ -9,5 +9,67 @@
   "entries": "Event log entries",
   "empty": "No matching events",
   "resumed": "Capture resumed",
-  "resync": "Stream resynchronized; history may contain gaps"
+  "resync": "Stream resynchronized; history may contain gaps",
+  "category": "Event category",
+  "category.all": "All events",
+  "category.internet": "Internet",
+  "category.wifi": "Wi-Fi",
+  "category.storage": "USB & storage",
+  "category.router": "Router",
+  "category.mndw": "mndw",
+  "size": {"b": "B", "kb": "KB", "mb": "MB", "gb": "GB", "tb": "TB"},
+  "repeated": "Repeated {count, plural, one {# time} other {# times}}",
+  "summary": {
+    "wan": {
+      "connected": "WAN connected: {interface}, {address}",
+      "disconnected": "WAN disconnected: {interface}"
+    },
+    "net": {
+      "ip_changed": "IP address changed: {address}/{mask} on {link}",
+      "dhcp_lease": "DHCP lease {action}: {hostname} ({ip})",
+      "dns_changed": "DNS resolvers changed: {resolvers}",
+      "dns_changed_empty": "DNS resolvers changed"
+    },
+    "wifi": {
+      "client_join": "Wi-Fi client joined: {mac} ({ssid}, {band})",
+      "client_leave": "Wi-Fi client left: {mac} ({ssid}, {band})"
+    },
+    "firewall": {"rebuilt": "Firewall rebuilt: {table_type} {table}"},
+    "usb": {
+      "attached": "USB device attached: {vendor} {model}",
+      "detached": "USB device detached: {device} (port {port})"
+    },
+    "fs": {
+      "mounted": "Filesystem mounted: {label} at {directory}",
+      "unmounted": "Filesystem unmounted: {label} at {directory}"
+    },
+    "clock": {
+      "synced": "Clock synchronized",
+      "synced_offset": "Clock synchronized (offset {offset} ms)"
+    },
+    "schedule": {"fired": "Schedule fired: {name} ({action})"},
+    "button": {"pressed": "Button pressed: {button} ({gesture})"},
+    "auth": {
+      "login": "Login succeeded: {user} from {ip}",
+      "login_failed": "Login failed: {user} from {ip}"
+    },
+    "firmware": {"available": "Firmware update available: {version}"},
+    "plugin": {
+      "installed": "Plugin installed: {name} {version}",
+      "removed": "Plugin removed: {name}",
+      "approved": "Plugin approved: {name} {version}",
+      "started": "Plugin started: {name}",
+      "stopped": "Plugin stopped: {name} ({reason})"
+    },
+    "daemon": {
+      "started": "Daemon started: {version}",
+      "stopping": "Daemon stopping: {reason}",
+      "updated": "Daemon updated: {version}"
+    },
+    "storage": {"low": "Low storage on {path}: {available} available (threshold {threshold})"},
+    "telemetry": {
+      "enabled": "Telemetry gathering enabled",
+      "disabled": "Telemetry gathering disabled"
+    }
+  }
 }

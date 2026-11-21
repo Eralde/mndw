@@ -4,7 +4,10 @@ import {bindLocale} from '@mndw/sdk/bind-locale';
 import EventLogger from './EventLogger.svelte';
 
 export function createInstance(container: HTMLElement, context: PluginContext): PluginInstance {
-  const app = mount(EventLogger, {target: container, props: {events: context.events, i18n: context.i18n}});
+  const app = mount(EventLogger, {
+    target: container,
+    props: {events: context.events, i18n: context.i18n, storage: context.storage.instance},
+  });
   const unsubscribeLocale = bindLocale(context.i18n, () => {
     if (context.kind === 'widget') {
       context.setTileTitle(context.i18n.t('title'));

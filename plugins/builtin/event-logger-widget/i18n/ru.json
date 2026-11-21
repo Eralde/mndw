@@ -9,5 +9,67 @@
   "entries": "Записи журнала событий",
   "empty": "Нет подходящих событий",
   "resumed": "Запись возобновлена",
-  "resync": "Поток синхронизирован; возможны пропуски в истории"
+  "resync": "Поток синхронизирован; возможны пропуски в истории",
+  "category": "Категория событий",
+  "category.all": "Все события",
+  "category.internet": "Интернет",
+  "category.wifi": "Wi-Fi",
+  "category.storage": "USB и накопители",
+  "category.router": "Роутер",
+  "category.mndw": "mndw",
+  "size": {"b": "Б", "kb": "КБ", "mb": "МБ", "gb": "ГБ", "tb": "ТБ"},
+  "repeated": "Повторено {count, plural, one {# раз} few {# раза} many {# раз} other {# раза}}",
+  "summary": {
+    "wan": {
+      "connected": "WAN подключён: {interface}, {address}",
+      "disconnected": "WAN отключён: {interface}"
+    },
+    "net": {
+      "ip_changed": "IP-адрес изменён: {address}/{mask} на {link}",
+      "dhcp_lease": "Аренда DHCP {action}: {hostname} ({ip})",
+      "dns_changed": "DNS-серверы изменены: {resolvers}",
+      "dns_changed_empty": "DNS-серверы изменены"
+    },
+    "wifi": {
+      "client_join": "Wi-Fi клиент подключён: {mac} ({ssid}, {band})",
+      "client_leave": "Wi-Fi клиент отключён: {mac} ({ssid}, {band})"
+    },
+    "firewall": {"rebuilt": "Межсетевой экран перестроен: {table_type} {table}"},
+    "usb": {
+      "attached": "USB-устройство подключено: {vendor} {model}",
+      "detached": "USB-устройство отключено: {device} (порт {port})"
+    },
+    "fs": {
+      "mounted": "Файловая система смонтирована: {label} в {directory}",
+      "unmounted": "Файловая система отмонтирована: {label} из {directory}"
+    },
+    "clock": {
+      "synced": "Часы синхронизированы",
+      "synced_offset": "Часы синхронизированы (смещение {offset} мс)"
+    },
+    "schedule": {"fired": "Расписание сработало: {name} ({action})"},
+    "button": {"pressed": "Кнопка нажата: {button} ({gesture})"},
+    "auth": {
+      "login": "Вход выполнен: {user} с {ip}",
+      "login_failed": "Ошибка входа: {user} с {ip}"
+    },
+    "firmware": {"available": "Доступно обновление прошивки: {version}"},
+    "plugin": {
+      "installed": "Плагин установлен: {name} {version}",
+      "removed": "Плагин удалён: {name}",
+      "approved": "Плагин одобрен: {name} {version}",
+      "started": "Плагин запущен: {name}",
+      "stopped": "Плагин остановлен: {name} ({reason})"
+    },
+    "daemon": {
+      "started": "Демон запущен: {version}",
+      "stopping": "Демон останавливается: {reason}",
+      "updated": "Демон обновлён: {version}"
+    },
+    "storage": {"low": "Мало места на {path}: доступно {available} (порог {threshold})"},
+    "telemetry": {
+      "enabled": "Сбор телеметрии включён",
+      "disabled": "Сбор телеметрии выключен"
+    }
+  }
 }

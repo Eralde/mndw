@@ -273,6 +273,7 @@
   },
   "common": {
     "cancel": "Cancel",
+    "confirm": "Confirm",
     "close": "Close",
     "save": "Save",
     "retry": "Retry",

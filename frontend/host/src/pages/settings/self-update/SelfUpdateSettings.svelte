@@ -7,8 +7,10 @@ import {
   type SelfUpdateStatus,
 } from '../../../services/self-update-client.js';
 import {toast} from '../../../services/toast/toast.svelte.js';
-import ConfirmActionModal from '../../opkg/ConfirmActionModal.svelte';
-import {openHostModal} from '../../../services/overlay/host-overlay.js';
+import {
+  confirmHost,
+  openHostModal,
+} from '../../../services/overlay/host-overlay.js';
 import {getHostServices} from '../../../host-services-context.js';
 import {appState} from '../../../state/app.svelte.js';
 import SelfUpdateProgressModal from './SelfUpdateProgressModal.svelte';
@@ -226,44 +228,30 @@ function selfUpdateToastKey(operation: SelfUpdateOperation | ''): string {
   return SELF_UPDATE_STATUS_TOAST_KEY;
 }
 
-interface ConfirmationProps {
-  message: string;
-  confirmLabel: string;
-  close: (confirmed: boolean) => void;
-}
-
 async function requestConfirmation(
   operation: 'update' | 'revert',
   targetVersion: string,
 ): Promise<boolean> {
   const isUpdate = operation === 'update';
-  const session = openHostModal<boolean, ConfirmationProps>(
-    services.hostOverlay,
-    ConfirmActionModal,
-    {
-      title: hostT(
-        isUpdate
-          ? 'settings.self-update-confirm-update-title'
-          : 'settings.self-update-confirm-revert-title',
-      ),
-      props: {
-        message: hostT(
-          isUpdate
-            ? 'settings.self-update-confirm-update'
-            : 'settings.self-update-confirm-revert',
-          {version: targetVersion},
-        ),
-        confirmLabel: hostT(
-          isUpdate
-            ? 'settings.self-update-apply'
-            : 'settings.self-update-revert',
-        ),
-      },
-    },
-  );
-  const event = await session.closed;
-
-  return event.result === true;
+  return confirmHost(services.hostOverlay, {
+    title: hostT(
+      isUpdate
+        ? 'settings.self-update-confirm-update-title'
+        : 'settings.self-update-confirm-revert-title',
+    ),
+    message: hostT(
+      isUpdate
+        ? 'settings.self-update-confirm-update'
+        : 'settings.self-update-confirm-revert',
+      {version: targetVersion},
+    ),
+    confirmLabel: hostT(
+      isUpdate
+        ? 'settings.self-update-apply'
+        : 'settings.self-update-revert',
+    ),
+    danger: true,
+  });
 }
 
 function openProgressModal(operation: 'update' | 'revert'): void {

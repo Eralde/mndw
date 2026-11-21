@@ -22,6 +22,10 @@ export interface ToastOptions {
   getMessage?: () => string;
   variant?: ToastVariant;
   key?: string;
+  /** Isolates plugin keys and tracks toasts owned by a mounted context. */
+  scope?: symbol;
+  /** Localized manifest label shown above plugin-authored messages. */
+  pluginLabel?: string;
   action?: ToastAction;
   /**
    * Milliseconds before auto-dismiss. `0` means sticky (dismissed only by the user).
@@ -37,6 +41,8 @@ export interface Toast {
   readonly variant: ToastVariant;
   readonly duration: number;
   readonly key?: string;
+  readonly scope?: symbol;
+  readonly pluginLabel?: string;
   readonly action?: ToastAction;
 }
 
@@ -79,6 +85,8 @@ function createStoredToast(
     variant,
     duration,
     ...(options.key === undefined ? {} : {key: options.key}),
+    ...(options.scope === undefined ? {} : {scope: options.scope}),
+    ...(options.pluginLabel === undefined ? {} : {pluginLabel: options.pluginLabel}),
     ...(options.action === undefined ? {} : {action: createStoredAction(options.action)}),
   };
 }
@@ -111,7 +119,7 @@ export class ToastStore {
     const duration = options.duration ?? DEFAULT_DURATIONS[variant];
     const keyedIndex = options.key === undefined
       ? -1
-      : this.toasts.findIndex((toast) => toast.key === options.key);
+      : this.toasts.findIndex((toast) => toast.key === options.key && toast.scope === options.scope);
 
     if (keyedIndex !== -1) {
       const current = this.toasts[keyedIndex];
@@ -154,6 +162,10 @@ export class ToastStore {
     return this.show({...options, message, variant: 'info'});
   }
 
+  public warning(message: string, options?: Omit<ToastOptions, 'message' | 'variant'>): number {
+    return this.show({...options, message, variant: 'warning'});
+  }
+
   public error(message: string, options?: Omit<ToastOptions, 'message' | 'variant'>): number {
     return this.show({...options, message, variant: 'error'});
   }
@@ -170,8 +182,8 @@ export class ToastStore {
   }
 
   /** Remove the currently displayed toast with this key, if any. */
-  public dismissKey(key: string): void {
-    const current = this.toasts.find((toast) => toast.key === key);
+  public dismissKey(key: string, scope?: symbol): void {
+    const current = this.toasts.find((toast) => toast.key === key && toast.scope === scope);
 
     if (current !== undefined) {
       this.dismiss(current.id);

@@ -8,7 +8,7 @@ import {
 } from '@mndw/sdk';
 import {PLUGIN_RCI_MANAGER_METHODS} from '@mndw/sdk-internal';
 import {of} from 'rxjs';
-import {beforeEach, describe, expect, expectTypeOf, it, vi} from 'vitest';
+import {afterEach, beforeEach, describe, expect, expectTypeOf, it, vi} from 'vitest';
 import {
   type CreatePluginContextOptions,
   type PluginContextServices,
@@ -16,6 +16,7 @@ import {
 } from './plugin-context.js';
 import type {PluginNavigationRouter} from './plugin-navigation.js';
 import {createPluginCatalogService} from '../services/plugin-catalog.service.js';
+import {toast} from '../services/toast/toast.svelte.js';
 import {createHostServices} from '../host-services.js';
 import type {PageListEntry, PluginBackendDescriptor, WidgetListEntry} from './plugin-types.js';
 
@@ -116,6 +117,13 @@ beforeEach(() => {
   ContextTickerWorker.instances.length = 0;
   gatheringValue = null;
   gatheringListeners.clear();
+});
+
+afterEach(() => {
+  toast.clear();
+  toast.setMaxToasts(4);
+  vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 const deviceInfo = {
@@ -721,5 +729,154 @@ describe('createPluginContext ownership', () => {
     const mod = await import('./plugin-context.js');
 
     expect((mod as Record<string, unknown>).consumeOverlayDispose).toBeUndefined();
+  });
+});
+
+describe('plugin toast facade', () => {
+  it('labels plugin toasts and keeps same-key toasts isolated from other instances and the host', () => {
+    const first = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
+    const second = createPluginContext({entry: widgetEntry(), instanceId: 'demo:2', hostInfo, deviceInfo});
+
+    first.context.toast.show({message: 'first', key: 'shared', duration: 0});
+    second.context.toast.show({message: 'second', key: 'shared', duration: 0});
+    toast.show({message: 'host', key: 'shared', duration: 0});
+
+    expect(toast.toasts.map(({message, pluginLabel}) => ({message, pluginLabel}))).toEqual([
+      {message: 'first', pluginLabel: 'Demo'},
+      {message: 'second', pluginLabel: 'Demo'},
+      {message: 'host', pluginLabel: undefined},
+    ]);
+
+    first.dispose('plugin-unmount');
+    second.dispose('plugin-unmount');
+  });
+
+  it('replaces a keyed toast only within the same plugin instance', () => {
+    const first = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
+    const second = createPluginContext({entry: widgetEntry(), instanceId: 'demo:2', hostInfo, deviceInfo});
+
+    first.context.toast.show({message: 'old first', key: 'shared', duration: 0});
+    second.context.toast.show({message: 'second', key: 'shared', duration: 0});
+
+    const priorId = toast.toasts.find(({message}) => message === 'old first')?.id;
+
+    first.context.toast.info('new first', {key: 'shared', duration: 0});
+
+    expect(toast.toasts).toHaveLength(2);
+    expect(toast.toasts.find(({message}) => message === 'new first')?.id).toBe(priorId);
+    expect(toast.toasts.some(({message}) => message === 'second')).toBe(true);
+
+    first.dispose('plugin-unmount');
+    second.dispose('plugin-unmount');
+  });
+
+  it('warns per instance again only after its rate-limit window drains', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-21T12:00:00Z'));
+    toast.setMaxToasts(50);
+
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const first = createPluginContext({entry: widgetEntry(), instanceId: 'demo:limit:first', hostInfo, deviceInfo});
+    const second = createPluginContext({entry: widgetEntry(), instanceId: 'demo:limit:second', hostInfo, deviceInfo});
+
+    first.context.toast.show({message: 'keyed', key: 'replace', duration: 0});
+
+    for (let index = 1; index < 8; index += 1) {
+      first.context.toast.show({message: `first toast ${index}`, duration: 0});
+    }
+
+    first.context.toast.show({message: 'replacement', key: 'replace', duration: 0});
+
+    const firstDrop = first.context.toast.show({message: 'first dropped', duration: 0});
+
+    for (let index = 0; index < 8; index += 1) {
+      second.context.toast.show({message: `second toast ${index}`, duration: 0});
+    }
+
+    const secondDrop = second.context.toast.show({message: 'second dropped', duration: 0});
+
+    expect(toast.toasts).toHaveLength(16);
+    expect(toast.toasts.some(({message}) => message === 'replacement')).toBe(true);
+    expect(toast.toasts.some(({message}) => message === 'first dropped' || message === 'second dropped')).toBe(false);
+    expect(warning).toHaveBeenCalledTimes(2);
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining('demo'));
+
+    firstDrop.dismiss();
+    secondDrop.dismiss();
+    first.context.toast.show({message: 'first still dropped', duration: 0});
+    second.context.toast.show({message: 'second still dropped', duration: 0});
+    expect(warning).toHaveBeenCalledTimes(2);
+
+    vi.advanceTimersByTime(9_999);
+    first.context.toast.show({message: 'first before reset', duration: 0});
+    second.context.toast.show({message: 'second before reset', duration: 0});
+    expect(warning).toHaveBeenCalledTimes(2);
+
+    vi.advanceTimersByTime(1);
+
+    for (let index = 0; index < 8; index += 1) {
+      first.context.toast.show({message: `first reset ${index}`, duration: 0});
+      second.context.toast.show({message: `second reset ${index}`, duration: 0});
+    }
+
+    first.context.toast.show({message: 'first dropped again', duration: 0});
+    second.context.toast.show({message: 'second dropped again', duration: 0});
+
+    expect(warning).toHaveBeenCalledTimes(4);
+    expect(warning).toHaveBeenNthCalledWith(3, expect.stringContaining('demo'));
+    expect(warning).toHaveBeenNthCalledWith(4, expect.stringContaining('demo'));
+    expect(toast.toasts.some(({message}) => message === 'first dropped again' || message === 'second dropped again'))
+      .toBe(false);
+
+    first.dispose('plugin-unmount');
+    second.dispose('plugin-unmount');
+  });
+
+  it('closes only this instance’s action toasts and warns once after unmount', () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const first = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
+    const second = createPluginContext({entry: widgetEntry(), instanceId: 'demo:2', hostInfo, deviceInfo});
+
+    first.context.toast.show({message: 'action first', duration: 0, action: {label: 'Go', onAction: () => {}}});
+    first.context.toast.show({message: 'plain first', duration: 0});
+    second.context.toast.show({message: 'action second', duration: 0, action: {label: 'Go', onAction: () => {}}});
+
+    first.dispose('plugin-unmount');
+    first.context.toast.info('after unmount');
+    first.context.toast.dismiss('missing');
+
+    expect(toast.toasts.map(({message}) => message)).toEqual(['plain first', 'action second']);
+    expect(warning).toHaveBeenCalledOnce();
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining('demo'));
+
+    second.dispose('plugin-unmount');
+  });
+
+  it('contains throwing and rejecting actions and logs the plugin name', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const handle = createPluginContext({entry: widgetEntry(), instanceId: 'demo:actions', hostInfo, deviceInfo});
+    const thrown = new Error('sync failure');
+    const rejected = new Error('async failure');
+
+    handle.context.toast.error('sync', {
+      duration: 0,
+      action: {label: 'Retry', onAction: (): void => {
+        throw thrown;
+      }},
+    });
+    handle.context.toast.error('async', {
+      duration: 0,
+      action: {label: 'Retry', onAction: async (): Promise<void> => Promise.reject(rejected)},
+    });
+
+    const actions = toast.toasts.map(({action}) => action?.onAction());
+
+    expect(actions[0]).toBeUndefined();
+    await expect(actions[1]).resolves.toBeUndefined();
+    expect(errorLog).toHaveBeenCalledTimes(2);
+    expect(errorLog).toHaveBeenNthCalledWith(1, expect.stringContaining('demo'), thrown);
+    expect(errorLog).toHaveBeenNthCalledWith(2, expect.stringContaining('demo'), rejected);
+
+    handle.dispose('plugin-unmount');
   });
 });

@@ -23,11 +23,13 @@ export type {Translator} from './translator.js';
 export type {PluginStorage} from './storage.js';
 export type {Ticker, TickerTick} from './ticker.js';
 export type {PluginTimers, RefreshLoop, RefreshLoopOptions} from './timers.js';
+export type {PluginToastHandle, PluginToastOptions, PluginToasts} from './toast.js';
 export type {LoadState} from './load-state.js';
 export type {
   OverlayAnchor,
   OverlayCloseEvent,
   OverlayCloseReason,
+  OverlayConfirmOptions,
   OverlayKind,
   OverlayLayer,
   OverlayLayerOptions,

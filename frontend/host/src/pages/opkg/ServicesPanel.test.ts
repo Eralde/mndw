@@ -14,10 +14,10 @@ const mockStart = vi.fn<(name: string) => Promise<{ok: true; service: ServiceEnt
 const mockStop = vi.fn<(name: string) => Promise<{ok: true; service: ServiceEntry}>>();
 const mockRestart = vi.fn<(name: string) => Promise<{ok: true; service: ServiceEntry}>>();
 const mockSetEnabled = vi.fn<(name: string, enabled: boolean) => Promise<{ok: true; service: ServiceEntry}>>();
-const {openHostModal} = vi.hoisted(() => ({openHostModal: vi.fn()}));
+const {confirmHost} = vi.hoisted(() => ({confirmHost: vi.fn()}));
 const context = createHostServicesContext(createHostServices());
 
-vi.mock('../../services/overlay/host-overlay.js', () => ({openHostModal}));
+vi.mock('../../services/overlay/host-overlay.js', () => ({confirmHost}));
 
 vi.mock('../../services/service-client.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../services/service-client.js')>();
@@ -112,8 +112,8 @@ beforeEach(() => {
   mockStop.mockReset();
   mockRestart.mockReset();
   mockSetEnabled.mockReset();
-  openHostModal.mockReset();
-  openHostModal.mockReturnValue({closed: Promise.resolve({result: true})});
+  confirmHost.mockReset();
+  confirmHost.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -340,7 +340,7 @@ describe('ServicesPanel boot controls', () => {
 
     await vi.waitFor(() => expect(mockSetEnabled).toHaveBeenCalledWith('S99foo', false));
     expect(rendererCell(target, 0).querySelector('small')?.textContent).toBe('K99foo');
-    expect(openHostModal).toHaveBeenCalled();
+    expect(confirmHost).toHaveBeenCalled();
     await unmount(app);
     target.remove();
   });

@@ -64,6 +64,19 @@ describe('ToastHost', () => {
     expect(toastEl?.getAttribute('role')).toBe('alert');
   });
 
+  it('renders plugin labels with the message and omits labels on host toasts', () => {
+    store.show({message: 'plugin message', pluginLabel: 'Demo plugin', duration: 0});
+    store.show({message: 'host message', duration: 0});
+    render();
+
+    const labels = target.querySelectorAll('.mndw-toast__plugin-label');
+
+    expect(labels).toHaveLength(1);
+    expect(labels[0]?.textContent).toBe('Demo plugin');
+    expect(target.querySelector('.mndw-toast')?.textContent).toContain('Demo plugin');
+    expect(target.textContent).toContain('host message');
+  });
+
   it('uses the status role for non-error toasts', () => {
     store.success('done');
     render();

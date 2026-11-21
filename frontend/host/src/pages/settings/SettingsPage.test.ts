@@ -637,8 +637,8 @@ describe('SettingsPage', () => {
     clearButton.click();
 
     await vi.waitFor(() => expect(activeServices.overlayRuntime.store.layers).toHaveLength(1));
-    expect(activeServices.overlayRuntime.store.layers[0]?.contentElement.textContent)
-      .toContain('Persistent RCI sessions will stop until you save a controller token again.');
+    expect(activeServices.overlayRuntime.store.layers[0]?.shell?.description)
+      .toBe('Persistent RCI sessions will stop until you save a controller token again.');
     expect(clearController).not.toHaveBeenCalled();
 
     activeServices.overlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[1]?.click();

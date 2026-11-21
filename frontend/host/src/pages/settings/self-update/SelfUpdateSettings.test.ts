@@ -151,8 +151,8 @@ it('requires confirmation before applying an update and opens a blocking progres
 
   await vi.waitFor(() => expect(activeServices.overlayRuntime.store.layers).toHaveLength(1));
   expect(apply).not.toHaveBeenCalled();
-  expect(activeServices.overlayRuntime.store.layers[0]?.contentElement.textContent).toContain(
-    'Install update to 0.0.4?',
+  expect(activeServices.overlayRuntime.store.layers[0]?.shell?.description).toBe(
+    'Install update to 0.0.4? mndw will restart.',
   );
 
   activeServices.overlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[1]?.click();
@@ -180,7 +180,9 @@ it('requires confirmation before reverting', async () => {
 
   await vi.waitFor(() => expect(activeServices.overlayRuntime.store.layers).toHaveLength(1));
   expect(revert).not.toHaveBeenCalled();
-  expect(activeServices.overlayRuntime.store.layers[0]?.contentElement.textContent).toContain('Revert to 0.0.2?');
+  expect(activeServices.overlayRuntime.store.layers[0]?.shell?.description).toBe(
+    'Revert to 0.0.2? mndw will restart.',
+  );
 
   activeServices.overlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[1]?.click();
   await vi.waitFor(() => expect(revert).toHaveBeenCalledOnce());

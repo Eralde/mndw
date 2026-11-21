@@ -46,7 +46,7 @@ const sizeStyle = $derived.by(() => {
 <div
   class="mndw-overlay-dialog mndw-overlay-dialog--{layer.kind} mndw-overlay-dialog--{layer.placement} {layer.mobileSheet ? 'mndw-overlay-dialog--sheet' : ''} {layer.className ?? ''}"
   data-locale={appState.locale}
-  role="dialog"
+  role={layer.shell?.role ?? 'dialog'}
   aria-modal={layer.kind === 'modal' || layer.kind === 'drawer' ? 'true' : undefined}
   aria-labelledby={layer.shell?.title ? titleId : undefined}
   aria-describedby={layer.shell?.description ? descId : undefined}

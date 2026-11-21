@@ -2,8 +2,7 @@
 import {onDestroy, onMount} from 'svelte';
 import type {MndwSelectChangeDetail, MndwSwitchChangeDetail} from '@mndw/ui';
 import PaletteManager from './palette-manager/PaletteManager.svelte';
-import ConfirmActionModal from '../opkg/ConfirmActionModal.svelte';
-import {openHostModal} from '../../services/overlay/host-overlay.js';
+import {confirmHost} from '../../services/overlay/host-overlay.js';
 import {toast} from '../../services/toast/toast.svelte.js';
 import {appState} from '../../state/app.svelte.js';
 import {getHostServices} from '../../host-services-context.js';
@@ -20,12 +19,6 @@ interface CapabilityState {
 
 interface Props {
   onCapabilityStateChange: (state: CapabilityState) => void;
-}
-
-interface ConfirmationProps {
-  message: string;
-  confirmLabel: string;
-  close: (confirmed: boolean) => void;
 }
 
 const TELEMETRY_SAVE_TOAST_KEY = 'settings.telemetry.save';
@@ -344,20 +337,14 @@ async function saveController(): Promise<void> {
 }
 
 async function clearController(): Promise<void> {
-  const session = openHostModal<boolean, ConfirmationProps>(
-    services.hostOverlay,
-    ConfirmActionModal,
-    {
-      title: hostT('settings.clear-controller-session-title'),
-      props: {
-        message: hostT('settings.clear-controller-session-confirm'),
-        confirmLabel: hostT('settings.clear-controller-session'),
-      },
-    },
-  );
-  const event = await session.closed;
+  const confirmed = await confirmHost(services.hostOverlay, {
+    title: hostT('settings.clear-controller-session-title'),
+    message: hostT('settings.clear-controller-session-confirm'),
+    confirmLabel: hostT('settings.clear-controller-session'),
+    danger: true,
+  });
 
-  if (destroyed || event.result !== true) {
+  if (destroyed || !confirmed) {
     return;
   }
 

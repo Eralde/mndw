@@ -17,7 +17,7 @@ import {
 } from '../../services/opkg-client.js';
 import type {PackageEntry} from '../../services/opkg-client.js';
 import {toast} from '../../services/toast/toast.svelte.js';
-import {openHostModal} from '../../services/overlay/host-overlay.js';
+import {confirmHost} from '../../services/overlay/host-overlay.js';
 import {getHostServices} from '../../host-services-context.js';
 import {appState} from '../../state/app.svelte.js';
 import {HOST_PATHS} from '../../router/host-routes.js';
@@ -36,7 +36,6 @@ import type {
   PackageDetailState,
 } from './PackageDetailCell.svelte';
 import {compareVersions} from './compare-versions.js';
-import ConfirmActionModal from './ConfirmActionModal.svelte';
 import EmptyState from '../../components/EmptyState.svelte';
 import {observeCompactPanelWidth} from './panel-width.js';
 
@@ -288,22 +287,16 @@ async function runAction(
   if (names.length === 0) { return; }
   if (opkgBusy) { return; }
   if (action === 'remove') {
-    const session = openHostModal<boolean, {
-      message: string;
-      confirmLabel: string;
-      close: (result: boolean) => void;
-    }>(hostServices.hostOverlay, ConfirmActionModal, {
+    const confirmed = await confirmHost(hostServices.hostOverlay, {
       title: hostT('packages.confirm-remove-title'),
-      props: {
-        message: hostT('packages.confirm-remove', {names: names.join(', ')}),
-        confirmLabel: hostT('packages.remove'),
-      },
+      message: hostT('packages.confirm-remove', {names: names.join(', ')}),
+      confirmLabel: hostT('packages.remove'),
+      danger: true,
     });
-    const event = await session.closed;
     if (destroyed) {
       return;
     }
-    if (event.result) { await executeAction('remove', names, undefined, true); }
+    if (confirmed) { await executeAction('remove', names, undefined, true); }
     return;
   }
   await executeAction(action, names, undefined, true);
@@ -476,21 +469,16 @@ async function removeOne(
   name: string,
   source: ActionFocusTarget['source'] = 'primary',
 ): Promise<void> {
-  const session = openHostModal<boolean,
-    {message: string; confirmLabel: string; close: (result: boolean) => void}>(
-      hostServices.hostOverlay,
-      ConfirmActionModal,
-      {
-        title: hostT('packages.confirm-remove-title'),
-        props: {message: hostT('packages.confirm-remove', {names: name}),
-          confirmLabel: hostT('packages.remove')},
-      },
-    );
-  const event = await session.closed;
+  const confirmed = await confirmHost(hostServices.hostOverlay, {
+    title: hostT('packages.confirm-remove-title'),
+    message: hostT('packages.confirm-remove', {names: name}),
+    confirmLabel: hostT('packages.remove'),
+    danger: true,
+  });
   if (destroyed) {
     return;
   }
-  if (event.result) {
+  if (confirmed) {
     await executeAction('remove', [name], {packageName: name, source});
   }
 }

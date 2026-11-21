@@ -106,7 +106,6 @@
   "action": {
     "retry": "Retry",
     "confirm": "Confirm",
-    "cancel": "Cancel",
     "zoom-in": "Zoom in",
     "zoom-out": "Zoom out",
     "fit": "Fit to content",

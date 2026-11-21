@@ -155,7 +155,12 @@ onMount(() => {
         aria-live={toast.variant === 'error' ? 'assertive' : 'polite'}
         use:swipeToDismiss={{enabled: isMobile, onDismiss: () => store.dismiss(toast.id)}}
       >
-        <span class="mndw-toast__body">{toast.message}</span>
+        <span class="mndw-toast__body">
+          {#if toast.pluginLabel !== undefined}
+            <span class="mndw-toast__plugin-label">{toast.pluginLabel}</span>
+          {/if}
+          <span>{toast.message}</span>
+        </span>
         {#if toast.action !== undefined}
           <button
             type="button"
@@ -210,6 +215,13 @@ onMount(() => {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere; /* wrap the long joined dependency list cleanly */
+}
+
+.mndw-toast__plugin-label {
+  display: block;
+  margin-block-end: var(--mndw-space-1);
+  color: var(--mndw-text-muted);
+  font-size: var(--mndw-text-xs);
 }
 
 .mndw-toast__dismiss {

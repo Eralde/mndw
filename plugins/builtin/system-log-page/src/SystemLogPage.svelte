@@ -10,7 +10,6 @@ import type {
   Translator,
 } from '@mndw/sdk';
 import {createTranslator} from '@mndw/sdk/svelte';
-import {openClearConfirmation} from './clear-log-confirmation';
 import {ALL_LOG_LEVELS, type FilterState, filterRecords} from './log-filters';
 import LogFilters from './LogFilters.svelte';
 import LogRow from './LogRow.svelte';
@@ -131,9 +130,14 @@ function updateConnectionState(next: LogConnectionState): void {
 
 async function requestClear(): Promise<void> {
   try {
-    const result = await openClearConfirmation(_overlay, $translator);
+    const confirmed = await _overlay.confirm({
+      title: t('confirm.clear-log.title'),
+      message: t('confirm.clear-log.question'),
+      confirmLabel: t('action.clear'),
+      danger: true,
+    });
 
-    if (result.result?.confirmed !== true) {
+    if (!confirmed) {
       return;
     }
 

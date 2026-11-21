@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "name": "system-log-page",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "page",
   "label": "System Log",
   "description": "Browse, filter, and download the router's system log.",

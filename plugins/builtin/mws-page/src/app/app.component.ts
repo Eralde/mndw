@@ -21,7 +21,6 @@ import type {MwsNode} from '../domain/mws/mws.types';
 import {NodePositionStore} from '../services/node-position.store';
 import {ExtraFeaturesBannerStore} from '../services/extra-features-banner.store';
 import {MwsDataService} from '../services/mws-data.service';
-import {openAutoLayoutConfirmation} from './auto-layout-confirmation';
 import {type ExtraFeaturesPopoverController, openExtraFeaturesPopover} from './extra-features-popover';
 import {HOST_NAVIGATION, MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, OVERLAY, TRANSLATOR} from '../tokens';
 
@@ -281,9 +280,14 @@ export class AppComponent implements OnDestroy, OnInit {
   }
 
   protected async autoLayout(): Promise<void> {
-    const closed = await openAutoLayoutConfirmation(this.overlay, (key, values) => this.t(key, values));
+    const confirmed = await this.overlay.confirm({
+      title: this.t('auto-layout.title'),
+      message: this.t('auto-layout.description'),
+      confirmLabel: this.t('action.confirm'),
+      danger: true,
+    });
 
-    if (closed.result !== 'confirm') {
+    if (!confirmed) {
       return;
     }
 

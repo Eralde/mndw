@@ -28,7 +28,8 @@ browser assets.
   current values and observable updates through `appearance.theme$` and `appearance.palette$`; `i18n.locale$` emits
   the active locale after its catalog is applied. See the [frontend lifecycle guide](/guides/frontend-lifecycle).
 - `telemetry` fetches projected data; `events` always exists, while subscriptions require matching manifest event capabilities.
-- `overlay` presents modals and drawers, and `timers.createTicker()` creates a host-managed ticker.
+- `overlay` presents modals and drawers, `toast` shows brief plugin-labeled notifications, and
+  `timers.createTicker()` creates a host-managed ticker.
 - `pageRoute` provides navigation within page plugins. The host draws each widget's tile title; use `setTileTitle`
   (`ctx.setTileTitle(ctx.i18n.t('title'))`) to set its translated value on mount and when the locale changes. Do not
   draw a second widget title inside the plugin. Pages should keep their own visible `<h2>` heading.

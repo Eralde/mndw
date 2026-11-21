@@ -15,7 +15,8 @@ import {MNDW_TOKENS, type MndwThemeName} from '../tokens.js';
 import type {PaletteTokenMap} from '../palette.js';
 import {type PluginRciManager, type PluginRciManagerMethod, createPluginRci} from '../rci.js';
 import type {PluginTelemetry} from '../telemetry-client.js';
-import type {OverlayService} from '../overlay.js';
+import type {PluginToastOptions, PluginToastShortcutOptions, PluginToasts} from '../toast.js';
+import type {OverlayConfirmOptions, OverlayService} from '../overlay.js';
 import type {PluginStorage} from '../storage.js';
 import type {Ticker, TickerTick} from '../ticker.js';
 import {createPluginTimers} from '../timers.js';
@@ -41,16 +42,33 @@ export interface TestPluginContextOptions {
   i18n?: PluginI18n;
   backend?: BackendClient;
   telemetry?: Partial<PluginTelemetry>;
+  /** Presets the answer returned by `context.overlay.confirm()` in plugin tests. */
+  overlay?: {
+    confirm?: (options: OverlayConfirmOptions) => Promise<boolean>;
+  };
   pageRoute?: PageRoute;
   instanceId?: string;
   events?: boolean;
 }
+
+export type TestPluginToastCall =
+  | {readonly type: 'show'; readonly options: PluginToastOptions; readonly handleId: number}
+  | {
+    readonly type: 'success' | 'info' | 'warning' | 'error';
+    readonly message: string;
+    readonly options?: PluginToastShortcutOptions;
+    readonly handleId: number;
+  }
+  | {readonly type: 'dismiss'; readonly key: string}
+  | {readonly type: 'handle.dismiss'; readonly handleId: number};
 
 export interface TestPluginContext<C extends PluginContext = PluginContext> {
   readonly context: C;
   readonly navigationCalls: HostTarget[];
   /** Titles passed to the default widget `setTileTitle` recorder. */
   readonly tileTitles: string[];
+  /** Toast calls and returned-handle dismissals in invocation order. */
+  readonly toastCalls: TestPluginToastCall[];
   setTheme(theme: MndwThemeName): void;
   setLocale(locale: string): void;
   setPalette(palette: PaletteTokenMap): void;
@@ -117,7 +135,7 @@ function createStorage(): PluginStorage {
   };
 }
 
-function createOverlay(): OverlayService {
+function createOverlay(options?: TestPluginContextOptions['overlay']): OverlayService {
   const notConfigured = (method: string): never => {
     throw new Error(`test overlay.${method} not configured`);
   };
@@ -125,7 +143,54 @@ function createOverlay(): OverlayService {
   return {
     createLayer: () => notConfigured('createLayer'),
     open: () => notConfigured('open'),
+    confirm: (confirmOptions) =>
+      options?.confirm === undefined
+        ? notConfigured('confirm')
+        : options.confirm(confirmOptions),
     closeAll: () => notConfigured('closeAll'),
+  };
+}
+
+function createToastRecorder(calls: TestPluginToastCall[]): PluginToasts {
+  let nextHandleId = 1;
+  const createHandle = (handleId: number): {dismiss: () => void} => ({
+    dismiss: (): void => {
+      calls.push({type: 'handle.dismiss', handleId});
+    },
+  });
+  const show = (toastOptions: PluginToastOptions): {dismiss: () => void} => {
+    const handleId = nextHandleId++;
+
+    calls.push({type: 'show', options: toastOptions, handleId});
+
+    return createHandle(handleId);
+  };
+  const shortcut = (
+    type: 'success' | 'info' | 'warning' | 'error',
+    message: string,
+    options?: PluginToastShortcutOptions,
+  ): {dismiss: () => void} => {
+    const handleId = nextHandleId++;
+
+    calls.push({
+      type,
+      message,
+      ...(options === undefined ? {} : {options}),
+      handleId,
+    });
+
+    return createHandle(handleId);
+  };
+
+  return {
+    show,
+    success: (message, options) => shortcut('success', message, options),
+    info: (message, options) => shortcut('info', message, options),
+    warning: (message, options) => shortcut('warning', message, options),
+    error: (message, options) => shortcut('error', message, options),
+    dismiss: (key): void => {
+      calls.push({type: 'dismiss', key});
+    },
   };
 }
 
@@ -211,6 +276,7 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
   const injectedTickers = new Set<Ticker>();
   const navigationCalls: HostTarget[] = [];
   const tileTitles: string[] = [];
+  const toastCalls: TestPluginToastCall[] = [];
   const abortController = new AbortController();
   let unmounted = false;
   const createTicker = (): Ticker => {
@@ -325,7 +391,8 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
     instanceId: options.instanceId ?? 'test:1',
     events,
     backend: options.backend ?? createBackendClient('test', undefined),
-    overlay: createOverlay(),
+    overlay: createOverlay(options.overlay),
+    toast: createToastRecorder(toastCalls),
   });
 
   let context: PluginContext;
@@ -350,6 +417,7 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
     context: Object.freeze(context),
     navigationCalls,
     tileTitles,
+    toastCalls,
     setTheme: (next): void => theme.next(next),
     setLocale: (next): void => {
       if (options.i18n === undefined) {

@@ -9,9 +9,9 @@ import {createHostServicesContext} from '../../host-services-context.js';
 const mockList = vi.fn<() => Promise<ServiceEntry[]>>();
 const mockStatus = vi.fn<(name: string, signal?: AbortSignal) => Promise<ServiceEntry>>();
 const mockSetEnabled = vi.fn<(name: string, enabled: boolean) => Promise<{ok: true; service: ServiceEntry}>>();
-const {openHostModal} = vi.hoisted(() => ({openHostModal: vi.fn()}));
+const {confirmHost} = vi.hoisted(() => ({confirmHost: vi.fn()}));
 
-vi.mock('../../services/overlay/host-overlay.js', () => ({openHostModal}));
+vi.mock('../../services/overlay/host-overlay.js', () => ({confirmHost}));
 
 vi.mock('../../services/service-client.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../services/service-client.js')>();
@@ -54,8 +54,8 @@ beforeEach(() => {
   mockList.mockReset();
   mockStatus.mockReset();
   mockSetEnabled.mockReset();
-  openHostModal.mockReset();
-  openHostModal.mockReturnValue({closed: Promise.resolve({result: true})});
+  confirmHost.mockReset();
+  confirmHost.mockResolvedValue(true);
   host = document.createElement('div');
   document.body.appendChild(host);
 });

@@ -5,11 +5,10 @@ import type {ComponentProps} from 'svelte';
 import {onMount} from 'svelte';
 import {ServiceError} from '../../services/service-client.js';
 import type {ServiceEntry} from '../../services/service-client.js';
-import {openHostModal} from '../../services/overlay/host-overlay.js';
+import {confirmHost} from '../../services/overlay/host-overlay.js';
 import {getHostServices} from '../../host-services-context.js';
 import {appState} from '../../state/app.svelte.js';
 import EmptyState from '../../components/EmptyState.svelte';
-import ConfirmActionModal from './ConfirmActionModal.svelte';
 import ServiceNameCell from './ServiceNameCell.svelte';
 import ServiceStateCell from './ServiceStateCell.svelte';
 import type {ServiceRow} from './service-row.js';
@@ -215,26 +214,16 @@ async function loadServices(): Promise<void> {
   }
 }
 
-type ConfirmProps = {
-  message: string;
-  confirmLabel: string;
-  close: (result: boolean) => void;
-};
-
 async function confirm(
   message: string,
   confirmLabel: string,
 ): Promise<boolean> {
-  const session = openHostModal<boolean, ConfirmProps>(
-    hostServices.hostOverlay,
-    ConfirmActionModal,
-    {
-      title: hostT('services.confirm-title'),
-      props: {message, confirmLabel},
-    },
-  );
-  const event = await session.closed;
-  return event.result === true;
+  return confirmHost(hostServices.hostOverlay, {
+    title: hostT('services.confirm-title'),
+    message,
+    confirmLabel,
+    danger: true,
+  });
 }
 
 async function confirmAction(

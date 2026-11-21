@@ -4,13 +4,11 @@
   "action": {
     "download": "Download",
     "clear": "Clear log",
-    "cancel": "Cancel",
     "reconnect": "Reconnect"
   },
   "confirm": {
     "clear-log": {
       "title": "Clear system log",
-      "description": "Remove all current router system-log records?",
       "question": "Clear all records from the router system log?"
     }
   },
@@ -30,8 +28,7 @@
     "clear": "Unable to clear system log: {message}"
   },
   "aria": {
-    "entries": "System log entries",
-    "clear-log-confirmation": "Clear system log"
+    "entries": "System log entries"
   },
   "filter": {
     "aria-label": "Log filters",

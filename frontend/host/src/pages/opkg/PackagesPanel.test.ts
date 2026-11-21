@@ -8,9 +8,9 @@ import {createHostServices} from '../../host-services.js';
 import {createTestLocaleController} from '../../testing/test-locale.js';
 import {TestResizeObserver} from './test-resize-observer.js';
 
-const {openHostModal} = vi.hoisted(() => ({openHostModal: vi.fn()}));
+const {confirmHost} = vi.hoisted(() => ({confirmHost: vi.fn()}));
 
-vi.mock('../../services/overlay/host-overlay.js', () => ({openHostModal}));
+vi.mock('../../services/overlay/host-overlay.js', () => ({confirmHost}));
 
 import PackagesPanel from './PackagesPanel.svelte';
 
@@ -126,7 +126,7 @@ describe('PackagesPanel controls', () => {
       component = undefined;
     }
 
-    openHostModal.mockReset();
+    confirmHost.mockReset();
     toast.clear();
     vi.restoreAllMocks();
     host?.remove();
@@ -868,13 +868,13 @@ describe('PackagesPanel controls', () => {
     vi.spyOn(opkgClient, 'info').mockResolvedValue(info);
     vi.spyOn(opkgClient, 'remove').mockResolvedValue({message: 'Removed', packages: ['curl']});
 
-    let resolveConfirmation: ((event: {result: boolean}) => void) | undefined;
+    let resolveConfirmation: ((confirmed: boolean) => void) | undefined;
 
-    openHostModal.mockReturnValue({
-      closed: new Promise((resolve) => {
+    confirmHost.mockReturnValue(
+      new Promise((resolve) => {
         resolveConfirmation = resolve;
       }),
-    });
+    );
 
     renderPanel();
 
@@ -893,8 +893,8 @@ describe('PackagesPanel controls', () => {
     detailRemove?.focus();
     detailRemove?.click();
 
-    await vi.waitFor(() => expect(openHostModal).toHaveBeenCalledOnce());
-    resolveConfirmation?.({result: true});
+    await vi.waitFor(() => expect(confirmHost).toHaveBeenCalledOnce());
+    resolveConfirmation?.(true);
 
     await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(2));
     await vi.waitFor(() => {

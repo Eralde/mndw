@@ -17,6 +17,7 @@ import {
   isMobileSheet,
   resolveSizing,
 } from './overlay-position.js';
+import {confirmHost} from './host-overlay.js';
 
 /** Reasons the host applies internally; never assignable through public `close()`. */
 type HostCloseReason = OverlayCloseReason;
@@ -84,6 +85,7 @@ function behaviorDefaults(kind: OverlayKind): BehaviorDefaults {
 export interface ShellConfig {
   title?: string;
   description?: string;
+  role?: 'dialog' | 'alertdialog';
   showCloseButton: boolean;
 }
 
@@ -472,7 +474,10 @@ class LayerController<Result = unknown> implements OverlaySession<Result> {
 
     this.focusTrap = createFocusTrap(this.hostElement, {
       // Start in plugin content; the shell's close button is only the fallback (Q1).
-      initialFocus: () => tabbableElements(this.contentElement)[0] ?? null,
+      initialFocus: () =>
+        this.contentElement.querySelector<HTMLElement>('[data-overlay-initial-focus]')
+          ?? tabbableElements(this.contentElement)[0]
+          ?? null,
       // Restoration stays with restoreFocusOnClose(), which knows popover-anchor rules.
       restoreFocus: false,
       // Layers stacked above this one (popovers, selects) may own focus.
@@ -561,13 +566,13 @@ export function createPluginOverlayService(
     open<Result = unknown>(options: OverlayOpenOptions<Result>): OverlaySession<Result> {
       assertLive();
 
-      const {title, description, showCloseButton, mount, kind, ...rest} = options;
+      const {title, description, role, showCloseButton, mount, kind, ...rest} = options;
       const layer = new LayerController<Result>(
         runtime,
         pluginName,
         instanceId,
         {kind, ...rest},
-        {title, description, showCloseButton: showCloseButton ?? true},
+        {title, description, role, showCloseButton: showCloseButton ?? true},
       );
 
       runtime.addLayer(layer);
@@ -594,6 +599,11 @@ export function createPluginOverlayService(
       for (const layer of instanceLayers()) {
         layer.close(undefined, 'api');
       }
+    },
+    confirm(options): Promise<boolean> {
+      assertLive();
+
+      return confirmHost(service, options);
     },
   };
 

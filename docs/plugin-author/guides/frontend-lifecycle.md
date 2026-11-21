@@ -334,6 +334,39 @@ subscription.unsubscribe();
 void values;
 ```
 
+## Toasts
+
+Use `ctx.toast` for brief feedback after an operation, such as a successful save or a failed connection. Keep persistent,
+actionable, contextual, and field-validation state in the plugin view so users can find and act on it in context.
+
+```ts
+ctx.toast.success(ctx.i18n.t('settings.saved'));
+ctx.toast.warning(ctx.i18n.t('connection.lost'), {key: 'connection'});
+ctx.toast.dismiss('connection');
+```
+
+`ctx.toast.show()` accepts a message, optional `success`, `info`, `warning`, or `error` variant, optional replacement key,
+duration, and action. The `success`, `info`, `warning`, and `error` shortcuts set the variant. Success and info messages
+default to four seconds; warnings and errors stay until dismissed. Every toast shows the plugin's localized manifest label
+above its message. Use catalog key `manifest.label` to localize that label.
+
+Keys are scoped to one mounted plugin instance, so equal keys from another instance or host code do not replace each other.
+Each instance can create up to eight new toasts per ten seconds; replacing a currently displayed keyed toast does not count.
+The host warns once per plugin and browser window when it drops excess toasts. Unmount closes that instance's toasts with
+actions; ordinary toasts remain until dismissal or their timer expires. Calls after unmount do nothing and warn once for that
+instance. Action exceptions and rejected promises are contained and logged with the plugin name.
+
+`createTestPluginContext()` records toast calls and handle dismissals in `fixture.toastCalls`:
+
+```ts
+import {createTestPluginContext} from '@mndw/sdk/testing';
+
+const fixture = createTestPluginContext();
+fixture.context.toast.error('Could not save', {key: 'save'});
+fixture.context.toast.dismiss('save');
+fixture.unmount();
+```
+
 ## Angular lifecycle helpers and overlays
 
 `@mndw/sdk/angular` exports `createAngularPluginInstance` and `mountComponentInOverlay`. The root helper owns
@@ -343,14 +376,45 @@ Pass `provideTranslator(ctx.i18n)` when the component tree injects `TRANSLATOR`.
 
 For overlay content, `ctx.overlay.open()` accepts modal or drawer options with optional `title`, `description`,
 `showCloseButton`, sizing, focus, and dismissal settings, plus a `mount(target, layer, signal)` callback. The signal
-aborts when closing starts; use it to cancel work tied to the overlay. Call `mountComponentInOverlay` from the root
-helper's `configure` callback with its `appRef`, the overlay `target` and `layer`, and the child component type. The
-helper attaches the child view and registers detach/destroy cleanup with the layer. A `setup(ref)` callback may return
-a cleanup function for subscriptions. `ctx.overlay.createLayer()` creates popover or custom layers;
+aborts when closing starts; use it to cancel work tied to the overlay. The public `role` option accepts `'dialog'` or
+`'alertdialog'`. An alertdialog marks a modal alert that interrupts the current task and requires a response. Use
+`role: 'alertdialog'` for urgent warnings that need a response; `ctx.overlay.confirm()` already uses this role.
+For Angular content, call `mountComponentInOverlay` from the root helper's `configure` callback with its `appRef`, the
+overlay `target` and `layer`, and the child component type. The helper attaches the child view and registers
+detach/destroy cleanup with the layer. A `setup(ref)` callback may return a cleanup function for subscriptions.
+`ctx.overlay.createLayer()` creates popover or custom layers;
 `ctx.overlay.closeAll()` closes overlays opened by this plugin instance. The host owns stacking, focus, dismissal,
 backdrop, scroll lock, and overlay cleanup; plugins mount content into host-provided targets and register teardown.
 Direct Angular mounting remains supported when these helpers do not fit. See the
 [Angular SDK API](/api/sdk/angular) and [overlay API](/api/sdk).
+
+Use `ctx.overlay.confirm()` for a host-owned confirmation dialog. Pass a required `title` and optional `message`,
+`confirmLabel`, `cancelLabel`, and `danger`. Omitted labels use the host catalog's localized Confirm and Cancel
+labels. The promise resolves `true` only after confirmation; Cancel, Escape, outside click, plugin unmount, host
+navigation, and `closeAll()` resolve `false`.
+
+```ts
+declare const deleteItem: () => Promise<void>;
+
+const confirmed = await ctx.overlay.confirm({
+  title: ctx.i18n.t('delete.title'),
+  message: ctx.i18n.t('delete.message'),
+  confirmLabel: ctx.i18n.t('delete.confirm'),
+  danger: true,
+});
+
+if (confirmed) {
+  await deleteItem();
+}
+```
+
+Preset the result in plugin tests through `createTestPluginContext({overlay: {confirm}})`:
+
+```ts
+import {createTestPluginContext} from '@mndw/sdk/testing';
+
+const fixture = createTestPluginContext({overlay: {confirm: async () => true}});
+```
 
 ## Page routes and backend errors
 

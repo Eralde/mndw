@@ -1,10 +1,24 @@
 import {Subject, of} from 'rxjs';
-import {describe, expect, it} from 'vitest';
+import {describe, expect, it, vi} from 'vitest';
 import type {MndwEvent} from '../event-schema.js';
 import {createTestI18n} from './i18n.js';
 import {createTestPluginContext} from './plugin-context.js';
 
 describe('createTestPluginContext', () => {
+  it('records toast calls and handle dismissals', () => {
+    const fixture = createTestPluginContext();
+    const handle = fixture.context.toast.error('failed', {key: 'request'});
+
+    handle.dismiss();
+    fixture.context.toast.dismiss('request');
+
+    expect(fixture.toastCalls).toMatchObject([
+      {type: 'error', message: 'failed', options: {key: 'request'}, handleId: 1},
+      {type: 'handle.dismiss', handleId: 1},
+      {type: 'dismiss', key: 'request'},
+    ]);
+  });
+
   it('aborts its signal when the fixture unmounts', () => {
     const fixture = createTestPluginContext();
 
@@ -55,6 +69,22 @@ describe('createTestPluginContext', () => {
 
     expect('locale' in fixture.context).toBe(false);
     expect(fixture.context.i18n.locale).toBe('en');
+  });
+
+  it('uses a preset answer for overlay confirmations', async () => {
+    const confirm = vi.fn(() => Promise.resolve(true));
+    const fixture = createTestPluginContext({overlay: {confirm}});
+    const options = {title: 'Remove package?', danger: true};
+
+    await expect(fixture.context.overlay.confirm(options)).resolves.toBe(true);
+    expect(confirm).toHaveBeenCalledWith(options);
+  });
+
+  it('keeps overlay methods unconfigured except for the injected confirm fake', async () => {
+    const fixture = createTestPluginContext({overlay: {confirm: () => Promise.resolve(false)}});
+
+    await expect(fixture.context.overlay.confirm({title: 'Continue?'})).resolves.toBe(false);
+    expect(() => fixture.context.overlay.closeAll()).toThrow('test overlay.closeAll not configured');
   });
 
   it('completes streams on unmount', () => {

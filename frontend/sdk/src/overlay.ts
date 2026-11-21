@@ -100,8 +100,18 @@ export interface OverlayOpenOptions<Result = unknown> extends Omit<OverlayLayerO
   kind: 'modal' | 'drawer';
   title?: string;
   description?: string;
+  /** Overrides the accessibility role on the host-owned dialog shell. */
+  role?: 'dialog' | 'alertdialog';
   showCloseButton?: boolean;
   mount: OverlayMount<Result>;
+}
+
+export interface OverlayConfirmOptions {
+  title: string;
+  message?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  danger?: boolean;
 }
 
 export interface OverlaySession<Result = unknown> extends OverlayLayer<Result> {
@@ -126,6 +136,7 @@ export interface OverlaySession<Result = unknown> extends OverlayLayer<Result> {
 export interface OverlayService {
   createLayer<Result = unknown>(options: OverlayLayerOptions): OverlayLayer<Result>;
   open<Result = unknown>(options: OverlayOpenOptions<Result>): OverlaySession<Result>;
+  confirm(options: OverlayConfirmOptions): Promise<boolean>;
   /** Closes all overlays opened by this plugin instance with reason 'api'. */
   closeAll(): void;
 }

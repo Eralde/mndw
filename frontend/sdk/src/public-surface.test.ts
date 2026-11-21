@@ -2,6 +2,7 @@ import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import ts from 'typescript';
 import {describe, expect, it} from 'vitest';
+import type {OverlayOpenOptions} from './index.js';
 
 const EXPECTED_TYPE_EXPORTS = [
   'BackendApprovalStatus',
@@ -30,6 +31,7 @@ const EXPECTED_TYPE_EXPORTS = [
   'OverlayAnchor',
   'OverlayCloseEvent',
   'OverlayCloseReason',
+  'OverlayConfirmOptions',
   'OverlayKind',
   'OverlayLayer',
   'OverlayLayerOptions',
@@ -52,6 +54,9 @@ const EXPECTED_TYPE_EXPORTS = [
   'PluginResizeSize',
   'PluginStorage',
   'PluginTimers',
+  'PluginToastHandle',
+  'PluginToastOptions',
+  'PluginToasts',
   'ProjectRange',
   'ProjectedBand',
   'ProjectedBandPoint',
@@ -127,6 +132,16 @@ const EXPECTED_SUBPATHS = [
 const EXPECTED_PUBLISHED_SUBPATHS = EXPECTED_SUBPATHS.filter((subpath) => subpath !== './internal/timers');
 
 describe('SDK public surface', () => {
+  it('accepts alertdialog as a public overlay role', () => {
+    const options: OverlayOpenOptions = {
+      kind: 'modal',
+      role: 'alertdialog',
+      mount: () => undefined,
+    };
+
+    expect(options.role).toBe('alertdialog');
+  });
+
   it('exports exactly the public types and values', () => {
     const indexPath = fileURLToPath(new URL('./index.ts', import.meta.url));
     const program = ts.createProgram([indexPath], {

@@ -87,6 +87,19 @@ type WritableStatusServiceDouble =
 
 let testI18n = createTestI18n(enCatalog);
 let testPluginContext = createTestPluginContext();
+const confirmationContexts: ReturnType<typeof createTestPluginContext>[] = [];
+
+function presetConfirm(confirmed: boolean): {
+  confirm: ReturnType<typeof vi.fn>;
+  overlay: ReturnType<typeof createTestPluginContext>['context']['overlay'];
+} {
+  const confirm = vi.fn(() => Promise.resolve(confirmed));
+  const fixture = createTestPluginContext({overlay: {confirm}});
+
+  confirmationContexts.push(fixture);
+
+  return {confirm, overlay: fixture.context.overlay};
+}
 
 function writableStatusServiceDouble(): WritableStatusServiceDouble {
   return {
@@ -266,6 +279,12 @@ describe('AppComponent', () => {
   afterEach(() => {
     TestBed.resetTestingModule();
     testPluginContext.unmount();
+
+    for (const context of confirmationContexts) {
+      context.unmount();
+    }
+
+    confirmationContexts.length = 0;
   });
 
   it('forwards status-service Signals through the real read-only data facade', () => {
@@ -374,9 +393,7 @@ describe('AppComponent', () => {
 
   it('clears positions only after auto-layout confirmation', async () => {
     const clear = vi.fn(() => Promise.resolve());
-    const overlay = {
-      open: vi.fn(() => ({closed: Promise.resolve({reason: 'action', result: 'confirm'})})),
-    };
+    const {confirm, overlay} = presetConfirm(true);
 
     TestBed.overrideProvider(OVERLAY, {useValue: overlay});
 
@@ -386,15 +403,18 @@ describe('AppComponent', () => {
     vi.spyOn(positions, 'clear').mockImplementation(clear);
     await (fixture.componentInstance as unknown as {autoLayout: () => Promise<void>}).autoLayout();
 
-    expect(overlay.open).toHaveBeenCalledOnce();
+    expect(confirm).toHaveBeenCalledWith({
+      title: 'Reset map layout?',
+      message: 'This removes saved node positions for this session.',
+      confirmLabel: 'Confirm',
+      danger: true,
+    });
     expect(clear).toHaveBeenCalledOnce();
   });
 
-  it('does not clear positions after auto-layout cancellation or host dismissal', async () => {
+  it('does not clear positions after auto-layout cancellation', async () => {
     const clear = vi.fn(() => Promise.resolve());
-    const overlay = {
-      open: vi.fn(() => ({closed: Promise.resolve({reason: 'escape'})})),
-    };
+    const {overlay} = presetConfirm(false);
 
     TestBed.overrideProvider(OVERLAY, {useValue: overlay});
 

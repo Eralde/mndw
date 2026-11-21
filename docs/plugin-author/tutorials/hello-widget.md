@@ -10,11 +10,21 @@ is optional reading; you will build `hello-widget` in your own Node.js project.
 
 ## 1. Prepare the project
 
-Start with the [project setup guide](/guides/project-setup) to install the CLI
-and choose npm, pnpm, or Yarn. Keep the project outside the mndw repository.
-
 On Windows, run shell-backend and `mndw dev` commands in WSL; read the
 [Windows guide](/guides/windows) first.
+
+Keep the project outside the mndw repository. Create it and install the CLI
+as a development dependency:
+
+```sh
+mkdir my-plugins && cd my-plugins
+npm init -y
+npm i -D @mndw/cli
+```
+
+The `mndw` command comes from `@mndw/cli`. Without it in the project,
+`npx mndw` looks for an npm package named `mndw` and fails with `E404`. For
+pnpm or Yarn, see the [project setup guide](/guides/project-setup).
 
 ## 2. Create and test the starter
 

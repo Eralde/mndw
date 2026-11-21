@@ -13,8 +13,20 @@ is optional further reading.
 
 ## 1. Prepare and scaffold
 
-Keep this project outside the mndw repository. From its directory, create a
-widget with the CLI:
+Keep this project outside the mndw repository. Create it and install the CLI
+as a development dependency, unless your plugins project already has it:
+
+```sh
+mkdir my-plugins && cd my-plugins
+npm init -y
+npm i -D @mndw/cli
+```
+
+The `mndw` command comes from `@mndw/cli`. Without it in the project,
+`npx mndw` looks for an npm package named `mndw` and fails with `E404`. For
+pnpm or Yarn, see the [project setup guide](/guides/project-setup).
+
+From the project directory, create a widget with the CLI:
 
 ```sh
 npx mndw create rci-device-name-widget --type widget --framework svelte

@@ -5,11 +5,7 @@
   },
   "include": [
     "plugins/builtin/**/*.ts",
-    "plugins/builtin/**/*.svelte",
-    "plugins/builtin/**/*.vue",
-    "plugins/examples/**/*.ts",
-    "plugins/examples/**/*.svelte",
-    "plugins/examples/**/*.vue"
+    "plugins/examples/**/*.ts"
   ],
   "exclude": [
     "node_modules",

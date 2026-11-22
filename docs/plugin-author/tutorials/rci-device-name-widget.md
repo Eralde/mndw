@@ -49,10 +49,12 @@ rci-device-name-widget/
     index.ts
     l10n.test.ts
   svelte.config.js
+  tsconfig.json
   vitest.config.ts
 ```
 
 `svelte.config.js` configures the Svelte compiler.
+`tsconfig.json` enables typed linting for plugin `.ts` and `.svelte` files.
 
 Run the starter test from the project directory:
 

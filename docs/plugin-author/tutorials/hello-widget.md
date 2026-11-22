@@ -51,10 +51,12 @@ hello-widget/
     index.ts
     l10n.test.ts
   svelte.config.js
+  tsconfig.json
   vitest.config.ts
 ```
 
 `svelte.config.js` configures the Svelte compiler.
+`tsconfig.json` enables typed linting for plugin `.ts` and `.svelte` files.
 
 The starter test in `src/l10n.test.ts` covers locale changes in the scaffold
 component. You will remove it when replacing that component in section 6.

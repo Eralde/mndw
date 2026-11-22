@@ -327,18 +327,6 @@ p {
   margin: 0;
 }
 
-.system-log-page__title {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
 .system-log-page__header-row {
   display: flex;
   align-items: flex-start;

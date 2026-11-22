@@ -64,6 +64,7 @@ hello-widget/
     index.ts
     l10n.test.ts
   svelte.config.js
+  tsconfig.json
   vitest.config.ts
 ```
 
@@ -76,6 +77,7 @@ hello-widget/
 - `src/index.ts` exports the frontend plugin entry.
 - `src/l10n.test.ts` checks that the generated view updates when the locale changes.
 - `svelte.config.js` configures the Svelte compiler.
+- `tsconfig.json` enables typed linting for plugin `.ts` and `.svelte` files.
 - `vitest.config.ts` configures the scaffold's test runner.
 
 

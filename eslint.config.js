@@ -390,15 +390,7 @@ module.exports = tseslint.config(
         svelteConfig: {
           warningFilter: mndwSvelteWarningFilter,
         },
-        projectService: {
-          allowDefaultProject: [
-            'plugins/builtin/*/src/components/*.svelte',
-            'plugins/builtin/*/src/*.svelte',
-            'plugins/examples/*/src/components/*.svelte',
-            'plugins/examples/*/src/*.svelte',
-          ],
-          defaultProject: './tsconfig.example-plugins.json',
-        },
+        projectService: {},
         extraFileExtensions: ['.svelte'],
         tsconfigRootDir: __dirname,
       },

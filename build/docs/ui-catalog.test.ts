@@ -86,6 +86,7 @@ describe('UI component sidebar catalog', () => {
       'icon',
       'checkbox',
       'switch',
+      'switchport',
       'input',
       'textarea',
       'field',

@@ -36,6 +36,13 @@ export const UI_CATALOG: readonly UiCatalogEntry[] = [
     tags: ['mndw-switch'],
   },
   {
+    slug: 'switchport',
+    title: '<mndw-switchport>',
+    sidebarTitle: '&lt;mndw-switchport&gt;',
+    summary: 'Decorative Ethernet, SFP, DSL, and combo port art; the caller owns the button and accessible name.',
+    tags: ['mndw-switchport'],
+  },
+  {
     slug: 'input',
     title: '<mndw-input>',
     sidebarTitle: '&lt;mndw-input&gt;',

@@ -20,6 +20,7 @@ The host calls `defineMndwUi()` once because custom element registration is page
 | [`<mndw-icon>`](https://eralde.github.io/mndw/ui/icon) | Renders a Lucide symbol from the shared sprite; host supplies `iconSpriteUrl`. |
 | [`<mndw-checkbox>`](https://eralde.github.io/mndw/ui/checkbox) | Form-associated checkbox; emits `mndwchange`. |
 | [`<mndw-switch>`](https://eralde.github.io/mndw/ui/switch) | Immediate-effect toggle; emits `mndwchange`. |
+| [`<mndw-switchport>`](https://eralde.github.io/mndw/ui/switchport) | Decorative Ethernet, SFP, DSL, and combo port art; the caller owns the button. |
 | [`<mndw-input>`](https://eralde.github.io/mndw/ui/input) | Native input with delegated focus; emits `mndwinput` and `mndwchange`. |
 | [`<mndw-textarea>`](https://eralde.github.io/mndw/ui/textarea) | Native textarea with optional autosize. |
 | [`<mndw-field>`](https://eralde.github.io/mndw/ui/field) | Light-DOM label, hint, and error wrapper. |

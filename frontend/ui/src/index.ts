@@ -22,6 +22,7 @@ import {MNDW_SEGMENT_TAG, MndwSegment} from './segmented/segment.js';
 import {MNDW_SEGMENTED_TAG, MndwSegmented} from './segmented/segmented.js';
 import {MNDW_SLIDER_TAG, MndwSlider} from './slider/slider.js';
 import {MNDW_SWITCH_TAG, MndwSwitch} from './switch/switch.js';
+import {MNDW_SWITCHPORT_TAG, MndwSwitchport} from './switchport/switchport.js';
 import {MNDW_TAB_PANEL_TAG, MndwTabPanel} from './tabs/tab-panel.js';
 import {MNDW_TAB_TAG, MndwTab} from './tabs/tab.js';
 import {MNDW_TABS_TAG, MndwTabs} from './tabs/tabs.js';
@@ -89,6 +90,13 @@ export {MNDW_SLIDER_TAG, MndwSlider} from './slider/slider.js';
 export type {MndwSliderChangeDetail, MndwSliderInputDetail} from './slider/slider.js';
 export {MNDW_SWITCH_TAG, MndwSwitch} from './switch/switch.js';
 export type {MndwSwitchChangeDetail} from './switch/switch.js';
+export {MNDW_SWITCHPORT_TAG, MndwSwitchport} from './switchport/switchport.js';
+export type {
+  MndwSwitchportColor,
+  MndwSwitchportCombo,
+  MndwSwitchportMedium,
+  MndwSwitchportType,
+} from './switchport/switchport.js';
 export {MNDW_TAB_PANEL_TAG, MndwTabPanel} from './tabs/tab-panel.js';
 export {MNDW_TAB_TAG, MndwTab} from './tabs/tab.js';
 export {MNDW_TABS_TAG, MndwTabs} from './tabs/tabs.js';
@@ -200,6 +208,7 @@ const REGISTRY: [string, CustomElementConstructor][] = [
   [MNDW_SLIDER_TAG, MndwSlider],
   [MNDW_SPARKLINE_TAG, MndwSparkline],
   [MNDW_SWITCH_TAG, MndwSwitch],
+  [MNDW_SWITCHPORT_TAG, MndwSwitchport],
   [MNDW_TAB_PANEL_TAG, MndwTabPanel],
   [MNDW_TAB_TAG, MndwTab],
   [MNDW_TABS_TAG, MndwTabs],

@@ -23,6 +23,7 @@ import {
   MNDW_SELECT_TAG,
   MNDW_SLIDER_TAG,
   MNDW_SPARKLINE_TAG,
+  MNDW_SWITCHPORT_TAG,
   MNDW_SWITCH_TAG,
   MNDW_TABLE_TAG,
   MNDW_TABS_TAG,
@@ -58,6 +59,11 @@ import {
   type MndwSelectPanel,
   MndwSparkline,
   type MndwSparklineProps,
+  MndwSwitchport,
+  type MndwSwitchportColor,
+  type MndwSwitchportCombo,
+  type MndwSwitchportMedium,
+  type MndwSwitchportType,
   type MndwTable,
   POPOVER_FLIP_ORDER,
   computePopoverCoords,
@@ -99,6 +105,7 @@ const REGISTERED_TAGS = [
   MNDW_SLIDER_TAG,
   MNDW_SPARKLINE_TAG,
   MNDW_SWITCH_TAG,
+  MNDW_SWITCHPORT_TAG,
   MNDW_TAB_PANEL_TAG,
   MNDW_TAB_TAG,
   MNDW_TABS_TAG,
@@ -127,6 +134,7 @@ describe('defineMndwUi', () => {
     expectTypeOf(document.querySelector('mndw-progress')).toEqualTypeOf<MndwProgress | null>();
     expectTypeOf(document.querySelector('mndw-radio-group')).toEqualTypeOf<MndwRadioGroup | null>();
     expectTypeOf(document.querySelector('mndw-radio')).toEqualTypeOf<MndwRadio | null>();
+    expectTypeOf(document.querySelector('mndw-switchport')).toEqualTypeOf<MndwSwitchport | null>();
     expectTypeOf(document.querySelector('mndw-line-chart')).toEqualTypeOf<MndwLineChart | null>();
     expectTypeOf(document.querySelector('mndw-bar-chart')).toEqualTypeOf<MndwBarChart | null>();
     expectTypeOf(document.querySelector('mndw-sparkline')).toEqualTypeOf<MndwSparkline | null>();
@@ -157,6 +165,14 @@ describe('defineMndwUi', () => {
     expectTypeOf<MndwHeatStripProps>().not.toHaveProperty('times');
   });
 
+  it('exports the switchport contracts', () => {
+    expect(MndwSwitchport).toBeDefined();
+    expectTypeOf<MndwSwitchportType>().toEqualTypeOf<'ethernet' | 'sfp' | 'dsl'>();
+    expectTypeOf<MndwSwitchportColor>().toEqualTypeOf<'blue' | 'gray' | 'orange'>();
+    expectTypeOf<MndwSwitchportCombo>().toEqualTypeOf<'none' | 'ethernet-sfp' | 'sfp-ethernet'>();
+    expectTypeOf<MndwSwitchportMedium>().toEqualTypeOf<'ethernet' | 'sfp'>();
+  });
+
   it('exports the focus-trap utilities', () => {
     expect(typeof createFocusTrap).toBe('function');
     expect(typeof tabbableElements).toBe('function');
@@ -169,7 +185,7 @@ describe('defineMndwUi', () => {
   });
 
   it('keeps an injected overlay when called again without one', () => {
-    const service = {createLayer: vi.fn(), open: vi.fn(), closeAll: vi.fn()} as OverlayService;
+    const service = {createLayer: vi.fn(), open: vi.fn(), confirm: vi.fn(), closeAll: vi.fn()} as OverlayService;
 
     defineMndwUi({overlay: service});
 
@@ -181,8 +197,8 @@ describe('defineMndwUi', () => {
   });
 
   it('replaces the provider when a new overlay is supplied', () => {
-    const first = {createLayer: vi.fn(), open: vi.fn(), closeAll: vi.fn()} as OverlayService;
-    const second = {createLayer: vi.fn(), open: vi.fn(), closeAll: vi.fn()} as OverlayService;
+    const first = {createLayer: vi.fn(), open: vi.fn(), confirm: vi.fn(), closeAll: vi.fn()} as OverlayService;
+    const second = {createLayer: vi.fn(), open: vi.fn(), confirm: vi.fn(), closeAll: vi.fn()} as OverlayService;
 
     defineMndwUi({overlay: first});
 

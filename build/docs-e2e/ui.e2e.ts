@@ -458,7 +458,7 @@ test('button page renders live elements and keeps sidebar/footer titles as text'
 
   const buttons = page.locator('.ui-demo__preview mndw-button');
 
-  await expect(buttons).toHaveCount(7);
+  await expect(buttons).toHaveCount(9);
 
   for (const button of await buttons.all()) {
     const bounds = await button.boundingBox();
@@ -1107,10 +1107,25 @@ test('slider controls fill narrow documentation previews without overflow', asyn
 
   const sliders = page.locator('.ui-demo__preview mndw-slider');
 
-  await expect(sliders).toHaveCount(3);
+  await expect(sliders).toHaveCount(5);
 
-  for (const slider of await sliders.all()) {
+  const fillingSliders = page.locator('.ui-demo__preview mndw-field mndw-slider');
+
+  await expect(fillingSliders).toHaveCount(3);
+
+  for (const slider of await fillingSliders.all()) {
     expect((await slider.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(300);
+  }
+
+  const sizedSliders = page.locator('.ui-demo__preview mndw-slider[style*="width"]');
+
+  await expect(sizedSliders).toHaveCount(2);
+
+  for (const slider of await sizedSliders.all()) {
+    const bounds = await slider.boundingBox();
+
+    expect(bounds?.width).toBeGreaterThan(0);
+    expect(bounds?.height).toBeGreaterThan(0);
   }
 
   await selectTheme(page, 'light');

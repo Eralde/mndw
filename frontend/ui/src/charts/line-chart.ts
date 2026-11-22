@@ -72,6 +72,10 @@ const pointerPosition = (event: MouseEvent, element: SVGSVGElement): [number, nu
   return [event.clientX - rect.left, event.clientY - rect.top];
 };
 
+const resolveValueTicks = (value: number | undefined): number | undefined => {
+  return value === undefined || !Number.isFinite(value) || value < 1 ? undefined : value;
+};
+
 export class MndwLineChart extends LitElement {
   public static override readonly shadowRootOptions: ShadowRootInit = {mode: 'open'};
 
@@ -80,6 +84,8 @@ export class MndwLineChart extends LitElement {
     bands: {attribute: false},
     domain: {attribute: false},
     valueDomain: {attribute: false},
+    valueTicks: {type: Number, attribute: 'value-ticks'},
+    valueAxis: {type: Boolean, attribute: 'value-axis', reflect: true},
     emptyLabel: {type: String, attribute: 'empty-label'},
     valueLabel: {type: String, attribute: 'value-label'},
     valueFormatter: {attribute: false},
@@ -100,6 +106,8 @@ export class MndwLineChart extends LitElement {
   declare public bands: readonly MndwChartBand[];
   declare public domain: MndwChartDomain | undefined;
   declare public valueDomain: MndwChartValueDomain | undefined;
+  declare public valueTicks: number | undefined;
+  declare public valueAxis: boolean;
   declare public emptyLabel: string | undefined;
   declare public valueLabel: string | undefined;
   declare public valueFormatter: MndwChartValueFormatter;
@@ -127,6 +135,8 @@ export class MndwLineChart extends LitElement {
     this.series = [];
     this.bands = [];
     this.domain = undefined;
+    this.valueTicks = undefined;
+    this.valueAxis = false;
     this.valueFormatter = formatNumber;
     this.timeFormatter = formatClockTime;
     this.emptyLabelState = createLocalizedProperty<string | undefined>(this, 'emptyLabel', 'empty-label');
@@ -163,6 +173,8 @@ export class MndwLineChart extends LitElement {
       || changedProperties.has('bands')
       || changedProperties.has('domain')
       || changedProperties.has('valueDomain')
+      || changedProperties.has('valueTicks')
+      || changedProperties.has('valueAxis')
       || changedProperties.has('emptyLabel')
       || changedProperties.has('valueLabel')
       || changedProperties.has('valueFormatter')
@@ -188,6 +200,8 @@ export class MndwLineChart extends LitElement {
       || changedProperties.has('bands')
       || changedProperties.has('domain')
       || changedProperties.has('valueDomain')
+      || changedProperties.has('valueTicks')
+      || changedProperties.has('valueAxis')
       || changedProperties.has('emptyLabel')
       || changedProperties.has('valueLabel')
       || changedProperties.has('valueFormatter')
@@ -320,12 +334,13 @@ export class MndwLineChart extends LitElement {
         .attr('d', bandArea(band.data));
     }
 
+    const valueTicks = resolveValueTicks(this.valueTicks) ?? (isSmall ? 2 : 4);
     const yGrid = svg.append('g')
       .attr('part', 'grid')
       .attr('transform', `translate(${padding.left}, 0)`)
       .call(
         d3.axisLeft(yScale)
-          .ticks(isSmall ? 2 : 4)
+          .ticks(valueTicks)
           .tickFormat(() => '')
           .tickSize(-(width - padding.left - padding.right)),
       );
@@ -334,10 +349,11 @@ export class MndwLineChart extends LitElement {
 
     const yAxis = svg.append('g')
       .attr('part', 'axis')
+      .attr('data-value-axis', this.valueAxis ? '' : null)
       .attr('transform', `translate(${padding.left}, 0)`)
       .call(
         d3.axisLeft(yScale)
-          .ticks(isSmall ? 2 : 4)
+          .ticks(valueTicks)
           .tickFormat((value: NumberValue) => value.valueOf() === 0 ? '' : this.valueFormatter(value.valueOf())),
       );
 

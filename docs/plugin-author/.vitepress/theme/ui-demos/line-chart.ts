@@ -23,6 +23,8 @@ export function mount(root: HTMLElement): void {
   void import('@mndw/ui').then(({formatSpeed, getSpeedUpperLimit}) => {
     chart.valueFormatter = formatSpeed;
     chart.valueDomain = {min: 0, max: getSpeedUpperLimit(Math.max(...rxValues, ...txValues))};
+    chart.valueTicks = 5;
+    chart.valueAxis = true;
     chart.tooltipFormatter = ({samples}) => {
       const receive = samples.find((sample) => sample.seriesId === 'rx');
       const total = samples.reduce((sum, sample) => sum + sample.value, 0);

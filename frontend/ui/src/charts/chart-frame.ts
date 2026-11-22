@@ -83,7 +83,7 @@ export const chartFrameStyles = css`
   }
 
   [part='grid'] .domain,
-  [part='axis'] .domain {
+  [part='axis']:not([data-value-axis]) .domain {
     display: none;
   }
 

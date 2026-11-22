@@ -26,6 +26,27 @@ const tooltipText = (element: MndwLineChart): string | undefined => {
   return element.shadowRoot?.querySelector('[part="tooltip"]')?.textContent?.replace(/\s+/g, ' ').trim();
 };
 
+const valueAxisGroup = (element: MndwLineChart): Element | undefined => {
+  return element.shadowRoot?.querySelectorAll('[part="axis"]')[0];
+};
+
+const valueAxisLabels = (element: MndwLineChart): string[] => {
+  return [...valueAxisGroup(element)?.querySelectorAll('.tick text') ?? []]
+    .map((node) => node.textContent ?? '')
+    .filter((label) => label !== '');
+};
+
+const nonZeroGridLineCount = (element: MndwLineChart): number => {
+  const positions = [...element.shadowRoot?.querySelectorAll('[part="grid"] .tick') ?? []]
+    .map((tick) => {
+      const match = /translate\(0,([\d.]+)\)/u.exec(tick.getAttribute('transform') ?? '');
+
+      return match?.[1] === undefined ? Number.NaN : Number(match[1]);
+    });
+
+  return positions.filter((position) => position !== Math.max(...positions)).length;
+};
+
 const uploadSeries = {
   id: 'upload',
   label: 'Upload',
@@ -414,6 +435,75 @@ describe('<mndw-line-chart>', () => {
     await element.updateComplete;
 
     expect(element.shadowRoot?.querySelector('[part="grid"]')?.getAttribute('transform')).toBe('translate(72, 0)');
+  });
+
+  it('uses valueTicks for grid lines and value labels at every width', async () => {
+    const element = await mount();
+    const container = element.shadowRoot?.querySelector<HTMLElement>('.container');
+
+    if (container === null || container === undefined) {
+      throw new Error('missing chart container');
+    }
+
+    element.valueFormatter = (value) => `v${value}`;
+    element.valueDomain = {min: 0, max: 100};
+    element.valueTicks = 5;
+    element.series = [uploadSeries];
+    await element.updateComplete;
+
+    expect(nonZeroGridLineCount(element)).toBe(5);
+    expect(valueAxisLabels(element)).toEqual(['v20', 'v40', 'v60', 'v80', 'v100']);
+
+    vi.spyOn(container, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 320, 180));
+    element.series = [{...uploadSeries}];
+    await element.updateComplete;
+
+    expect(nonZeroGridLineCount(element)).toBe(5);
+    expect(valueAxisLabels(element)).toEqual(['v20', 'v40', 'v60', 'v80', 'v100']);
+  });
+
+  it('falls back to the default tick count for invalid valueTicks', async () => {
+    const element = await mount();
+
+    element.valueDomain = {min: 0, max: 100};
+    element.series = [uploadSeries];
+    await element.updateComplete;
+
+    const defaultLabels = valueAxisLabels(element);
+
+    for (const invalid of [0, Number.NaN]) {
+      element.valueTicks = invalid;
+      await element.updateComplete;
+
+      expect(valueAxisLabels(element), `valueTicks=${invalid}`).toEqual(defaultLabels);
+    }
+  });
+
+  it('draws the value axis line only when valueAxis is enabled', async () => {
+    const element = await mount();
+
+    element.series = [uploadSeries];
+    await element.updateComplete;
+
+    const hiddenDomain = valueAxisGroup(element)?.querySelector('.domain');
+
+    if (hiddenDomain === null || hiddenDomain === undefined) {
+      throw new Error('missing value axis domain');
+    }
+
+    expect(getComputedStyle(hiddenDomain).display).toBe('none');
+
+    element.valueAxis = true;
+    await element.updateComplete;
+
+    const visibleDomain = valueAxisGroup(element)?.querySelector('.domain');
+
+    if (visibleDomain === null || visibleDomain === undefined) {
+      throw new Error('missing value axis domain');
+    }
+
+    expect(element.hasAttribute('value-axis')).toBe(true);
+    expect(getComputedStyle(visibleDomain).display).not.toBe('none');
   });
 
   it('keeps the cursor line from intercepting plot hover events', async () => {

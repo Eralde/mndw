@@ -19,8 +19,8 @@ under the port. The host is `aria-hidden="true"`; wrap it in your own button and
 
 ```html demo
 <div class="mndw-toolbar">
-  <mndw-switchport type="sfp" label="5" link></mndw-switchport>
-  <mndw-switchport type="dsl" label="0"></mndw-switchport>
+  <mndw-switchport type="sfp" label="SFP" link></mndw-switchport>
+  <mndw-switchport type="dsl" label="5"></mndw-switchport>
 </div>
 ```
 
@@ -67,8 +67,8 @@ unknown `type` falls back to `ethernet` and an unknown `combo` falls back to `no
 
 The art has no ARIA role, tab stop, or events, and the host sets `aria-hidden="true"` on connect. The caller owns
 selection, keyboard handling, the tooltip, the text under the port, and the accessible name. Parts are `port` (the
-SVG), `socket`, `ethernet`, `sfp`, `dsl`, `frame`, `led`, `globe`, `selected`, `label` (the case label), and `tag`
-(the fixed "SFP" and "DSL" text). The medium labels are technical, not translated.
+SVG), `socket`, `ethernet`, `sfp`, `dsl`, `frame`, `led`, `globe`, `selected`, and `label` (the case label). SFP and
+DSL sockets draw only `label`, so use the case text (`SFP`) or the port number.
 
 The SVG scales with the host's `font-size` and defaults to a `3.5em` height. Colours follow the `--mndw-*` theme
 tokens; there is no custom-property override API.

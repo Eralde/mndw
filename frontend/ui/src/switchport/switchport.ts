@@ -22,6 +22,15 @@ export type MndwSwitchportMedium = 'ethernet' | 'sfp';
 /** Socket art is drawn in the mockup's 56x52 box and scales with the host. */
 const SOCKET_WIDTH = 56;
 const ART_HEIGHT = 52;
+/** Every socket shares this outer box so mixed rows line up at the top and the bottom. */
+const SOCKET_TOP = 7;
+const SOCKET_BOTTOM = 46;
+const SOCKET_CENTER_Y = (SOCKET_TOP + SOCKET_BOTTOM) / 2;
+/** One baseline for the case label in every socket type, upright or reversed. */
+const LABEL_Y = 34;
+const LABEL_Y_REVERSED = 29;
+/** The SFP slot sits this far inside the cage on every side. */
+const SFP_SLOT_INSET = 3;
 const COMBO_GAP = 4;
 const COMBO_WIDTH = SOCKET_WIDTH * 2 + COMBO_GAP;
 const LED_WIDTH = 6;
@@ -122,13 +131,6 @@ export class MndwSwitchport extends LitElement {
       stroke-width: 1;
     }
 
-    .sfp-tab {
-      fill: none;
-      stroke: var(--_mndw-switchport-gray-line, var(--mndw-border));
-      stroke-width: 1.4;
-      stroke-linecap: round;
-    }
-
     .frame {
       fill: none;
       stroke: var(--_mndw-switchport-frame, var(--mndw-border));
@@ -163,13 +165,6 @@ export class MndwSwitchport extends LitElement {
     .label {
       fill: var(--mndw-text);
       font-weight: 600;
-      text-anchor: middle;
-    }
-
-    .tag {
-      fill: var(--mndw-text-muted);
-      font-weight: 600;
-      letter-spacing: 0.04em;
       text-anchor: middle;
     }
   `;
@@ -297,8 +292,7 @@ export class MndwSwitchport extends LitElement {
   }
 
   private renderEthernet(label: string): SVGTemplateResult {
-    const rotation = this.reversed ? 'rotate(180 28 26.5)' : nothing;
-    const labelY = this.reversed ? 29 : 34;
+    const rotation = this.reversed ? `rotate(180 28 ${SOCKET_CENTER_Y})` : nothing;
 
     return svg`
       <g class="socket-shape" transform=${rotation}>
@@ -306,41 +300,47 @@ export class MndwSwitchport extends LitElement {
           part="ethernet"
           class="ethernet"
           data-color=${this.resolvedColor}
-          d="M6 16h10v-5h6v-4h12v4h6v5h10v30H6z"
+          d="M6 16h10v-5h6V${SOCKET_TOP}h12v4h6v5h10V${SOCKET_BOTTOM}H6z"
         ></path>
       </g>
-      ${this.renderLabel(label, 28, labelY)}
+      ${this.renderLabel(label, 28, this.labelBaseline)}
     `;
   }
 
   private renderSfp(label: string): SVGTemplateResult {
-    const rotation = this.reversed ? 'rotate(180 28 27)' : nothing;
-    const tagY = this.reversed ? 33.5 : 26.5;
-    const labelY = this.reversed ? 20.5 : 39.5;
+    const rotation = this.reversed ? `rotate(180 28 ${SOCKET_CENTER_Y})` : nothing;
+    const cageWidth = 44;
+    const cageHeight = SOCKET_BOTTOM - SOCKET_TOP;
 
     return svg`
       <g class="socket-shape" transform=${rotation}>
-        <rect part="sfp" class="sfp-cage" x="6" y="12" width="44" height="30" rx="2"></rect>
-        <rect class="sfp-slot" x="11" y="17" width="34" height="13" rx="1"></rect>
-        <path class="sfp-tab" d="M14 42v4M42 42v4"></path>
+        <rect part="sfp" class="sfp-cage" x="6" y=${SOCKET_TOP} width=${cageWidth} height=${cageHeight} rx="2"></rect>
+        <rect
+          class="sfp-slot"
+          x=${6 + SFP_SLOT_INSET}
+          y=${SOCKET_TOP + SFP_SLOT_INSET}
+          width=${cageWidth - SFP_SLOT_INSET * 2}
+          height=${cageHeight - SFP_SLOT_INSET * 2}
+          rx="1"
+        ></rect>
       </g>
-      <text part="tag" class="tag" x="28" y=${tagY} font-size="8.5">SFP</text>
-      ${this.renderLabel(label, 28, labelY)}
+      ${this.renderLabel(label, 28, this.labelBaseline)}
     `;
   }
 
   private renderDsl(label: string): SVGTemplateResult {
-    const rotation = this.reversed ? 'rotate(180 28 28)' : nothing;
-    const tagY = this.reversed ? 21 : 31;
-    const labelY = this.reversed ? 34 : 42;
+    const rotation = this.reversed ? `rotate(180 28 ${SOCKET_CENTER_Y})` : nothing;
 
     return svg`
       <g class="socket-shape" transform=${rotation}>
-        <path part="dsl" class="dsl" d="M12 18h7v-4h4v-4h10v4h4v4h7v28H12z"></path>
+        <path part="dsl" class="dsl" d="M12 16h7v-4h4V${SOCKET_TOP}h10v5h4v4h7V${SOCKET_BOTTOM}H12z"></path>
       </g>
-      <text part="tag" class="tag" x="28" y=${tagY} font-size="8.5">DSL</text>
-      ${this.renderLabel(label, 28, labelY)}
+      ${this.renderLabel(label, 28, this.labelBaseline)}
     `;
+  }
+
+  private get labelBaseline(): number {
+    return this.reversed ? LABEL_Y_REVERSED : LABEL_Y;
   }
 
   private renderLabel(label: string, centerX: number, baselineY: number): SVGTemplateResult | '' {

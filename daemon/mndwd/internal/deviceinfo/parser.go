@@ -81,13 +81,16 @@ func parsePortMap(raw json.RawMessage, snapshot *Snapshot) {
 
 		label := firstNonEmpty(stringField(entry, "name"), stringField(entry, "port"), id)
 		parsed = append(parsed, parsedPort{port: Switchport{
-			ID:          id,
-			Label:       label,
-			Index:       index,
-			Type:        stringField(entry, "type"),
-			Group:       stringField(entry, "group"),
-			Color:       stringField(entry, "color"),
-			InterfaceID: stringField(entry, "interfaceId"),
+			ID:              id,
+			Label:           label,
+			Index:           index,
+			Type:            stringField(entry, "type"),
+			Group:           stringField(entry, "group"),
+			Color:           stringField(entry, "color"),
+			InterfaceID:     stringField(entry, "interfaceId"),
+			IsReversed:      parseOptionalBool(entry["isReversed"]),
+			IsCombo:         parseOptionalBool(entry["isCombo"]),
+			IsComboInverted: parseOptionalBool(entry["isComboInverted"]),
 		}})
 	}
 

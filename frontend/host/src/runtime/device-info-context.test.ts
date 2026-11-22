@@ -26,6 +26,9 @@ const snapshot: DeviceInfoData = {
       group: 'WAN',
       color: 'blue',
       interfaceId: 'GigabitEthernet1/0',
+      isReversed: true,
+      isCombo: true,
+      isComboInverted: false,
     }],
     layout: [['0'], ['1']],
     hasPortStats: true,
@@ -62,6 +65,10 @@ describe('createDeviceInfoContext', () => {
     if (firstPort === undefined) {
       throw new Error('expected fixture port');
     }
+
+    expect(firstPort.isReversed).toBe(true);
+    expect(firstPort.isCombo).toBe(true);
+    expect(firstPort.isComboInverted).toBe(false);
 
     expect(() =>
       (first.switchports.list as typeof first.switchports.list & {push: (port: typeof firstPort) => number}).push(

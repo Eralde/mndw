@@ -32,6 +32,12 @@ func TestParseConstantsHopper(t *testing.T) {
 		t.Fatalf("device constants = %+v, want USB=1 and port stats enabled", snapshot)
 	}
 
+	for _, port := range snapshot.Switchports.List {
+		if port.IsReversed || port.IsCombo || port.IsComboInverted {
+			t.Fatalf("port %q without port orientation flags = %+v, want all false", port.ID, port)
+		}
+	}
+
 	if !reflect.DeepEqual(snapshot.Switchports.Layout, [][]string{{"0", "1", "2", "3"}}) {
 		t.Fatalf("layout = %v, want one Hopper row", snapshot.Switchports.Layout)
 	}
@@ -96,6 +102,12 @@ func TestParseConstantsAppliesSkipCoerceAndDuplicateRules(t *testing.T) {
 	if snapshot.Switchports.List[1].Label != "ALPHA" {
 		t.Fatalf("fallback label = %q, want map key", snapshot.Switchports.List[1].Label)
 	}
+
+	port := snapshot.Switchports.List[1]
+
+	if port.IsReversed || port.IsCombo || port.IsComboInverted {
+		t.Fatalf("non-boolean port orientation flags = %+v, want all false", port)
+	}
 }
 
 func TestParseConstantsUsesNormalizedPortFieldsForDerivedData(t *testing.T) {
@@ -114,6 +126,14 @@ func TestParseConstantsUsesNormalizedPortFieldsForDerivedData(t *testing.T) {
 
 	if !reflect.DeepEqual(snapshot.Switchports.Layout, [][]string{{"0"}, {"1"}}) {
 		t.Fatalf("layout = %v, want two rows from PORTS_LAYOUT", snapshot.Switchports.Layout)
+	}
+
+	if !snapshot.Switchports.List[0].IsReversed || snapshot.Switchports.List[1].IsReversed {
+		t.Fatalf("switchport reversal flags = [%t, %t], want [true, false]", snapshot.Switchports.List[0].IsReversed, snapshot.Switchports.List[1].IsReversed)
+	}
+
+	if !snapshot.Switchports.List[0].IsCombo || snapshot.Switchports.List[0].IsComboInverted || snapshot.Switchports.List[1].IsCombo || !snapshot.Switchports.List[1].IsComboInverted {
+		t.Fatalf("switchport combo flags = [%t/%t, %t/%t], want [true/false, false/true]", snapshot.Switchports.List[0].IsCombo, snapshot.Switchports.List[0].IsComboInverted, snapshot.Switchports.List[1].IsCombo, snapshot.Switchports.List[1].IsComboInverted)
 	}
 }
 

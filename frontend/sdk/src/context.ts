@@ -57,6 +57,12 @@ export interface Switchport {
   readonly group: string;
   readonly color: string;
   readonly interfaceId: string;
+  /** The port is mounted upside down on the device body (the latch is on the other side); draw it flipped. From the device's port map. */
+  readonly isReversed: boolean;
+  /** A combo port: one port with an Ethernet socket and an SFP cage, Ethernet first. From the device's port map. */
+  readonly isCombo: boolean;
+  /** A combo port with the SFP cage first, then the Ethernet socket. From the device's port map. */
+  readonly isComboInverted: boolean;
 }
 
 export interface Switchports {

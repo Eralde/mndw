@@ -11,6 +11,9 @@ const validPayload = {
       group: 'WAN',
       color: 'blue',
       interfaceId: 'GigabitEthernet1/0',
+      isReversed: true,
+      isCombo: true,
+      isComboInverted: true,
     }],
     layout: [['0']],
     hasPortStats: true,
@@ -25,6 +28,32 @@ describe('decodeDeviceHardware', () => {
     expect(result.usbPortCount).toBe(2);
     expect(result.switchports.list).toHaveLength(1);
     expect(result.switchports.hasPortStats).toBe(true);
+    expect(result.switchports.list[0]?.isReversed).toBe(true);
+    expect(result.switchports.list[0]?.isCombo).toBe(true);
+    expect(result.switchports.list[0]?.isComboInverted).toBe(true);
+  });
+
+  it('defaults combo flags to false for legacy daemon replies', () => {
+    const {isCombo: _isCombo, isComboInverted: _isComboInverted, ...legacyPort} = validPayload.switchports.list[0];
+    const result = decodeDeviceHardware({
+      ...validPayload,
+      switchports: {...validPayload.switchports, list: [legacyPort]},
+    });
+
+    expect(result.switchports.list[0]?.isCombo).toBe(false);
+    expect(result.switchports.list[0]?.isComboInverted).toBe(false);
+  });
+
+  it('rejects a non-boolean isReversed value', () => {
+    expect(() =>
+      decodeDeviceHardware({
+        ...validPayload,
+        switchports: {
+          ...validPayload.switchports,
+          list: [{...validPayload.switchports.list[0], isReversed: 'true'}],
+        },
+      })
+    ).toThrow();
   });
 
   it('returns an empty switchports value', () => {

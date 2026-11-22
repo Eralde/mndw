@@ -12,6 +12,9 @@ const switchportSchema: z.ZodType<Switchport> = z.object({
   group: z.string(),
   color: z.string(),
   interfaceId: z.string(),
+  isReversed: z.boolean().default(false),
+  isCombo: z.boolean().default(false),
+  isComboInverted: z.boolean().default(false),
 });
 
 const switchportsSchema: z.ZodType<Switchports> = z.object({

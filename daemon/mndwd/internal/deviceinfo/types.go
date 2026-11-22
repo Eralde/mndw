@@ -1,13 +1,16 @@
 package deviceinfo
 
 type Switchport struct {
-	ID          string `json:"id"`
-	Label       string `json:"label"`
-	Index       int    `json:"index"`
-	Type        string `json:"type"`
-	Group       string `json:"group"`
-	Color       string `json:"color"`
-	InterfaceID string `json:"interfaceId"`
+	ID              string `json:"id"`
+	Label           string `json:"label"`
+	Index           int    `json:"index"`
+	Type            string `json:"type"`
+	Group           string `json:"group"`
+	Color           string `json:"color"`
+	InterfaceID     string `json:"interfaceId"`
+	IsReversed      bool   `json:"isReversed"`
+	IsCombo         bool   `json:"isCombo"`
+	IsComboInverted bool   `json:"isComboInverted"`
 }
 
 type Switchports struct {

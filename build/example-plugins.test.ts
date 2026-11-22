@@ -50,6 +50,7 @@ describe('example plugin distribution', () => {
 
     for (const target of EXAMPLE_TARGETS) {
       expect(names).toContain(`ping-widget-${target}.zip`);
+      expect(names).toContain(`iperf-widget-${target}.zip`);
     }
   });
 

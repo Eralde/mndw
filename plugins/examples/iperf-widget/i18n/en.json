@@ -1,0 +1,74 @@
+{
+  "manifest": {
+    "label": "Speed test",
+    "description": "Measure router internet speed with iperf3."
+  },
+  "title": "Speed test",
+  "action": {
+    "start": "Start",
+    "stop": "Stop",
+    "settings": "Settings",
+    "history": "History",
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close"
+  },
+  "phase": {
+    "idle": "Ready",
+    "ping": "Ping",
+    "download": "Download",
+    "upload": "Upload"
+  },
+  "result": {
+    "download": "Download",
+    "upload": "Upload",
+    "ping": "Ping",
+    "jitter": "Jitter"
+  },
+  "chart": {
+    "speed": "Speed",
+    "empty": "Speed per second appears here",
+    "seconds": "s"
+  },
+  "status": {
+    "ready": "Ready to test",
+    "running": "Speed test running",
+    "done": "Test complete",
+    "stopped": "Test stopped"
+  },
+  "error": {
+    "busy": "Another test is running.",
+    "server-busy": "This server is busy. Choose another server.",
+    "unreachable": "Server unreachable.",
+    "iperf-missing": "iperf3 is missing. Reinstall or re-approve the plugin.",
+    "invalid-input": "Settings are invalid.",
+    "iperf-failed": "Speed test failed.",
+    "connection-lost": "Connection lost.",
+    "fallback": "Speed test failed."
+  },
+  "settings": {
+    "title": "Speed test settings",
+    "server": "Server",
+    "custom": "Custom server",
+    "host": "Hostname or IP address",
+    "port": "Port",
+    "duration": "Duration per direction (seconds)",
+    "streams": "Parallel streams",
+    "errors": {
+      "server": "Choose a server.",
+      "host": "Enter a hostname or IP address without a URL scheme.",
+      "port": "Enter a port from 1 to 65535.",
+      "duration": "Duration must be from 5 to 30 seconds.",
+      "streams": "Streams must be from 1 to 8."
+    }
+  },
+  "history": {
+    "title": "Test history",
+    "empty": "No completed tests yet.",
+    "server": "Server",
+    "date": "Date",
+    "download": "Download",
+    "upload": "Upload",
+    "ping": "Ping"
+  }
+}

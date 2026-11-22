@@ -1,0 +1,17 @@
+[
+  {"id": "spd-fisrv.hostkey.com", "host": "spd-fisrv.hostkey.com", "portFrom": 5201, "portTo": 5209, "city": "Helsinki", "country": "FI"},
+  {"id": "bwtest.linxtelecom.com", "host": "bwtest.linxtelecom.com", "portFrom": 5201, "portTo": 5209, "city": "Tallinn", "country": "EE"},
+  {"id": "spd-plsrv.hostkey.com", "host": "spd-plsrv.hostkey.com", "portFrom": 5201, "portTo": 5209, "city": "Warsaw", "country": "PL"},
+  {"id": "speedsrv.multinet24.pl", "host": "speedsrv.multinet24.pl", "portFrom": 5301, "portTo": 5310, "city": "Dębica", "country": "PL"},
+  {"id": "iperf.fegis.nu", "host": "iperf.fegis.nu", "portFrom": 5201, "portTo": 5207, "city": "Älvsjö", "country": "SE"},
+  {"id": "speedtest.kamel.network", "host": "speedtest.kamel.network", "portFrom": 5201, "portTo": 5205, "city": "Kista", "country": "SE"},
+  {"id": "fra.speedtest.clouvider.net", "host": "fra.speedtest.clouvider.net", "portFrom": 5200, "portTo": 5209, "city": "Frankfurt", "country": "DE"},
+  {"id": "speedtest.fra1.de.leaseweb.net", "host": "speedtest.fra1.de.leaseweb.net", "portFrom": 5201, "portTo": 5210, "city": "Frankfurt", "country": "DE"},
+  {"id": "speedtest.wtnet.de", "host": "speedtest.wtnet.de", "portFrom": 5200, "portTo": 5209, "city": "Norderstedt", "country": "DE"},
+  {"id": "ams.speedtest.clouvider.net", "host": "ams.speedtest.clouvider.net", "portFrom": 5200, "portTo": 5209, "city": "Amsterdam", "country": "NL"},
+  {"id": "iperf-ams-nl.eranium.net", "host": "iperf-ams-nl.eranium.net", "portFrom": 5201, "portTo": 5210, "city": "Amsterdam", "country": "NL"},
+  {"id": "speedtest.ams1.nl.leaseweb.net", "host": "speedtest.ams1.nl.leaseweb.net", "portFrom": 5201, "portTo": 5210, "city": "Amsterdam", "country": "NL"},
+  {"id": "iperf.online.net", "host": "iperf.online.net", "portFrom": 5200, "portTo": 5209, "city": "Paris", "country": "FR"},
+  {"id": "iperf3.moji.fr", "host": "iperf3.moji.fr", "portFrom": 5200, "portTo": 5240, "city": "Paris", "country": "FR"},
+  {"id": "spd-frsrv.hostkey.com", "host": "spd-frsrv.hostkey.com", "portFrom": 5201, "portTo": 5209, "city": "Paris", "country": "FR"}
+]

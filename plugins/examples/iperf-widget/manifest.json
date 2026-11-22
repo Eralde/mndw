@@ -1,0 +1,18 @@
+{
+  "manifestVersion": 1,
+  "name": "iperf-widget",
+  "version": "0.1.0",
+  "type": "widget",
+  "label": "Speed test",
+  "description": "Measure the router's internet speed.",
+  "entry": "index.js",
+  "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}},
+  "size": {"w": 4, "h": 9, "minW": 3, "minH": 2},
+  "backend": {
+    "kind": "service",
+    "protocolVersion": 1,
+    "command": "backend/iperf-widget",
+    "packages": ["iperf3"],
+    "routes": [{"id": "test", "transport": "websocket", "path": "test"}]
+  }
+}

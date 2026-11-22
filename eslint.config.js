@@ -470,6 +470,7 @@ module.exports = tseslint.config(
     files: [
       'frontend/host/src/**/*.svelte',
       'plugins/examples/ping-widget/src/**/*.{ts,svelte}',
+      'plugins/examples/iperf-widget/src/**/*.{ts,svelte}',
       'plugins/builtin/system-log-page/src/**/*.{ts,svelte}',
       'plugins/builtin/terminal-page/src/**/*.{ts,svelte}',
       'plugins/examples/device-traffic-widget/src/**/*.{ts,svelte}',

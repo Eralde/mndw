@@ -6,10 +6,13 @@ export interface UploadTargetMismatch {
   deviceTarget: ExampleTarget;
 }
 
-const PING_ARCHIVE_TARGETS: Readonly<Record<string, ExampleTarget>> = {
+const EXAMPLE_ARCHIVE_TARGETS: Readonly<Record<string, ExampleTarget>> = {
   'ping-widget-aarch64.zip': 'aarch64',
   'ping-widget-mips.zip': 'mips',
   'ping-widget-mipsel.zip': 'mipsel',
+  'iperf-widget-aarch64.zip': 'aarch64',
+  'iperf-widget-mips.zip': 'mips',
+  'iperf-widget-mipsel.zip': 'mipsel',
 };
 
 export function targetForDeviceArchitecture(raw: string | undefined): ExampleTarget | undefined {
@@ -30,7 +33,7 @@ export function validateExampleUploadTarget(
   rawArchitecture: string | undefined,
 ): UploadTargetMismatch | undefined {
   const deviceTarget = targetForDeviceArchitecture(rawArchitecture);
-  const archiveTarget = PING_ARCHIVE_TARGETS[filename];
+  const archiveTarget = EXAMPLE_ARCHIVE_TARGETS[filename];
 
   if (deviceTarget === undefined || archiveTarget === undefined || deviceTarget === archiveTarget) {
     return undefined;

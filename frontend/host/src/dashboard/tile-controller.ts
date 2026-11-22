@@ -25,6 +25,12 @@ export interface TileController {
   frame: HTMLElement;
   body: HTMLElement;
   handle: WidgetTileHandle;
+  /** Latest desktop GridStack dimensions, absent while the mobile renderer is active. */
+  gridSize?: {w: number; h: number};
+  /** Mount whose successful settlement permits the initial desktop size notification. */
+  readyHandle?: WidgetTileHandle;
+  /** Handle already given its initial size notification. */
+  initialResizeHandle?: WidgetTileHandle;
   themeUnsubscribe: () => void;
   catalogUnsubscribe: () => void;
   setTileTitle: (title: string) => void;
@@ -41,6 +47,46 @@ export interface TileController {
 }
 
 const controllers = new Map<string, TileController>();
+
+function forwardResize(controller: TileController, size: {w: number; h: number}): void {
+  const instance = controller.handle.getMounted()?.instance;
+
+  if (instance?.onResize === undefined) {
+    return;
+  }
+
+  try {
+    instance.onResize(size);
+  } catch (error) {
+    console.error(`[mndw] Widget "${controller.pluginName}" onResize failed:`, error);
+  }
+}
+
+function notifyInitialResize(controller: TileController, handle: WidgetTileHandle): void {
+  if (
+    controllers.get(controller.id) !== controller
+    || controller.handle !== handle
+    || controller.readyHandle !== handle
+    || controller.initialResizeHandle === handle
+    || controller.gridSize === undefined
+  ) {
+    return;
+  }
+
+  controller.initialResizeHandle = handle;
+  forwardResize(controller, controller.gridSize);
+}
+
+async function settleWidgetMount(controller: TileController, handle: WidgetTileHandle): Promise<boolean> {
+  const ready = await handle.whenReady();
+
+  if (ready && controllers.get(controller.id) === controller && controller.handle === handle) {
+    controller.readyHandle = handle;
+    notifyInitialResize(controller, handle);
+  }
+
+  return ready;
+}
 
 /** A no-op handle for a placeholder tile with no mounted plugin instance. */
 function placeholderTileHandle(): WidgetTileHandle {
@@ -298,7 +344,16 @@ function hydrateLoadedPlugin(
   controller.pending = false;
 
   void handle.whenReady().then((ready) => {
-    if (ready || controllers.get(controller.id) !== controller || controller.handle !== handle) {
+    if (ready) {
+      if (controllers.get(controller.id) === controller && controller.handle === handle) {
+        controller.readyHandle = handle;
+        notifyInitialResize(controller, handle);
+      }
+
+      return;
+    }
+
+    if (controllers.get(controller.id) !== controller || controller.handle !== handle) {
       return;
     }
 
@@ -451,6 +506,56 @@ export function getTileController(tileId: string): TileController | undefined {
   return controllers.get(tileId);
 }
 
+/** Stores current desktop grid dimensions and notifies an already-mounted instance once. */
+export function setWidgetTileGridSize(id: string, size: {w: number; h: number}): void {
+  const controller = getTileController(id);
+
+  if (controller === undefined) {
+    return;
+  }
+
+  controller.gridSize = size;
+
+  if (controller.readyHandle === controller.handle) {
+    notifyInitialResize(controller, controller.handle);
+  }
+}
+
+/** Marks the desktop renderer inactive so later mounts cannot reuse stale grid dimensions. */
+export function clearWidgetTileGridSize(id: string): void {
+  const controller = getTileController(id);
+
+  if (controller !== undefined) {
+    controller.gridSize = undefined;
+    controller.initialResizeHandle = undefined;
+  }
+}
+
+/** Records a GridStack resize and forwards it unless it is the instance's first desktop size. */
+export function notifyWidgetTileResized(id: string, size: {w: number; h: number}): void {
+  const controller = getTileController(id);
+
+  if (controller === undefined) {
+    return;
+  }
+
+  const initialAlreadySent = controller.initialResizeHandle === controller.handle;
+
+  controller.gridSize = size;
+
+  if (controller.readyHandle !== controller.handle) {
+    return;
+  }
+
+  if (!initialAlreadySent) {
+    notifyInitialResize(controller, controller.handle);
+
+    return;
+  }
+
+  forwardResize(controller, size);
+}
+
 /** Mounts pending placeholders when dependency status transitions to ready or failed. */
 export function hydratePendingTiles(
   pluginContextServices: PluginContextServices,
@@ -522,7 +627,7 @@ export async function remountWidgetTiles(
     controller.handle.dispose({clearStorage: false, closeReason: 'host-navigation'});
   }
 
-  const mountAll = (plugin: LoadedPlugin): WidgetTileHandle[] =>
+  const mountAll = (plugin: LoadedPlugin): Array<{controller: TileController; handle: WidgetTileHandle}> =>
     affected.map((controller) => {
       updateControllerManifestLabel(controller, plugin, plugin.catalog);
       controller.setTileTitle('');
@@ -548,23 +653,25 @@ export async function remountWidgetTiles(
         },
       );
 
-      return controller.handle;
+      return {controller, handle: controller.handle};
     });
 
-  const candidateHandles = mountAll(next);
-  const settled = await Promise.all(candidateHandles.map((handle) => handle.whenReady()));
+  const candidateMounts = mountAll(next);
+  const settled = await Promise.all(
+    candidateMounts.map(({controller, handle}) => settleWidgetMount(controller, handle)),
+  );
 
   if (settled.every(Boolean)) {
     return true;
   }
 
-  for (const handle of candidateHandles) {
+  for (const {handle} of candidateMounts) {
     handle.dispose({clearStorage: false, closeReason: 'host-navigation'});
   }
 
-  const priorHandles = mountAll(prior);
+  const priorMounts = mountAll(prior);
 
-  await Promise.all(priorHandles.map((handle) => handle.whenReady()));
+  await Promise.all(priorMounts.map(({controller, handle}) => settleWidgetMount(controller, handle)));
 
   return false;
 }

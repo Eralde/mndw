@@ -8,7 +8,7 @@ export interface PluginResizeSize {
 
 export interface PluginInstance {
   unmount(): void | Promise<void>;
-  /** Called on tile resize with the new size in grid units. Widgets only. */
+  /** Called once after mount with the tile's size in grid units, then on every resize. Desktop dashboard only; not called in the mobile layout. */
   onResize?(size: PluginResizeSize): void;
 }
 

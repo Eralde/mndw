@@ -63,6 +63,8 @@ vi.mock('./tile-controller.js', () => ({
     return controller;
   }),
   getTileController: vi.fn((id: string) => controllers.get(id)),
+  setWidgetTileGridSize: vi.fn(),
+  notifyWidgetTileResized: vi.fn(),
   removeTileController: vi.fn(),
 }));
 

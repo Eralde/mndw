@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 /* eslint id-blacklist: 0 */
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import type {GridStack} from 'gridstack';
 
 const mountWidgetTile = vi.hoisted(() => vi.fn());
 const retryPluginLoad = vi.hoisted(() => vi.fn());
@@ -45,7 +46,9 @@ import {
   setPluginLoadState,
 } from '../runtime/plugin-load-state.svelte.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
+import {addWidgetTile, resizeWidgetTile} from './grid-dashboard-setup.js';
 import {
+  clearWidgetTileGridSize,
   destroyAllTiles,
   ensureTileController,
   getTileController,
@@ -110,6 +113,55 @@ function pagePlugin(name: string): LoadedPlugin {
 
 function noop(): PluginInstance {
   return {unmount: vi.fn()};
+}
+
+function addGridWidget(pluginName: string, size = {w: 4, h: 2}, instanceId = `${pluginName}:1`): string {
+  const gridItem = document.createElement('div');
+  const content = document.createElement('div');
+
+  content.className = 'grid-stack-item-content';
+  gridItem.appendChild(content);
+  Object.assign(gridItem, {gridstackNode: {id: `widget-${instanceId}`, ...size}});
+
+  const grid = {
+    addWidget: vi.fn(() => gridItem),
+    prepareDragDrop: vi.fn(),
+  } as unknown as GridStack;
+  const id = addWidgetTile(
+    pluginContextServices,
+    hostServices.pluginStylesheets,
+    pluginRegistry,
+    grid,
+    pluginName,
+    vi.fn(),
+    {x: 0, y: 0, ...size, instanceId},
+  );
+
+  if (id === null) {
+    throw new Error('addWidgetTile unexpectedly returned null');
+  }
+
+  return id;
+}
+
+function mountResolvedWidget(body: HTMLElement, plugin: LoadedPlugin, context: unknown): {
+  getMounted: ReturnType<typeof vi.fn>;
+  whenReady: ReturnType<typeof vi.fn>;
+  dispose: ReturnType<typeof vi.fn>;
+} {
+  let mounted: PluginInstance | null = null;
+  const result = plugin.module.createInstance(body, (context as {context: PluginContext}).context);
+  const ready = Promise.resolve(result).then((instance) => {
+    mounted = instance;
+
+    return true;
+  });
+
+  return {
+    getMounted: vi.fn(() => mounted === null ? null : {instance: mounted}),
+    whenReady: vi.fn(() => ready),
+    dispose: vi.fn(),
+  };
 }
 
 function labelledWidget(name: string, text: string): LoadedPlugin {
@@ -183,6 +235,234 @@ describe('tile controller', () => {
         pluginStylesheets: hostServices.pluginStylesheets,
       }),
     );
+  });
+
+  it.each([
+    {mode: 'synchronous', asyncMount: false},
+    {mode: 'asynchronous', asyncMount: true},
+  ])('calls onResize once with the restored GridStack size after a $mode mount', async ({asyncMount}) => {
+    const events: string[] = [];
+    const onResize = vi.fn((size: {w: number; h: number}) => {
+      events.push(`resize:${size.w}x${size.h}`);
+    });
+
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', () => {
+      events.push('createInstance');
+
+      const instance = {unmount: vi.fn(), onResize};
+
+      if (asyncMount) {
+        return Promise.resolve(instance).then((resolved) => {
+          events.push('resolved');
+
+          return resolved;
+        });
+      }
+
+      events.push('resolved');
+
+      return instance;
+    }));
+
+    if (asyncMount) {
+      mountWidgetTile.mockImplementation(mountResolvedWidget);
+    }
+
+    const gridItem = document.createElement('div');
+    const content = document.createElement('div');
+
+    content.className = 'grid-stack-item-content';
+    gridItem.appendChild(content);
+    Object.assign(gridItem, {gridstackNode: {id: 'widget-traffic:1', w: 4, h: 2}});
+
+    const grid = {
+      addWidget: vi.fn(() => gridItem),
+      prepareDragDrop: vi.fn(),
+    } as unknown as GridStack;
+    const id = addWidgetTile(
+      pluginContextServices,
+      hostServices.pluginStylesheets,
+      pluginRegistry,
+      grid,
+      'traffic',
+      vi.fn(),
+      {x: 3, y: 1, w: 4, h: 2, instanceId: 'traffic:1'},
+    );
+
+    if (id === null) {
+      throw new Error('addWidgetTile unexpectedly returned null');
+    }
+
+    const controller = getTileController(id);
+
+    if (controller === undefined) {
+      throw new Error('tile controller was not registered');
+    }
+
+    await controller.handle.whenReady();
+    await Promise.resolve();
+
+    expect(events).toEqual(['createInstance', 'resolved', 'resize:4x2']);
+    expect(onResize).toHaveBeenCalledOnce();
+  });
+
+  it('calls onResize for every desktop resize after the initial size', async () => {
+    const onResize = vi.fn();
+
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', () => ({unmount: vi.fn(), onResize})));
+
+    const id = addGridWidget('traffic');
+    const controller = getTileController(id);
+
+    if (controller === undefined) {
+      throw new Error('tile controller was not registered');
+    }
+
+    await controller.handle.whenReady();
+    await Promise.resolve();
+    resizeWidgetTile(id, {w: 5, h: 3});
+    resizeWidgetTile(id, {w: 6, h: 4});
+
+    expect(onResize).toHaveBeenNthCalledWith(1, {w: 4, h: 2});
+    expect(onResize).toHaveBeenNthCalledWith(2, {w: 5, h: 3});
+    expect(onResize).toHaveBeenNthCalledWith(3, {w: 6, h: 4});
+  });
+
+  it('uses the latest GridStack size when an async mount settles', async () => {
+    let resolveMount: ((instance: PluginInstance) => void) | undefined;
+    const pendingMount = new Promise<PluginInstance>((resolve) => {
+      resolveMount = resolve;
+    });
+    const onResize = vi.fn();
+
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', () => pendingMount));
+    mountWidgetTile.mockImplementation(mountResolvedWidget);
+
+    const id = addGridWidget('traffic');
+    const controller = getTileController(id);
+
+    if (controller === undefined) {
+      throw new Error('tile controller was not registered');
+    }
+
+    resizeWidgetTile(id, {w: 5, h: 3});
+    resizeWidgetTile(id, {w: 6, h: 4});
+    expect(onResize).not.toHaveBeenCalled();
+
+    resolveMount?.({unmount: vi.fn(), onResize});
+    await controller.handle.whenReady();
+    await Promise.resolve();
+
+    expect(onResize).toHaveBeenCalledOnce();
+    expect(onResize).toHaveBeenCalledWith({w: 6, h: 4});
+  });
+
+  it('does not require onResize for a mounted widget', async () => {
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', noop));
+
+    const id = addGridWidget('traffic');
+    const controller = getTileController(id);
+
+    if (controller === undefined) {
+      throw new Error('tile controller was not registered');
+    }
+
+    await controller.handle.whenReady();
+    await Promise.resolve();
+
+    expect(controller.handle.getMounted()).not.toBeNull();
+  });
+
+  it('logs a throwing initial onResize callback without failing the mount', async () => {
+    const failure = new Error('initial resize failed');
+    const onResize = vi.fn(() => {
+      throw failure;
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', () => ({unmount: vi.fn(), onResize})));
+
+    const id = addGridWidget('traffic');
+    const controller = getTileController(id);
+
+    if (controller === undefined) {
+      throw new Error('tile controller was not registered');
+    }
+
+    await controller.handle.whenReady();
+    await Promise.resolve();
+
+    expect(onResize).toHaveBeenCalledOnce();
+    expect(errorSpy).toHaveBeenCalledWith('[mndw] Widget "traffic" onResize failed:', failure);
+    expect(controller.handle.getMounted()).not.toBeNull();
+    errorSpy.mockRestore();
+  });
+
+  it('does not send an initial resize to a tile mounted only in the mobile layout', async () => {
+    const onResize = vi.fn();
+
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', () => ({unmount: vi.fn(), onResize})));
+
+    const controller = ensureTileController(
+      pluginContextServices,
+      pluginRegistry,
+      'traffic',
+      'traffic:1',
+      vi.fn(),
+      hostServices.pluginStylesheets,
+    );
+
+    await controller?.handle.whenReady();
+    await Promise.resolve();
+
+    expect(onResize).not.toHaveBeenCalled();
+  });
+
+  it('does not reuse desktop dimensions after the mobile renderer takes over', async () => {
+    const initialResize = vi.fn();
+    const remountResize = vi.fn();
+    const before = widgetPlugin('traffic', () => ({unmount: vi.fn(), onResize: initialResize}));
+    const after = widgetPlugin('traffic', () => ({unmount: vi.fn(), onResize: remountResize}));
+
+    vi.mocked(pluginRegistry).get.mockReturnValue(before);
+
+    const id = addGridWidget('traffic');
+    const controller = getTileController(id);
+
+    await controller?.handle.whenReady();
+    await Promise.resolve();
+    clearWidgetTileGridSize(id);
+
+    await remountWidgetTiles(pluginContextServices, pluginRegistry, 'traffic', after, before);
+
+    expect(initialResize).toHaveBeenCalledOnce();
+    expect(remountResize).not.toHaveBeenCalled();
+  });
+
+  it('sends the mounted instance its current size when the desktop grid returns', async () => {
+    const onResize = vi.fn();
+
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', () => ({unmount: vi.fn(), onResize})));
+
+    const id = addGridWidget('traffic', {w: 4, h: 2});
+    const controller = getTileController(id);
+
+    if (controller === undefined) {
+      throw new Error('tile controller was not registered');
+    }
+
+    await controller.handle.whenReady();
+    await Promise.resolve();
+
+    expect(onResize).toHaveBeenCalledOnce();
+    expect(onResize).toHaveBeenCalledWith({w: 4, h: 2});
+
+    clearWidgetTileGridSize(id);
+    addGridWidget('traffic', {w: 6, h: 4});
+
+    expect(mountWidgetTile).toHaveBeenCalledOnce();
+    expect(onResize).toHaveBeenCalledTimes(2);
+    expect(onResize).toHaveBeenNthCalledWith(2, {w: 6, h: 4});
   });
 
   it('sets the host theme on the plugin body and updates it until removal', () => {
@@ -334,6 +614,7 @@ describe('tile controller', () => {
   it('shows a mount failure and retries with a fresh context', async () => {
     const contexts: PluginContext[] = [];
     const handles: Array<{dispose: ReturnType<typeof vi.fn>}> = [];
+    const retryResize = vi.fn();
 
     vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('mount-retry', (container, context) => {
       contexts.push(context);
@@ -344,12 +625,17 @@ describe('tile controller', () => {
 
       container.textContent = 'Mounted after retry';
 
-      return noop();
+      return {unmount: vi.fn(), onResize: retryResize};
     }));
     mountWidgetTile.mockImplementation((body: HTMLElement, plugin: LoadedPlugin, context: unknown) => {
       const result = plugin.module.createInstance(body, (context as {context: PluginContext}).context);
+      let mounted: PluginInstance | null = null;
       const ready = Promise.resolve(result).then(
-        () => true,
+        (instance) => {
+          mounted = instance;
+
+          return true;
+        },
         () => {
           body.textContent = 'Error loading widget';
 
@@ -358,7 +644,7 @@ describe('tile controller', () => {
       );
       const dispose = vi.fn();
       const handle = {
-        getMounted: vi.fn(() => null),
+        getMounted: vi.fn(() => mounted === null ? null : {instance: mounted}),
         whenReady: vi.fn(() => ready),
         dispose,
       };
@@ -368,13 +654,8 @@ describe('tile controller', () => {
       return handle;
     });
 
-    const controller = ensureTileController(
-      pluginContextServices,
-      pluginRegistry,
-      'mount-retry',
-      'mount-retry:1',
-      vi.fn(),
-    );
+    const id = addGridWidget('mount-retry');
+    const controller = getTileController(id);
 
     await Promise.resolve();
     await Promise.resolve();
@@ -395,6 +676,8 @@ describe('tile controller', () => {
     expect(contexts[1]).not.toBe(contexts[0]);
     expect(handles[0]?.dispose).toHaveBeenCalledOnce();
     expect(mountWidgetTile.mock.calls[1]?.[2]).not.toBe(firstContext);
+    expect(retryResize).toHaveBeenCalledOnce();
+    expect(retryResize).toHaveBeenCalledWith({w: 4, h: 2});
   });
 
   it('uses sandbox retry for failed plugin placeholders in sandbox mode', async () => {
@@ -638,21 +921,41 @@ describe('tile controller', () => {
   });
 
   it('remountWidgetTiles preserves controllers on success and rolls back on failure', async () => {
-    vi.mocked(pluginRegistry).get.mockReturnValue(labelledWidget('traffic', 'before'));
+    const beforeResize = vi.fn();
+    const afterResize = vi.fn();
+    const before = widgetPlugin('traffic', (container) => {
+      container.textContent = 'before';
 
-    const controller = ensureTileController(pluginContextServices, pluginRegistry, 'traffic', 'traffic:1', vi.fn());
+      return {unmount: vi.fn(), onResize: beforeResize};
+    });
+    const after = widgetPlugin('traffic', (container) => {
+      container.textContent = 'after';
+
+      return {unmount: vi.fn(), onResize: afterResize};
+    });
+
+    vi.mocked(pluginRegistry).get.mockReturnValue(before);
+
+    const id = addGridWidget('traffic');
+    const controller = getTileController(id);
+
+    await controller?.handle.whenReady();
+    await Promise.resolve();
+    expect(beforeResize).toHaveBeenCalledWith({w: 4, h: 2});
 
     const ok = await remountWidgetTiles(
       pluginContextServices,
       pluginRegistry,
       'traffic',
-      labelledWidget('traffic', 'after'),
-      labelledWidget('traffic', 'before'),
+      after,
+      before,
     );
 
     expect(ok).toBe(true);
     expect(controller?.body.textContent).toBe('after');
     expect(getTileController('widget-traffic:1')).toBe(controller);
+    expect(afterResize).toHaveBeenCalledOnce();
+    expect(afterResize).toHaveBeenCalledWith({w: 4, h: 2});
 
     const failing = widgetPlugin('traffic', () => {
       throw new Error('boom');

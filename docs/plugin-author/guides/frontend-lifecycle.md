@@ -3,7 +3,8 @@
 The host calls `createInstance(container, ctx)` once for each mounted plugin instance. It may return a
 `PluginInstance` or a promise for one. Return an object with `unmount()` so framework roots, DOM listeners, and work
 the plugin started can be released; `unmount()` may also return a promise. Widgets may implement
-`onResize({w, h})`; dimensions are grid units. Pages do not receive widget resize calls.
+`onResize({w, h})`; the desktop dashboard calls it once after mount with the tile's size in grid units, then on every
+resize. The mobile layout does not call it. Pages do not receive widget resize calls.
 
 ```ts
 import type {PluginContext, PluginInstance} from '@mndw/sdk';

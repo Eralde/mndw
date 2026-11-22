@@ -1,5 +1,5 @@
 import type {GridStack} from 'gridstack';
-import {ensureTileController, getTileController} from './tile-controller.js';
+import {ensureTileController, notifyWidgetTileResized, setWidgetTileGridSize} from './tile-controller.js';
 import {getNextInstanceId} from './widget-counter.js';
 import {getWidgetSize} from './widget-size.js';
 import type {PluginContextServices} from '../runtime/plugin-context.js';
@@ -90,6 +90,11 @@ export function addWidgetTile(
     return null;
   }
 
+  setWidgetTileGridSize(controller.id, {
+    w: gridItem.gridstackNode?.w ?? position?.w ?? size.w,
+    h: gridItem.gridstackNode?.h ?? position?.h ?? size.h,
+  });
+
   contentEl.appendChild(controller.frame);
 
   // GridStack init's drag during addWidget(), before the title bar DOM exists.
@@ -101,16 +106,5 @@ export function addWidgetTile(
 
 /** Forwards new grid-unit dimensions to a tile's optional `onResize`, isolating throws. */
 export function resizeWidgetTile(id: string, size: {w: number; h: number}): void {
-  const controller = getTileController(id);
-  const instance = controller?.handle.getMounted()?.instance;
-
-  if (instance?.onResize === undefined) {
-    return;
-  }
-
-  try {
-    instance.onResize(size);
-  } catch (error) {
-    console.error(`[mndw] Widget "${controller?.pluginName}" onResize failed:`, error);
-  }
+  notifyWidgetTileResized(id, size);
 }

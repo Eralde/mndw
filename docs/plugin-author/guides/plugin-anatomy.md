@@ -9,8 +9,9 @@ The [`manifest.json`](/guides/manifest) identifies the plugin, selects `widget` 
 requested capabilities, and declares any backend commands. Capabilities do not sandbox plugin code; see the
 [manifest trust guidance](/guides/manifest#capabilities-and-trust). The frontend entry exports
 `createInstance(container, ctx)`. The host calls it with a DOM container and `PluginContext`; it returns a
-`PluginInstance` with `unmount()` and optional
-`onResize()` for widgets. See the [frontend lifecycle guide](/guides/frontend-lifecycle).
+`PluginInstance` with `unmount()` and optional `onResize()` for widgets. The desktop dashboard calls it once after
+mount with the tile's size in grid units, then on every resize; the mobile layout does not call it. See the
+[frontend lifecycle guide](/guides/frontend-lifecycle).
 
 A backend is optional. Shell and Go backends expose declared routes through the typed `ctx.backend` client; device
 management calls use `ctx.device.rci` through the host. Read the [shell backend guide](/guides/shell-backend) and

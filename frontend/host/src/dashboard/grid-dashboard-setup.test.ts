@@ -12,8 +12,15 @@ const controllers = new Map<string, {
 
 const ensureTileController = vi.hoisted(() => vi.fn());
 const getTileController = vi.hoisted(() => vi.fn());
+const setWidgetTileGridSize = vi.hoisted(() => vi.fn());
+const notifyWidgetTileResized = vi.hoisted(() => vi.fn());
 
-vi.mock('./tile-controller.js', () => ({ensureTileController, getTileController}));
+vi.mock('./tile-controller.js', () => ({
+  ensureTileController,
+  getTileController,
+  setWidgetTileGridSize,
+  notifyWidgetTileResized,
+}));
 
 vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('../runtime/plugin-registry.js')>(),
@@ -148,6 +155,8 @@ describe('grid-dashboard-setup', () => {
     vi.mocked(getNextInstanceId).mockReset();
     vi.mocked(getNextInstanceId).mockReturnValue('traffic:1');
     ensureTileController.mockReset();
+    setWidgetTileGridSize.mockReset();
+    notifyWidgetTileResized.mockReset();
     ensureTileController.mockImplementation((_services: unknown, _registry: unknown, pluginName: string) => {
       return controllers.get(`widget-${pluginName}:1`) ?? createController(pluginName);
     });
@@ -226,6 +235,7 @@ describe('grid-dashboard-setup', () => {
     });
     expect(document.querySelector('.grid-stack-item-content')?.contains(controller.frame)).toBe(true);
     expect(prepareDragDrop).toHaveBeenCalledWith(expect.anything(), true);
+    expect(setWidgetTileGridSize).toHaveBeenCalledWith(controller.id, {w: 6, h: 5});
   });
 
   it('restores a failed plugin placeholder with exact geometry and no manifest minimums', () => {
@@ -337,24 +347,9 @@ describe('grid-dashboard-setup', () => {
     expect(document.querySelectorAll('.grid-stack-item-content')[1]?.contains(controller.frame)).toBe(true);
   });
 
-  it('forwards resize dimensions and isolates a throwing onResize callback', () => {
-    const onResize = vi.fn();
-    const instance = {unmount: vi.fn(), onResize};
-
-    getTileController.mockReturnValue(createController('traffic', instance));
-
+  it('forwards GridStack resize dimensions to the tile controller', () => {
     resizeWidgetTile('widget-traffic:1', {w: 6, h: 4});
 
-    expect(onResize).toHaveBeenCalledWith({w: 6, h: 4});
-
-    onResize.mockImplementation(() => {
-      throw new Error('resize failed');
-    });
-
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    expect(() => resizeWidgetTile('widget-traffic:1', {w: 5, h: 3})).not.toThrow();
-    expect(errorSpy).toHaveBeenCalled();
-    errorSpy.mockRestore();
+    expect(notifyWidgetTileResized).toHaveBeenCalledWith('widget-traffic:1', {w: 6, h: 4});
   });
 });

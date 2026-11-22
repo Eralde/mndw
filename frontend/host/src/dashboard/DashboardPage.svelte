@@ -18,6 +18,7 @@ import {
   saveDashboardLayout,
 } from './grid-layout-persistence.js';
 import {
+  clearWidgetTileGridSize,
   destroyAllTiles,
   ensureTileController,
   getTileController,
@@ -724,6 +725,12 @@ function openOrderModal(): void {
 
 const handleBreakpointChange = (event: MediaQueryListEvent): void => {
   isMobile = event.matches;
+
+  if (event.matches) {
+    for (const tile of tiles) {
+      clearWidgetTileGridSize(tile.id);
+    }
+  }
 
   if (!event.matches) {
     orderOverlaySession?.close();

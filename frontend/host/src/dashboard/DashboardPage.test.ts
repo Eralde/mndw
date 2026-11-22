@@ -59,6 +59,7 @@ vi.mock('./grid-dashboard-setup.js', () => ({
 }));
 
 vi.mock('./tile-controller.js', () => ({
+  clearWidgetTileGridSize: vi.fn(),
   removeTileController: vi.fn(),
   getTileController: vi.fn((id: string) => ({
     getTileTitle: () => currentTitles.get(id) ?? '',
@@ -113,7 +114,12 @@ vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
 }));
 
 import {addWidgetTile, resizeWidgetTile} from './grid-dashboard-setup.js';
-import {destroyAllTiles, ensureTileController, removeTileController} from './tile-controller.js';
+import {
+  clearWidgetTileGridSize,
+  destroyAllTiles,
+  ensureTileController,
+  removeTileController,
+} from './tile-controller.js';
 import {loadDashboardLayout, parseWidgetTileId, saveDashboardLayout} from './grid-layout-persistence.js';
 import {PluginRegistry} from '../runtime/plugin-registry.js';
 import {appState} from '../state/app.svelte.js';
@@ -1309,6 +1315,7 @@ describe('DashboardPage', () => {
 
     mobileState.listener?.({matches: true} as MediaQueryListEvent);
     flushSync();
+    expect(clearWidgetTileGridSize).toHaveBeenCalledWith('widget-clock:1');
     mobileState.listener?.({matches: false} as MediaQueryListEvent);
     flushSync();
 

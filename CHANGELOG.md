@@ -14,13 +14,17 @@ A part with nothing in it is left out.
 
 ### For users
 
+### For plugin authors
+
+## 0.4.1 — 2026-11-23
+
+### For users
+
 - The init script reports service state with `status` and now waits for the router to be ready before starting
   mndw after a reboot, including when Entware is installed on internal storage.
 - Full removal: the new `mndw-cleanup` command deletes what `opkg remove mndw` keeps for a reinstall (data,
   settings, keys, the feed setup and caches), and after a second question the packages your plugins installed. Run
   `mndw-cleanup && opkg remove --autoremove mndw`.
-
-### For plugin authors
 
 ## 0.4.0 — 2026-11-23
 

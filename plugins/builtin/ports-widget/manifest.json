@@ -1,0 +1,11 @@
+{
+  "manifestVersion": 1,
+  "name": "ports-widget",
+  "version": "0.1.0",
+  "type": "widget",
+  "label": "Ports",
+  "description": "See the router's ports, their link state and live traffic.",
+  "entry": "index.js",
+  "size": {"w": 4, "h": 4, "minW": 3, "minH": 2},
+  "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}}
+}

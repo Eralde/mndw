@@ -1,0 +1,18 @@
+{
+  "media": ["mdi"],
+  "mdi": {
+    "phy": [
+      {"speed": 100, "duplex": "full"},
+      {"speed": 100, "duplex": "half"},
+      {"speed": 100, "duplex": "full", "nonegotiate": true},
+      {"speed": 100, "duplex": "half", "nonegotiate": true},
+      {"speed": 1000, "duplex": "full"},
+      {"speed": 2500, "duplex": "full"},
+      {"speed": 5000, "duplex": "full"},
+      {"speed": 10000, "duplex": "full"}
+    ]
+  },
+  "green-ethernet": false,
+  "cable-diagnostics": true,
+  "pse": false
+}

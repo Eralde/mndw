@@ -1,0 +1,14 @@
+{
+  "id": "GigabitEthernet0/4",
+  "index": 4,
+  "interface-name": "5",
+  "label": "5",
+  "type": "Port",
+  "traits": ["EthernetPort", "SfpPort"],
+  "link": "up",
+  "speed": "1000",
+  "duplex": "full",
+  "sfp": {"type": "SFP", "vendor": "Example", "serial": "0000"},
+  "cable-diagnostics": false,
+  "admin-only": false
+}

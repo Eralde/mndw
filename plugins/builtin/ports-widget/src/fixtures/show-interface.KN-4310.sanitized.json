@@ -1,0 +1,19 @@
+{
+  "GigabitEthernet1/0": {
+    "id": "GigabitEthernet1/0",
+    "index": 0,
+    "interface-name": "0",
+    "label": "0",
+    "type": "Port",
+    "traits": ["EthernetPort", "GigabitEthernetPort"],
+    "role": [{"for": "GigabitEthernet1", "role": "inet"}],
+    "link": "up",
+    "speed": "1000",
+    "duplex": "full",
+    "auto-negotiation": "on",
+    "flow-control": "on",
+    "eee": "off",
+    "cable-diagnostics": false,
+    "admin-only": false
+  }
+}

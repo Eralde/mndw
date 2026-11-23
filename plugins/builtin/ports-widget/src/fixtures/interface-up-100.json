@@ -1,0 +1,21 @@
+{
+  "id": "GigabitEthernet0/3",
+  "index": 3,
+  "interface-name": "4",
+  "label": "4",
+  "type": "Port",
+  "traits": ["EthernetPort", "SwitchPort", "MtkSwitchPort"],
+  "link": "up",
+  "speed": "100",
+  "duplex": "full",
+  "auto-negotiation": "on",
+  "flow-control": "on",
+  "eee": "off",
+  "last-change": "8342.743610",
+  "last-overflow": "0",
+  "cable-diagnostics": false,
+  "admin-only": false,
+  "public": false,
+  "link-group": {"supported": true, "group-id": 1, "enabled": false},
+  "summary": {"layer": {"conf": "running", "link": "running"}}
+}

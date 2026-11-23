@@ -1,0 +1,8 @@
+{
+  "_note": "show ip hotspot on KN-4310 (2026-11-22), 3 of 9 hosts, personal fields replaced. Top level is {host: [...]}. Wired hosts carry `port` (the case label, a string); `port` is missing for Wi-Fi hosts. A wired Mesh extender carries `mws.port` instead of `port`. `active` is a boolean.",
+  "host": [
+    {"mac": "aa:bb:cc:00:00:01", "via": "aa:bb:cc:00:00:01", "ip": "192.0.2.10", "hostname": "laptop", "name": "Work laptop", "interface": {"id": "Bridge0", "name": "Home", "description": "Home network"}, "registered": true, "access": "permit", "active": true, "rxbytes": 4428, "txbytes": 3864, "link": "up", "auto-negotiation": true, "speed": 1000, "duplex": true, "port": "2", "uptime": 23584, "first-seen": 23590, "last-seen": 12},
+    {"mac": "aa:bb:cc:00:00:02", "via": "aa:bb:cc:00:00:02", "ip": "192.0.2.11", "hostname": "Buddy-6", "name": "", "system-mode": "extender", "interface": {"id": "Bridge0", "name": "Home", "description": "Home network"}, "registered": true, "access": "permit", "active": true, "rxbytes": 852916, "txbytes": 116094, "mws": {"cid": "00000000-0000-0000-0000-000000000000", "port": "2", "speed": 1000, "duplex": true}, "uptime": 23549, "description": "Keenetic Buddy 6 (NDMS 5.01.C.6.0-1): KN-3411", "firmware": "5.01.C.6.0-1"},
+    {"mac": "aa:bb:cc:00:00:03", "via": "aa:bb:cc:00:00:03", "ip": "192.0.2.12", "hostname": "", "name": "", "interface": {"id": "Bridge0", "name": "Home", "description": "Home network"}, "registered": false, "access": "permit", "active": false, "rxbytes": 180071, "txbytes": 110836, "link": "down", "uptime": 23553}
+  ]
+}

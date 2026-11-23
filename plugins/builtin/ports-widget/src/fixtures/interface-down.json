@@ -1,0 +1,16 @@
+{
+  "id": "GigabitEthernet0/0",
+  "index": 0,
+  "interface-name": "1",
+  "label": "1",
+  "type": "Port",
+  "traits": ["EthernetPort", "SwitchPort", "MtkSwitchPort"],
+  "link": "down",
+  "last-change": "8357.458863",
+  "last-overflow": "0",
+  "cable-diagnostics": false,
+  "admin-only": false,
+  "public": false,
+  "link-group": {"supported": true, "group-id": 0, "master": true, "enabled": false},
+  "summary": {"layer": {"conf": "running", "link": "pending"}}
+}

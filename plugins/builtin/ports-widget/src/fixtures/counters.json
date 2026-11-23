@@ -1,0 +1,11 @@
+{
+  "timestamp": "8387.675819",
+  "rxbytes": "1844674407",
+  "txbytes": "987654321",
+  "rxpackets": "1234567",
+  "txpackets": "765432",
+  "rxerrors": "0",
+  "txerrors": "3",
+  "rxdropped": "1",
+  "txdropped": "0"
+}

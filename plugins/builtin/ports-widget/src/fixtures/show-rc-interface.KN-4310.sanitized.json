@@ -1,0 +1,10 @@
+{
+  "_note": "show rc interface on KN-4310 (2026-11-22), Ethernet entries only. No port has a description yet; GigabitEthernet0/Vlan1 shows where a description sits. Keys are interfaceIds as in Switchport.interfaceId.",
+  "GigabitEthernet0": {"up": true},
+  "GigabitEthernet0/0": {"rename": "1", "switchport": {"mode": [{"mode": "access"}, {"mode": "trunk"}], "access": {"vid": "1"}, "trunk": [{"vid": "3"}, {"vid": "10"}]}, "up": true},
+  "GigabitEthernet0/1": {"rename": "2", "switchport": {"mode": [{"mode": "access"}, {"mode": "trunk"}], "access": {"vid": "1"}, "trunk": [{"vid": "3"}, {"vid": "10"}]}, "up": true},
+  "GigabitEthernet0/2": {"rename": "3", "switchport": {"mode": [{"mode": "trunk"}], "trunk": [{"vid": "3"}, {"vid": "10"}]}, "up": true},
+  "GigabitEthernet0/Vlan1": {"description": "Home VLAN", "up": true},
+  "GigabitEthernet1": {"rename": "ISP", "description": "Broadband connection", "up": true},
+  "GigabitEthernet1/0": {"rename": "0", "role": [{"role": "inet", "ifor": "GigabitEthernet1"}], "up": true}
+}

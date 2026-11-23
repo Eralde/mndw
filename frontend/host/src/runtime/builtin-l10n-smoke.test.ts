@@ -69,6 +69,7 @@ const EXPECTED_PLUGINS = [
   'device-info-widget',
   'dns-lookup-widget',
   'event-logger-widget',
+  'ports-widget',
   'system-log-page',
   'terminal-page',
 ] as const;
@@ -87,6 +88,7 @@ const VISIBLE_LOCALE_TARGETS: Record<(typeof EXPECTED_PLUGINS)[number], VisibleL
   'device-info-widget': {selector: '.load-bar-chart__label', key: 'cpu'},
   'dns-lookup-widget': {selector: '.mndw-dns-lookup-widget__label', key: 'hostname-label'},
   'event-logger-widget': {selector: '[role="region"]', key: 'entries', attribute: 'aria-label'},
+  'ports-widget': {selector: '[data-ports-widget]', key: 'title', attribute: 'aria-label'},
   'system-log-page': {selector: '[data-download-log]', key: 'action.download'},
   'terminal-page': {selector: 'mndw-button', key: 'action.router-cli'},
 };

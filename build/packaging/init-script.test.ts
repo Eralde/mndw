@@ -36,9 +36,21 @@ const makeRoot = (): string => {
   fs.mkdirSync(path.join(root, 'proc'), {recursive: true});
   fs.mkdirSync(path.join(root, 'var', 'run'), {recursive: true});
   writeExecutable(path.join(root, 'bin', 'device-port-helper'), '#!/bin/sh\nprintf \'80\\n\'\n');
+  writeExecutable(path.join(root, 'bin', 'ip'), '#!/bin/sh\nprintf \'inet 192.0.2.10/24 br0\\n\'\n');
+  writeExecutable(
+    path.join(root, 'bin', 'logger'),
+    '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$MNDW_TEST_LOGGER_FILE"\n',
+  );
   writeExecutable(
     path.join(root, 'sbin', 'mndwd'),
-    '#!/bin/sh\nprintf \'8080\\n\' > "$MNDW_PORT_FILE.tmp"\n'
+    '#!/bin/sh\n'
+      + 'if [ "${1:-}" = --version ]; then\n'
+      + '  [ "${FAKE_DAEMON_VERSION_MODE:-}" != fail ] || exit 1\n'
+      + '  [ "${FAKE_DAEMON_VERSION_MODE:-}" != empty ] || exit 0\n'
+      + '  printf \'%s\\n\' "${FAKE_DAEMON_VERSION:-mndwd test version}" extra\n'
+      + '  exit 0\n'
+      + 'fi\n'
+      + 'printf \'8080\\n\' > "$MNDW_PORT_FILE.tmp"\n'
       + 'mv "$MNDW_PORT_FILE.tmp" "$MNDW_PORT_FILE"\n'
       + 'printf \'%s\\n\' "$*" > "$MNDW_ROOT/daemon-args"\n'
       + 'printf \'daemon stdout\\n\'\n'
@@ -70,6 +82,8 @@ const testEnvironment = (root: string, useRealProc = false): NodeJS.ProcessEnv =
     MNDW_ROOT: root,
     MNDW_CONFIG_FILE: path.join(root, 'missing-mndw.conf'),
     MNDW_DEVICE_PORT_HELPER: path.join(root, 'bin', 'device-port-helper'),
+    MNDW_TEST_LOGGER_FILE: path.join(root, 'logger.log'),
+    PATH: `${path.join(root, 'bin')}:${process.env.PATH ?? ''}`,
   };
 
   if (useRealProc) {
@@ -81,11 +95,16 @@ const testEnvironment = (root: string, useRealProc = false): NodeJS.ProcessEnv =
   return env;
 };
 
-const runInit = (root: string, action: 'start' | 'stop', useRealProc = false): Promise<InitResult> => {
+const runInit = (
+  root: string,
+  action: string,
+  useRealProc = false,
+  extraEnv: NodeJS.ProcessEnv = {},
+): Promise<InitResult> => {
   return new Promise((resolvePromise) => {
     const child = spawn('/bin/sh', [initScript, action], {
       cwd: repoRoot,
-      env: testEnvironment(root, useRealProc),
+      env: {...testEnvironment(root, useRealProc), ...extraEnv},
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -366,5 +385,226 @@ describe('S70mndwd pid file', () => {
     expect(result.code, result.stderr).toBe(0);
     expect(fs.existsSync(path.join(root, 'started'))).toBe(false);
     expect(fs.readFileSync(pidFile(root), 'utf8')).toBe(`${daemon.pid}\n`);
+  });
+});
+
+describe('S70mndwd start readiness', () => {
+  it('retries transient device-port detection until it succeeds', async () => {
+    const root = makeRoot();
+    const helper = path.join(root, 'bin', 'device-port-helper');
+
+    writeExecutable(
+      helper,
+      `#!/bin/sh
+count=$(cat "$MNDW_ROOT/helper-count" 2>/dev/null || printf 0)
+count=$((count + 1))
+printf '%s\n' "$count" > "$MNDW_ROOT/helper-count"
+printf 'probe-%s\n' "$count" >&2
+if [ "$count" -lt 3 ]; then exit 3; fi
+printf '80\n'
+`,
+    );
+
+    const result = await runInit(root, 'start', false, {
+      MNDW_START_WAIT_SECONDS: '2',
+      MNDW_START_RETRY_INTERVAL: '0',
+    });
+
+    expect(result.code, result.stderr).toBe(0);
+    expect(fs.readFileSync(path.join(root, 'helper-count'), 'utf8')).toBe('3\n');
+    expect(result.stderr).not.toContain('probe-');
+  });
+
+  it('forwards only the last transient probe output when the wait expires', async () => {
+    const root = makeRoot();
+    const helper = path.join(root, 'bin', 'device-port-helper');
+    const date = path.join(root, 'bin', 'date');
+
+    writeExecutable(
+      helper,
+      `#!/bin/sh
+count=$(cat "$MNDW_ROOT/helper-count" 2>/dev/null || printf 0)
+count=$((count + 1))
+printf '%s\n' "$count" > "$MNDW_ROOT/helper-count"
+printf 'probe-%s\n' "$count" >&2
+exit 3
+`,
+    );
+    writeExecutable(
+      date,
+      `#!/bin/sh
+count=$(cat "$MNDW_ROOT/date-count" 2>/dev/null || printf 0)
+count=$((count + 1))
+printf '%s\n' "$count" > "$MNDW_ROOT/date-count"
+case "$count" in
+  1|2|3) printf '100\n' ;;
+  4) printf '101\n' ;;
+  *) printf '102\n' ;;
+esac
+`,
+    );
+
+    const result = await runInit(root, 'start', false, {
+      MNDW_START_WAIT_SECONDS: '2',
+      MNDW_START_RETRY_INTERVAL: '0',
+    });
+    const attempts = Number(fs.readFileSync(path.join(root, 'helper-count'), 'utf8').trim());
+
+    expect(result.code).toBe(1);
+    expect(attempts).toBeGreaterThan(0);
+    expect(result.stderr.trim().split('\n')).toEqual([`probe-${attempts}`]);
+  });
+});
+
+describe('S70mndwd permanent start failures and IP readiness', () => {
+  it('does not retry a permanent device-port detection failure', async () => {
+    const root = makeRoot();
+    const helper = path.join(root, 'bin', 'device-port-helper');
+
+    writeExecutable(
+      helper,
+      `#!/bin/sh
+count=$(cat "$MNDW_ROOT/helper-count" 2>/dev/null || printf 0)
+count=$((count + 1))
+printf '%s\n' "$count" > "$MNDW_ROOT/helper-count"
+printf 'broken configuration\n' >&2
+exit 1
+`,
+    );
+
+    const result = await runInit(root, 'start', false, {
+      MNDW_START_WAIT_SECONDS: '2',
+      MNDW_START_RETRY_INTERVAL: '0',
+    });
+
+    expect(result.code).toBe(1);
+    expect(result.stderr.trim()).toBe('broken configuration');
+    expect(fs.readFileSync(path.join(root, 'helper-count'), 'utf8')).toBe('1\n');
+  });
+
+  it('waits for br0 IPv4 and passes the address that appears to the daemon', async () => {
+    const root = makeRoot();
+    const ip = path.join(root, 'bin', 'ip');
+    const helper = path.join(root, 'bin', 'device-port-helper');
+
+    writeExecutable(
+      ip,
+      `#!/bin/sh
+count=$(cat "$MNDW_ROOT/ip-count" 2>/dev/null || printf 0)
+count=$((count + 1))
+printf '%s\n' "$count" > "$MNDW_ROOT/ip-count"
+if [ "$count" -gt 1 ]; then printf 'inet 192.0.2.42/24 br0\n'; fi
+`,
+    );
+    writeExecutable(
+      helper,
+      '#!/bin/sh\nprintf \'%s\\n\' "$2" > "$MNDW_ROOT/detected-ip"\nprintf \'80\\n\'\n',
+    );
+
+    const result = await runInit(root, 'start', false, {
+      MNDW_START_WAIT_SECONDS: '2',
+      MNDW_START_RETRY_INTERVAL: '0',
+    });
+
+    expect(result.code, result.stderr).toBe(0);
+    expect(fs.readFileSync(path.join(root, 'detected-ip'), 'utf8')).toBe('192.0.2.42\n');
+    expect(fs.readFileSync(path.join(root, 'daemon-args'), 'utf8')).toContain('--device-url http://192.0.2.42');
+  });
+});
+
+describe('S70mndwd start logging and already-running behavior', () => {
+  it('logs start failures through logger', async () => {
+    const root = makeRoot();
+
+    const result = await runInit(root, 'start', false, {
+      MNDW_DEVICE_PORT_HELPER: path.join(root, 'missing-helper'),
+    });
+
+    expect(result.code).toBe(1);
+    expect(fs.readFileSync(path.join(root, 'logger.log'), 'utf8')).toContain(
+      `-t mndw mndw: missing device port helper: ${path.join(root, 'missing-helper')}`,
+    );
+  });
+
+  it('checks for a running daemon before calling the helper', async () => {
+    const root = makeRoot();
+    const daemon = await spawnSleep();
+    const helper = path.join(root, 'bin', 'device-port-helper');
+
+    writePid(root, daemon.pid);
+    writeProcCmdline(root, daemon.pid, [path.join(root, 'sbin', 'mndwd')]);
+    writeExecutable(helper, '#!/bin/sh\nprintf called > "$MNDW_ROOT/helper-called"\nexit 1\n');
+
+    const result = await runInit(root, 'start');
+
+    expect(result.code, result.stderr).toBe(0);
+    expect(fs.existsSync(path.join(root, 'helper-called'))).toBe(false);
+  });
+});
+
+describe('S70mndwd status', () => {
+  it('reports a running daemon, first version line, and dashboard URL', async () => {
+    const root = makeRoot();
+    const daemon = await spawnSleep();
+
+    writePid(root, daemon.pid);
+    writeProcCmdline(root, daemon.pid, [path.join(root, 'sbin', 'mndwd')]);
+    fs.mkdirSync(path.join(root, 'var', 'lib', 'mndw'), {recursive: true});
+    fs.writeFileSync(path.join(root, 'var', 'lib', 'mndw', 'frontend-port'), '8088\n');
+
+    const result = await runInit(root, 'status');
+
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toContain(`mndwd is running (pid ${daemon.pid})\n`);
+    expect(result.stdout).toContain('version: mndwd test version\n');
+    expect(result.stdout).not.toContain('extra');
+    expect(result.stdout).toContain('dashboard: http://192.0.2.10:8088/\n');
+  });
+
+  it('omits unavailable version and dashboard details without changing state', async () => {
+    const root = makeRoot();
+    const daemon = await spawnSleep();
+    const ip = path.join(root, 'bin', 'ip');
+
+    writePid(root, daemon.pid);
+    writeProcCmdline(root, daemon.pid, [path.join(root, 'sbin', 'mndwd')]);
+    writeExecutable(ip, '#!/bin/sh\nexit 0\n');
+
+    const result = await runInit(root, 'status', false, {FAKE_DAEMON_VERSION_MODE: 'fail'});
+
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe(`mndwd is running (pid ${daemon.pid})`);
+    expect(fs.existsSync(path.join(root, 'var', 'lib', 'mndw'))).toBe(false);
+  });
+
+  it('reports stale pid files and leaves them in place', async () => {
+    const root = makeRoot();
+    const foreign = await spawnSleep();
+    const crashLog = path.join(root, 'var', 'log', 'mndwd.crash.log');
+
+    writePid(root, foreign.pid);
+    writeProcCmdline(root, foreign.pid, ['sleep', '30']);
+    fs.mkdirSync(path.dirname(crashLog), {recursive: true});
+    fs.writeFileSync(crashLog, 'previous crash\n');
+
+    const result = await runInit(root, 'status');
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain(`mndwd is not running (stale pid file ${pidFile(root)})\n`);
+    expect(result.stdout).toContain(`logs: ${crashLog}`);
+    expect(fs.readFileSync(pidFile(root), 'utf8')).toBe(`${foreign.pid}\n`);
+  });
+
+  it('returns LSB status 3 with no pid file and gives check the same result', async () => {
+    const root = makeRoot();
+
+    for (const action of ['status', 'check']) {
+      const result = await runInit(root, action);
+
+      expect(result.code).toBe(3);
+      expect(result.stdout.trim()).toBe('mndwd is not running');
+    }
+
+    expect(fs.existsSync(path.join(root, 'var', 'lib', 'mndw'))).toBe(false);
   });
 });

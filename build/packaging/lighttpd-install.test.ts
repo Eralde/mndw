@@ -174,6 +174,70 @@ describe('S70mndwd front door', () => {
 });
 
 describe('mndw-device-port.sh device-port discovery', () => {
+  it.each([
+    {
+      name: 'netstat failure',
+      netstat: '#!/bin/sh\nexit 1\n',
+      curl: '#!/bin/sh\nexit 0\n',
+      message: 'unable to enumerate device TCP listeners',
+    },
+    {
+      name: 'no TCP listeners',
+      netstat: '#!/bin/sh\nprintf \'%s\\n\' \'Active Internet connections\'\n',
+      curl: '#!/bin/sh\nexit 0\n',
+      message: 'no TCP listeners found on device IP 192.0.2.1',
+    },
+    {
+      name: 'no /auth challenge',
+      netstat: '#!/bin/sh\nprintf \'%s\\n\' \'tcp 0 0 192.0.2.1:80 0.0.0.0:* LISTEN\'\n',
+      curl: '#!/bin/sh\nexit 0\n',
+      message: 'no device /auth listener found on 192.0.2.1',
+    },
+  ])('returns 3 for transient $name', ({netstat, curl, message}) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-device-port-test-'));
+
+    fixtures.push(root);
+
+    const bin = path.join(root, 'bin');
+    const netstatPath = path.join(bin, 'netstat');
+    const curlPath = path.join(bin, 'curl');
+
+    writeExecutable(netstatPath, netstat);
+    writeExecutable(curlPath, curl);
+
+    const result = spawnSync('/bin/sh', [devicePortHelper, 'detect', '192.0.2.1'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH ?? ''}`,
+        MNDW_ROOT: root,
+        MNDW_NETSTAT: netstatPath,
+        MNDW_CURL: curlPath,
+      },
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(3);
+    expect(result.stderr).toContain(message);
+  });
+
+  it('keeps invalid device IP and configured port failures permanent', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-device-port-test-'));
+
+    fixtures.push(root);
+
+    const invalidIp = spawnSync('/bin/sh', [devicePortHelper, 'detect', 'not-an-ip'], {
+      encoding: 'utf8',
+      env: {...process.env, MNDW_ROOT: root, MNDW_DEVICE_PORT: '80'},
+    });
+    const invalidPort = spawnSync('/bin/sh', [devicePortHelper, 'detect', '192.0.2.1'], {
+      encoding: 'utf8',
+      env: {...process.env, MNDW_ROOT: root, MNDW_DEVICE_PORT: 'invalid'},
+    });
+
+    expect(invalidIp.status).toBe(1);
+    expect(invalidPort.status).toBe(1);
+  });
+
   it('excludes both live and legacy dashboard port files', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-device-port-test-'));
 
@@ -379,7 +443,7 @@ printf '%s\\n' "$*" >> "$WGET_LOG"
       },
     });
 
-    expect(result.status).not.toBe(0);
+    expect(result.status).toBe(1);
     expect(result.stderr).toContain(
       'mndw: device port detection requires curl or GNU Wget (opkg install wget-ssl); or set MNDW_DEVICE_PORT',
     );
@@ -496,7 +560,7 @@ exit 139
       },
     });
 
-    expect(result.status).not.toBe(0);
+    expect(result.status).toBe(1);
     expect(result.stderr).toContain(`mndw: HTTP client ${wget} crashed (exit 139) while probing`);
     expect(fs.readFileSync(wgetLog, 'utf8')).toBe('-S -O /dev/null -T 3 -t 1 http://192.0.2.1:80/auth\n');
   });

@@ -23,6 +23,13 @@ The installed layout is centered under `/opt`:
 /opt/var/mndw/                               self-update lock, intent, pending, rollback
 ```
 
+The init script at `/opt/etc/init.d/S70mndwd` supports `status` (`check` is an
+alias). At boot, it waits up to 60 seconds for the router's `br0` IPv4 address
+and device `/auth` listener before starting mndwd. Set
+`MNDW_START_WAIT_SECONDS` in `/opt/etc/mndw.conf` to change the limit; `0`
+makes one readiness attempt. Startup errors are written to stderr and to the
+system log with the `mndw` tag.
+
 User plugins live separately from built-ins and are served by mndwd through its
 `/user-plugins/` alias. The state directory is not replaced by an upgrade. A
 legacy `80-mndw.conf` is moved to
@@ -157,7 +164,10 @@ Before starting mndwd, package init discovers the network-device HTTP port by pr
 `/auth` on local listeners and checking for `x-ndw2-interactive` or
 `x-ndw4-interactive` authentication. Set `MNDW_DEVICE_PORT=<port>` in
 `/opt/etc/mndw.conf` when more than one listener matches. The discovered URL is
-passed to mndwd as `--device-url`; no compatibility alias is supported.
+passed to mndwd as `--device-url`; no compatibility alias is supported. Use
+`/opt/etc/init.d/S70mndwd status` to inspect whether mndwd is running and, when
+available, its version and dashboard URL. Errors while waiting for the router
+or discovering its listener are also sent to the system log under tag `mndw`.
 
 After an upgrade or remove/reinstall, verify the frontend port, legacy backup,
 durable user-plugin files, and `/opt/etc/mndw.conf`. A real-device smoke test is

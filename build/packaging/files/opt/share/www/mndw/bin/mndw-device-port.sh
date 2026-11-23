@@ -21,7 +21,28 @@ port_is_valid() {
 }
 
 device_ip_is_valid() {
-  [ -n "$1" ]
+  case "$1" in
+    ''|*[!0-9.]*|.*|*..*|*.) return 1 ;;
+  esac
+
+  old_ifs=$IFS
+  IFS=.
+  set -- $1
+  IFS=$old_ifs
+  [ "$#" -eq 4 ] || return 1
+
+  for ip_octet do
+    case "$ip_octet" in
+      ''|*[!0-9]*) return 1 ;;
+    esac
+
+    ip_octet_decimal=$(printf '%s\n' "$ip_octet" | sed 's/^0*//')
+    ip_octet_decimal=${ip_octet_decimal:-0}
+    [ "${#ip_octet_decimal}" -le 3 ] || return 1
+    [ "$ip_octet_decimal" -le 255 ] 2>/dev/null || return 1
+  done
+
+  return 0
 }
 
 dashboard_ports() {
@@ -241,12 +262,12 @@ detect_device_port() {
 
   candidate_ports=$(list_device_listener_ports "$device_ip") || {
     echo 'mndw: unable to enumerate device TCP listeners' >&2
-    return 1
+    return 3
   }
 
   [ -n "$candidate_ports" ] || {
     echo "mndw: no TCP listeners found on device IP $device_ip" >&2
-    return 1
+    return 3
   }
 
   HTTP_CLIENT_CRASH_STATUS=
@@ -265,7 +286,7 @@ detect_device_port() {
   done
 
   echo "mndw: no device /auth listener found on $device_ip; candidates: $candidate_ports; set MNDW_DEVICE_PORT" >&2
-  return 1
+  return 3
 }
 
 usage() {

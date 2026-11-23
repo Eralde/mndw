@@ -23,7 +23,47 @@ export MNDW_USER_PLUGINS_DIR
 : "${MNDWD_MAX_SUPERVISED_SERVICES:=8}"
 : "${MNDW_FRONTEND_LISTEN:=}"
 : "${MNDW_DEVICE_PORT:=}"
+: "${MNDW_START_WAIT_SECONDS:=60}"
+: "${MNDW_START_RETRY_INTERVAL:=2}"
 export MNDW_DEVICE_PORT
+
+log_err() {
+  printf '%s\n' "$1" >&2
+  if command -v logger >/dev/null 2>&1; then
+    logger -t mndw "$1" >/dev/null 2>&1 || true
+  fi
+}
+
+read_device_ip() {
+  DEVICE_IP="$(ip -4 addr show br0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -n1)"
+}
+
+remaining_start_seconds() {
+  START_NOW="$(date +%s 2>/dev/null)"
+  case "$START_NOW" in
+    ''|*[!0-9]*) START_NOW=0 ;;
+  esac
+  START_REMAINING=$((START_DEADLINE - START_NOW))
+  [ "$START_REMAINING" -gt 0 ] || START_REMAINING=0
+}
+
+forward_helper_stderr() {
+  [ -f "$HELPER_STDERR_FILE" ] || return 0
+
+  while IFS= read -r HELPER_LINE || [ -n "$HELPER_LINE" ]; do
+    log_err "$HELPER_LINE"
+  done < "$HELPER_STDERR_FILE"
+}
+
+port_is_valid() {
+  case "$1" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+
+  PORT_DECIMAL="$(printf '%s\n' "$1" | sed 's/^0*//')"
+  PORT_DECIMAL=${PORT_DECIMAL:-0}
+  [ "$PORT_DECIMAL" -ge 1 ] 2>/dev/null && [ "$PORT_DECIMAL" -le 65535 ] 2>/dev/null
+}
 
 daemon_pid() {
   if [ ! -f "$PID_FILE" ]; then
@@ -59,21 +99,111 @@ wait_for_exit() {
 }
 
 start() {
-  mkdir -p "$MNDW_ROOT/var/run" "$MNDW_ROOT/var/log" "$DATA_DIR" "$KEY_DIR" "$PLUGIN_RUNTIME_DIR"
-  chmod 700 "$DATA_DIR" "$KEY_DIR" "$PLUGIN_RUNTIME_DIR"
+  if daemon_pid >/dev/null; then
+    return 0
+  fi
 
+  START_WAIT_SECONDS="$MNDW_START_WAIT_SECONDS"
+  case "$START_WAIT_SECONDS" in
+    ''|*[!0-9]*) START_WAIT_SECONDS=60 ;;
+  esac
+  START_WAIT_SECONDS="$(printf '%s\n' "$START_WAIT_SECONDS" | sed 's/^0*//')"
+  START_WAIT_SECONDS=${START_WAIT_SECONDS:-0}
+
+  START_RETRY_INTERVAL="$MNDW_START_RETRY_INTERVAL"
+  case "$START_RETRY_INTERVAL" in
+    ''|*[!0-9]*) START_RETRY_INTERVAL=2 ;;
+  esac
+  START_RETRY_INTERVAL="$(printf '%s\n' "$START_RETRY_INTERVAL" | sed 's/^0*//')"
+  START_RETRY_INTERVAL=${START_RETRY_INTERVAL:-0}
+
+  START_NOW="$(date +%s 2>/dev/null)"
+  case "$START_NOW" in
+    ''|*[!0-9]*) START_NOW=0 ;;
+  esac
+  START_DEADLINE=$((START_NOW + START_WAIT_SECONDS))
+
+  mkdir -p "$MNDW_ROOT/var/run" "$MNDW_ROOT/var/log" "$DATA_DIR" "$KEY_DIR" "$PLUGIN_RUNTIME_DIR" 2>/dev/null || {
+    log_err 'mndw: unable to create runtime directories'
+    return 1
+  }
+  chmod 700 "$DATA_DIR" "$KEY_DIR" "$PLUGIN_RUNTIME_DIR" 2>/dev/null || {
+    log_err 'mndw: unable to set runtime directory permissions'
+    return 1
+  }
+
+  # rc.unslung runs init scripts serially, so later S* scripts also wait
+  # during this readiness window.
   # Resolve device IP on every boot because it may have changed.
-  DEVICE_IP="$(ip -4 addr show br0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -n1)"
-  DEVICE_IP="${DEVICE_IP:-192.168.1.1}"
+  read_device_ip
+  while [ -z "$DEVICE_IP" ] && [ "$START_WAIT_SECONDS" -gt 0 ]; do
+    remaining_start_seconds
+    [ "$START_REMAINING" -gt 0 ] || break
+
+    START_SLEEP="$START_RETRY_INTERVAL"
+    [ "$START_SLEEP" -le "$START_REMAINING" ] || START_SLEEP="$START_REMAINING"
+    sleep "$START_SLEEP"
+    read_device_ip
+  done
+
+  if [ -z "$DEVICE_IP" ]; then
+    DEVICE_IP=192.168.1.1
+    log_err "mndw: br0 has no IPv4 address; using fallback $DEVICE_IP"
+  fi
 
   [ -x "$DEVICE_PORT_HELPER" ] || {
-    echo "mndw: missing device port helper: $DEVICE_PORT_HELPER" >&2
+    log_err "mndw: missing device port helper: $DEVICE_PORT_HELPER"
     return 1
   }
-  DEVICE_PORT="$($DEVICE_PORT_HELPER detect "$DEVICE_IP")" || {
-    echo "mndw: unable to determine device /auth port for $DEVICE_IP" >&2
+
+  remaining_start_seconds
+  if [ "$START_WAIT_SECONDS" -gt 0 ] && [ "$START_REMAINING" -eq 0 ]; then
+    log_err 'mndw: startup wait expired before device port detection'
+    return 1
+  fi
+
+  HELPER_STDERR_FILE="$MNDW_ROOT/var/run/mndwd-device-port.$$.stderr"
+  HELPER_OLD_UMASK="$(umask)"
+  umask 077
+  : > "$HELPER_STDERR_FILE" 2>/dev/null || {
+    umask "$HELPER_OLD_UMASK"
+    log_err "mndw: unable to capture device port helper output: $HELPER_STDERR_FILE"
     return 1
   }
+  umask "$HELPER_OLD_UMASK"
+
+  while :; do
+    DEVICE_PORT="$($DEVICE_PORT_HELPER detect "$DEVICE_IP" 2>"$HELPER_STDERR_FILE")"
+    DETECT_STATUS=$?
+    if [ "$DETECT_STATUS" -eq 0 ]; then
+      rm -f "$HELPER_STDERR_FILE"
+      break
+    fi
+
+    if [ "$DETECT_STATUS" -ne 3 ] || [ "$START_WAIT_SECONDS" -eq 0 ]; then
+      forward_helper_stderr
+      rm -f "$HELPER_STDERR_FILE"
+      return 1
+    fi
+
+    remaining_start_seconds
+    if [ "$START_REMAINING" -eq 0 ]; then
+      forward_helper_stderr
+      rm -f "$HELPER_STDERR_FILE"
+      return 1
+    fi
+
+    START_SLEEP="$START_RETRY_INTERVAL"
+    [ "$START_SLEEP" -le "$START_REMAINING" ] || START_SLEEP="$START_REMAINING"
+    sleep "$START_SLEEP"
+
+    remaining_start_seconds
+    if [ "$START_REMAINING" -eq 0 ]; then
+      forward_helper_stderr
+      rm -f "$HELPER_STDERR_FILE"
+      return 1
+    fi
+  done
 
   if [ "$DEVICE_PORT" = "80" ]; then
     DEVICE_URL="http://$DEVICE_IP"
@@ -81,31 +211,31 @@ start() {
     DEVICE_URL="http://$DEVICE_IP:$DEVICE_PORT"
   fi
 
-  # Do not start a second daemon when one is already alive.
-  if daemon_pid >/dev/null; then
-    return 0
-  fi
   if [ -f "$PID_FILE" ]; then
     raw_pid="$(cat "$PID_FILE" 2>/dev/null || true)"
-    echo "mndw: ignoring stale pid file $PID_FILE (pid $raw_pid is not mndwd)" >&2
+    log_err "mndw: ignoring stale pid file $PID_FILE (pid $raw_pid is not mndwd)"
   fi
 
   if [ -s "$CRASH_LOG_FILE" ]; then
-    mv -f "$CRASH_LOG_FILE" "$CRASH_LOG_FILE.1" || {
-      echo "mndw: unable to preserve previous crash log: $CRASH_LOG_FILE" >&2
+    mv -f "$CRASH_LOG_FILE" "$CRASH_LOG_FILE.1" 2>/dev/null || {
+      log_err "mndw: unable to preserve previous crash log: $CRASH_LOG_FILE"
       return 1
     }
   fi
+  : > "$CRASH_LOG_FILE" 2>/dev/null || {
+    log_err "mndw: unable to create crash log: $CRASH_LOG_FILE"
+    return 1
+  }
 
   FRONTEND_LISTEN_ARG=""
   if [ -n "$MNDW_FRONTEND_LISTEN" ]; then
     FRONTEND_LISTEN_ARG="--frontend-listen $MNDW_FRONTEND_LISTEN"
   fi
 
-PORT_FILE="$DATA_DIR/frontend-port"
-MNDW_PORT_FILE="$PORT_FILE"
-export MNDW_PORT_FILE
-OLD_PORT_INODE="$(ls -id "$PORT_FILE" 2>/dev/null | awk '{print $1}')"
+  PORT_FILE="$DATA_DIR/frontend-port"
+  MNDW_PORT_FILE="$PORT_FILE"
+  export MNDW_PORT_FILE
+  OLD_PORT_INODE="$(ls -id "$PORT_FILE" 2>/dev/null | awk '{print $1}')"
 
   # shellcheck disable=SC2086  # intentional word-split of FRONTEND_LISTEN_ARG
   "$DAEMON" \
@@ -125,9 +255,14 @@ OLD_PORT_INODE="$(ls -id "$PORT_FILE" 2>/dev/null | awk '{print $1}')"
     --diagnostics-crash-log-file "$CRASH_LOG_FILE" \
     --opkg exec \
     > "$CRASH_LOG_FILE" 2>&1 &
-  echo "$!" > "$PID_FILE"
+  MNDWD_PID=$!
+  printf '%s\n' "$MNDWD_PID" > "$PID_FILE" 2>/dev/null || {
+    kill "$MNDWD_PID" 2>/dev/null || true
+    rm -f "$PID_FILE" 2>/dev/null || true
+    log_err "mndw: unable to write pid file: $PID_FILE"
+    return 1
+  }
 
-  MNDWD_PID="$(cat "$PID_FILE")"
   i=0
   NEW_PORT=""
   while [ "$i" -lt 20 ]; do
@@ -144,7 +279,7 @@ OLD_PORT_INODE="$(ls -id "$PORT_FILE" 2>/dev/null | awk '{print $1}')"
   if [ -n "$NEW_PORT" ]; then
     echo "mndw dashboard: http://$DEVICE_IP:$NEW_PORT/" >&2
   else
-    echo "mndw: dashboard port not reported (daemon may have failed to bind); check $CRASH_LOG_FILE and /tmp/mndwd.log" >&2
+    log_err "mndw: dashboard port not reported (daemon may have failed to bind); check $CRASH_LOG_FILE and /tmp/mndwd.log"
     if ! kill -0 "$MNDWD_PID" 2>/dev/null; then
       rm -f "$PID_FILE"
     fi
@@ -177,11 +312,62 @@ stop() {
   rm -f "$PID_FILE"
 }
 
+print_status_logs() {
+  STATUS_LOGS=""
+  if [ -f "$CRASH_LOG_FILE" ]; then
+    STATUS_LOGS="$CRASH_LOG_FILE"
+  fi
+  if [ -f /tmp/mndwd.log ]; then
+    if [ -n "$STATUS_LOGS" ]; then
+      STATUS_LOGS="$STATUS_LOGS, /tmp/mndwd.log"
+    else
+      STATUS_LOGS=/tmp/mndwd.log
+    fi
+  fi
+  if [ -n "$STATUS_LOGS" ]; then
+    printf 'logs: %s\n' "$STATUS_LOGS"
+  fi
+}
+
+status() {
+  STATUS_PID="$(daemon_pid)" && {
+    printf 'mndwd is running (pid %s)\n' "$STATUS_PID"
+
+    STATUS_VERSION="$("$DAEMON" --version 2>/dev/null)"
+    STATUS_VERSION_STATUS=$?
+    if [ "$STATUS_VERSION_STATUS" -eq 0 ]; then
+      STATUS_VERSION="$(printf '%s\n' "$STATUS_VERSION" | head -n 1)"
+    fi
+    if [ "$STATUS_VERSION_STATUS" -eq 0 ] && [ -n "$STATUS_VERSION" ]; then
+      printf 'version: %s\n' "$STATUS_VERSION"
+    fi
+
+    read_device_ip
+    PORT_FILE="$DATA_DIR/frontend-port"
+    STATUS_PORT="$(cat "$PORT_FILE" 2>/dev/null || true)"
+    if [ -n "$DEVICE_IP" ] && port_is_valid "$STATUS_PORT"; then
+      printf 'dashboard: http://%s:%s/\n' "$DEVICE_IP" "$STATUS_PORT"
+    fi
+    return 0
+  }
+
+  if [ -f "$PID_FILE" ]; then
+    printf 'mndwd is not running (stale pid file %s)\n' "$PID_FILE"
+    print_status_logs
+    return 1
+  fi
+
+  printf 'mndwd is not running\n'
+  print_status_logs
+  return 3
+}
+
 restart() { stop || return 1; start; }
 
 case "$1" in
   start)   start ;;
   stop)    stop ;;
   restart) restart ;;
-  *)       echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+  status|check) status ;;
+  *)       echo "Usage: $0 {start|stop|restart|status}"; exit 1 ;;
 esac

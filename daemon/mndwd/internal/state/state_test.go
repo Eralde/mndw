@@ -78,6 +78,80 @@ func TestOpenCreatesEmptyStateFile(t *testing.T) {
 	}
 }
 
+func TestReadOnlyLoadsStateWithoutChangingFilesystem(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	data := []byte(`{"version":1,"plugins":{},"audit":[]}`)
+
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := ReadOnly(path)
+	if err != nil {
+		t.Fatalf("ReadOnly: %v", err)
+	}
+
+	if st.Version != schemaVersion || len(st.Plugins) != 0 {
+		t.Fatalf("ReadOnly state = %+v, want empty schema version %d", st, schemaVersion)
+	}
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read state after ReadOnly: %v", err)
+	}
+
+	if !bytes.Equal(after, data) {
+		t.Fatalf("ReadOnly changed state: got %q, want %q", after, data)
+	}
+
+	if backups := stateBackupPaths(t, path); len(backups) != 0 {
+		t.Fatalf("ReadOnly created state backups: %v", backups)
+	}
+}
+
+func TestReadOnlyMissingStateDoesNotCreateAnything(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing", "state.json")
+
+	st, err := ReadOnly(path)
+	if err != nil {
+		t.Fatalf("ReadOnly missing state: %v", err)
+	}
+
+	if st.Version != schemaVersion || len(st.Plugins) != 0 {
+		t.Fatalf("missing state = %+v, want empty schema version %d", st, schemaVersion)
+	}
+
+	if _, err := os.Stat(filepath.Dir(path)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("ReadOnly created parent directory: stat error = %v", err)
+	}
+}
+
+func TestReadOnlyCorruptStateReturnsErrorWithoutBackup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	data := []byte("not json")
+
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := ReadOnly(path); err == nil {
+		t.Fatal("ReadOnly corrupt state succeeded, want error")
+	}
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read corrupt state after ReadOnly: %v", err)
+	}
+
+	if !bytes.Equal(after, data) {
+		t.Fatalf("ReadOnly changed corrupt state: got %q, want %q", after, data)
+	}
+
+	if backups := stateBackupPaths(t, path); len(backups) != 0 {
+		t.Fatalf("ReadOnly created state backups: %v", backups)
+	}
+}
+
 func TestOpenMigratesLegacyPermissionGrantsAndRewritesState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	legacy := `{"version":1,"plugins":{},"permissionGrants":{"demo":{"persistent-rci-session:read":true}},"audit":[]}`

@@ -1,0 +1,430 @@
+#!/bin/sh
+set -u
+
+FEED_KEY_ID=__FEED_KEY_ID__
+UNRESOLVED_KEY_TOKEN='__FEED_'KEY_ID__
+
+usage() {
+  cat <<'EOF'
+Usage: mndw-cleanup [--yes] [--help]
+
+Remove mndw data, settings, and cached feed files. Installed packages declared
+by approved user plugins can be removed in a separate step.
+
+  --yes   accept both cleanup prompts
+  --help  show this help
+EOF
+}
+
+YES=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --yes) YES=1 ;;
+    --help) usage; exit 0 ;;
+    *) echo "[mndw] unknown option: $1" >&2; usage >&2; exit 1 ;;
+  esac
+  shift
+done
+
+if [ "$YES" -ne 1 ] && [ ! -t 0 ]; then
+  echo '[mndw] stdin is not a terminal; pass --yes to run non-interactively' >&2
+  exit 1
+fi
+
+MNDW_ROOT=${MNDW_ROOT:-/opt}
+MNDW_CONFIG_FILE=${MNDW_CONFIG_FILE:-$MNDW_ROOT/etc/mndw.conf}
+if [ -f "$MNDW_CONFIG_FILE" ]; then
+  . "$MNDW_CONFIG_FILE"
+fi
+
+: "${DATA_DIR:=$MNDW_ROOT/var/lib/mndw}"
+MNDW_USER_PLUGINS_DIR=${MNDW_USER_PLUGINS_DIR:-$DATA_DIR/user-plugins}
+MNDW_MNDWD_INIT=${MNDW_MNDWD_INIT:-$MNDW_ROOT/etc/init.d/S70mndwd}
+MNDWD_BIN=${MNDWD_BIN:-$MNDW_ROOT/sbin/mndwd}
+MNDW_SECRETS_DIR=${MNDW_SECRETS_DIR:-$MNDW_ROOT/var/lib/mndw-secrets}
+MNDW_CACHE_DIR=${MNDW_CACHE_DIR:-$MNDW_ROOT/var/mndw}
+MNDW_PLUGIN_RUNTIME_DIR=${MNDW_PLUGIN_RUNTIME_DIR:-$MNDW_ROOT/tmp/mndw}
+MNDW_CRASH_LOG_FILE=${MNDW_CRASH_LOG_FILE:-$MNDW_ROOT/var/log/mndwd.crash.log}
+MNDW_CRASH_LOG_ROTATED_FILE=${MNDW_CRASH_LOG_ROTATED_FILE:-$MNDW_ROOT/var/log/mndwd.crash.log.1}
+MNDW_PID_FILE=${MNDW_PID_FILE:-$MNDW_ROOT/var/run/mndwd.pid}
+MNDW_FEED_CONF=${MNDW_FEED_CONF:-$MNDW_ROOT/etc/opkg/mndw-feed.conf}
+MNDW_OPKG_LISTS_DIR=${MNDW_OPKG_LISTS_DIR:-$MNDW_ROOT/var/opkg-lists}
+MNDW_KEY_DIR=${MNDW_KEY_DIR:-$MNDW_ROOT/etc/opkg/keys}
+OPKG=${OPKG:-opkg}
+
+exists() {
+  [ -e "$1" ] || [ -L "$1" ]
+}
+
+is_within() {
+  case "$2" in
+    "$1"|"$1"/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+is_shared_ancestor() {
+  shared_candidate=$1
+  while [ "$shared_candidate" != / ]; do
+    case "$shared_candidate" in
+      */) shared_candidate=${shared_candidate%/} ;;
+      *) break ;;
+    esac
+  done
+  for shared_path in \
+    "$MNDW_ROOT" \
+    "$MNDW_ROOT/bin" \
+    "$MNDW_ROOT/etc" \
+    "$MNDW_ROOT/lib" \
+    "$MNDW_ROOT/sbin" \
+    "$MNDW_ROOT/share" \
+    "$MNDW_ROOT/tmp" \
+    "$MNDW_ROOT/var" \
+    "$MNDW_ROOT/var/lib" \
+    "$MNDW_ROOT/var/log" \
+    "$MNDW_ROOT/var/run" \
+    "$MNDW_ROOT/var/opkg-lists" \
+    "$MNDW_ROOT/etc/opkg" \
+    "$MNDW_ROOT/etc/opkg/keys" \
+    "$MNDW_ROOT/etc/init.d" \
+    "$MNDW_ROOT/share/www"
+  do
+    if is_within "$shared_candidate" "$shared_path"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+is_protected_overlap() {
+  candidate=$1
+  for owned in \
+    "$MNDW_ROOT/sbin/mndwd" \
+    "$MNDW_ROOT/share/www/mndw" \
+    "$MNDW_ROOT/etc/init.d/S70mndwd" \
+    "$MNDW_ROOT/etc/ndm" \
+    "$MNDW_ROOT/etc/ndm/mndw-hook-common.sh" \
+    "$MNDW_ROOT/etc/ndm/wan.d/10-mndw" \
+    "$MNDW_ROOT/etc/ndm/fs.d/10-mndw" \
+    "$MNDW_ROOT/etc/ndm/usb.d/10-mndw" \
+    "$MNDW_ROOT/etc/ndm/netfilter.d/10-mndw" \
+    "$MNDW_ROOT/etc/ndm/time.d/10-mndw" \
+    "$MNDW_ROOT/etc/ndm/schedule.d/10-mndw" \
+    "$MNDW_ROOT/etc/ndm/button.d/10-mndw" \
+    "$MNDW_ROOT/etc/ndm/ifipchanged.d/10-mndw" \
+    "$MNDW_ROOT/bin/mndw-cleanup"
+  do
+    if is_within "$candidate" "$owned" || is_within "$owned" "$candidate"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+path_is_safe() {
+  PATH_REFUSAL_REASON=
+  case "$1" in
+    /*) ;;
+    *) PATH_REFUSAL_REASON=non_absolute; return 1 ;;
+  esac
+  case "/$1/" in
+    */../*) PATH_REFUSAL_REASON=parent; return 1 ;;
+  esac
+  if is_shared_ancestor "$1"; then
+    PATH_REFUSAL_REASON=shared
+    return 1
+  fi
+  if [ "$1" = / ] || is_protected_overlap "$1"; then
+    PATH_REFUSAL_REASON=package
+    return 1
+  fi
+  return 0
+}
+
+refusal_reported() {
+  case "$REFUSED_PATHS" in
+    *"
+$1
+"*) return 0 ;;
+  esac
+  return 1
+}
+
+print_refusal() {
+  case "$2" in
+    non_absolute) echo "[mndw] refusing unsafe non-absolute cleanup path: $1" >&2 ;;
+    parent) echo "[mndw] refusing cleanup path containing '..': $1" >&2 ;;
+    shared) echo "[mndw] refusing cleanup path that overlaps shared directories: $1" >&2 ;;
+    package) echo "[mndw] refusing cleanup path that overlaps package files: $1" >&2 ;;
+  esac
+}
+
+record_refusal() {
+  if refusal_reported "$1"; then
+    return 0
+  fi
+  REFUSED_PATHS="$REFUSED_PATHS$1
+"
+  case "$2" in
+    non_absolute) refusal_message="[mndw] refusing unsafe non-absolute cleanup path: $1" ;;
+    parent) refusal_message="[mndw] refusing cleanup path containing '..': $1" ;;
+    shared) refusal_message="[mndw] refusing cleanup path that overlaps shared directories: $1" ;;
+    package) refusal_message="[mndw] refusing cleanup path that overlaps package files: $1" ;;
+  esac
+  if [ -n "$REFUSED_PATH_MESSAGES" ]; then
+    REFUSED_PATH_MESSAGES="$REFUSED_PATH_MESSAGES
+$refusal_message"
+  else
+    REFUSED_PATH_MESSAGES=$refusal_message
+  fi
+}
+
+list_target() {
+  if exists "$1"; then
+    if ! path_is_safe "$1"; then
+      REMOVE_FAILED=1
+      record_refusal "$1" "$PATH_REFUSAL_REASON"
+      return 0
+    fi
+    printf '  %s\n' "$1"
+    FILES_PRESENT=1
+  fi
+}
+
+remove_target() {
+  target=$1
+  kind=$2
+  [ -e "$target" ] || [ -L "$target" ] || return 0
+  if ! path_is_safe "$target"; then
+    REMOVE_FAILED=1
+    if ! refusal_reported "$target"; then
+      record_refusal "$target" "$PATH_REFUSAL_REASON"
+      print_refusal "$target" "$PATH_REFUSAL_REASON"
+    fi
+    return 0
+  fi
+  if [ "$kind" = directory ]; then
+    rm -rf "$target" || {
+      echo "[mndw] failed to remove $target" >&2
+      REMOVE_FAILED=1
+    }
+  else
+    rm -f "$target" || {
+      echo "[mndw] failed to remove $target" >&2
+      REMOVE_FAILED=1
+    }
+  fi
+}
+
+confirm() {
+  prompt=$1
+  printf '%s ' "$prompt"
+  if ! IFS= read -r answer </dev/tty; then
+    return 1
+  fi
+  case "$answer" in
+    y|Y|yes) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if [ -x "$MNDW_MNDWD_INIT" ]; then
+  sh "$MNDW_MNDWD_INIT" stop || true
+fi
+
+plugin_output=
+if [ -x "$MNDWD_BIN" ]; then
+  if ! plugin_output=$("$MNDWD_BIN" --print-plugin-packages --data-dir "$DATA_DIR" --user-plugins-dir "$MNDW_USER_PLUGINS_DIR"); then
+    echo "[mndw] warning: mndwd could not report plugin packages; skipping package removal candidates" >&2
+    plugin_output=
+  fi
+else
+  echo "[mndw] warning: mndwd is missing or not executable; skipping plugin package discovery" >&2
+fi
+
+dependency_names=
+if status_output=$("$OPKG" status mndw 2>/dev/null); then
+  dependency_names=$(printf '%s\n' "$status_output" | awk '
+    /^Depends:/ {
+      sub(/^Depends:[[:space:]]*/, "")
+      count = split($0, dependencies, ",")
+      for (i = 1; i <= count; i++) {
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", dependencies[i])
+        split(dependencies[i], fields, /[[:space:]]+/)
+        if (fields[1] != "") { printf "%s ", fields[1] }
+      }
+    }
+  ')
+else
+  echo '[mndw] warning: opkg status mndw failed; package dependency filtering unavailable' >&2
+  plugin_output=
+fi
+
+installed_names=
+if installed_output=$("$OPKG" list-installed 2>/dev/null); then
+  installed_names=$(printf '%s\n' "$installed_output" | awk 'NF > 0 {printf "%s ", $1}')
+else
+  echo '[mndw] warning: opkg list-installed failed; skipping plugin package removal' >&2
+  plugin_output=
+fi
+
+set -f
+package_candidates=
+package_display_candidates=
+while IFS=' ' read -r package_name plugin_names extra_fields; do
+  [ -n "$package_name" ] || continue
+  [ -n "$plugin_names" ] || continue
+  [ -z "$extra_fields" ] || continue
+  case "$package_name" in
+    ''|*[!a-z0-9+.-]*) continue ;;
+    [!a-z0-9]*) continue ;;
+  esac
+  case " $dependency_names " in
+    *" $package_name "*) continue ;;
+  esac
+  case " $installed_names " in
+    *" $package_name "*) ;;
+    *) continue ;;
+  esac
+  case " $package_candidates " in
+    *" $package_name "*) ;;
+    *)
+      package_candidates="$package_candidates $package_name"
+      plugin_display=$(printf '%s\n' "$plugin_names" | sed 's/,/, /g')
+      package_display_line="  $package_name ($plugin_display)"
+      if [ -n "$package_display_candidates" ]; then
+        package_display_candidates="$package_display_candidates
+$package_display_line"
+      else
+        package_display_candidates=$package_display_line
+      fi
+      ;;
+  esac
+done <<EOF
+$plugin_output
+EOF
+set +f
+
+REMOVE_FAILED=0
+FILES_PRESENT=0
+REFUSED_PATHS='
+'
+REFUSED_PATH_MESSAGES=
+PLUGIN_PATH_WARNING=
+echo 'mndw cleanup will remove these existing files and directories:'
+list_target "$DATA_DIR"
+plugins_inside_data=0
+plugins_over_data=0
+if is_within "$DATA_DIR" "$MNDW_USER_PLUGINS_DIR"; then
+  plugins_inside_data=1
+elif is_within "$MNDW_USER_PLUGINS_DIR" "$DATA_DIR"; then
+  plugins_over_data=1
+  if exists "$MNDW_USER_PLUGINS_DIR" && ! path_is_safe "$MNDW_USER_PLUGINS_DIR"; then
+    REMOVE_FAILED=1
+    record_refusal "$MNDW_USER_PLUGINS_DIR" "$PATH_REFUSAL_REASON"
+  fi
+  PLUGIN_PATH_WARNING="[mndw] warning: user plugin directory contains DATA_DIR and will not be removed separately: $MNDW_USER_PLUGINS_DIR"
+else
+  list_target "$MNDW_USER_PLUGINS_DIR"
+fi
+list_target "$MNDW_SECRETS_DIR"
+list_target "$MNDW_CACHE_DIR"
+list_target "$MNDW_PLUGIN_RUNTIME_DIR"
+list_target "$MNDW_CRASH_LOG_FILE"
+list_target "$MNDW_CRASH_LOG_ROTATED_FILE"
+list_target "$MNDW_PID_FILE"
+list_target "$MNDW_FEED_CONF"
+list_target "$MNDW_OPKG_LISTS_DIR/mndw"
+list_target "$MNDW_OPKG_LISTS_DIR/mndw.sig"
+
+remove_feed_key=0
+FEED_KEY_MESSAGE=
+FEED_KEY_MESSAGE_STREAM=stdout
+if [ "$FEED_KEY_ID" = "$UNRESOLVED_KEY_TOKEN" ]; then
+  FEED_KEY_MESSAGE="[mndw] feed key id is unresolved; preserve keys in $MNDW_KEY_DIR and remove the mndw key by hand if needed"
+else
+  case "$FEED_KEY_ID" in
+    ''|*[!A-Za-z0-9._+-]*)
+      FEED_KEY_MESSAGE="[mndw] feed key id is invalid; preserve keys in $MNDW_KEY_DIR"
+      FEED_KEY_MESSAGE_STREAM=stderr
+      ;;
+    *)
+      remove_feed_key=1
+      list_target "$MNDW_KEY_DIR/$FEED_KEY_ID.pub"
+      ;;
+  esac
+fi
+
+list_target "$MNDW_CONFIG_FILE"
+
+if [ -n "$package_display_candidates" ]; then
+  echo 'After that you will be asked whether to remove these packages installed for user plugins:'
+  printf '%s\n' "$package_display_candidates"
+fi
+if [ -n "$FEED_KEY_MESSAGE" ]; then
+  if [ "$FEED_KEY_MESSAGE_STREAM" = stderr ]; then
+    echo "$FEED_KEY_MESSAGE" >&2
+  else
+    echo "$FEED_KEY_MESSAGE"
+  fi
+fi
+if [ -n "$PLUGIN_PATH_WARNING" ]; then
+  echo "$PLUGIN_PATH_WARNING" >&2
+fi
+if [ -n "$REFUSED_PATH_MESSAGES" ]; then
+  printf '%s\n' "$REFUSED_PATH_MESSAGES" >&2
+fi
+
+if [ "$FILES_PRESENT" -eq 1 ]; then
+  if [ "$YES" -ne 1 ] && ! confirm 'Remove all mndw data and settings? [y/N]'; then
+    echo '[mndw] cleanup declined' >&2
+    exit 1
+  fi
+
+  remove_target "$DATA_DIR" directory
+  if [ "$plugins_inside_data" -eq 0 ] && [ "$plugins_over_data" -eq 0 ]; then
+    remove_target "$MNDW_USER_PLUGINS_DIR" directory
+  fi
+  remove_target "$MNDW_SECRETS_DIR" directory
+  remove_target "$MNDW_CACHE_DIR" directory
+  remove_target "$MNDW_PLUGIN_RUNTIME_DIR" directory
+  remove_target "$MNDW_CRASH_LOG_FILE" file
+  remove_target "$MNDW_CRASH_LOG_ROTATED_FILE" file
+  remove_target "$MNDW_PID_FILE" file
+  remove_target "$MNDW_FEED_CONF" file
+  remove_target "$MNDW_OPKG_LISTS_DIR/mndw" file
+  remove_target "$MNDW_OPKG_LISTS_DIR/mndw.sig" file
+  if [ "$remove_feed_key" -eq 1 ]; then
+    remove_target "$MNDW_KEY_DIR/$FEED_KEY_ID.pub" file
+  fi
+  remove_target "$MNDW_CONFIG_FILE" file
+else
+  echo 'Nothing to remove from mndw data and settings.'
+fi
+
+if [ -n "$package_candidates" ]; then
+  echo 'The following installed packages were declared by approved user plugins:'
+  printf '%s\n' "$package_display_candidates"
+  echo 'Other programs may still use these packages.'
+  remove_packages=1
+  if [ "$YES" -ne 1 ] && ! confirm 'Remove these packages too? [y/N]'; then
+    remove_packages=0
+  fi
+  if [ "$remove_packages" -eq 1 ]; then
+    for package_name in $package_candidates; do
+      if ! "$OPKG" remove "$package_name"; then
+        echo "[mndw] failed to remove package $package_name" >&2
+      fi
+    done
+  fi
+else
+  echo 'No installed plugin packages to remove.'
+fi
+
+echo 'A Keenetic user or token created for mndw in Users & Access is not removed automatically.'
+echo 'To remove mndw and now-unused dependencies, run: opkg remove --autoremove mndw'
+
+if [ "$REMOVE_FAILED" -ne 0 ]; then
+  exit 2
+fi
+exit 0

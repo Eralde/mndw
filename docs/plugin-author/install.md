@@ -40,6 +40,27 @@ opkg update && opkg upgrade mndw
 
 First-time installs use the `wget` command above. For an existing installation, run `opkg update && opkg upgrade mndw`.
 
+## Uninstall
+
+`opkg remove mndw` keeps mndw data and settings, including uploaded plugins and session secrets. It also leaves crash
+logs, feed configuration and keys, package lists and caches, and packages used by approved user plugins.
+
+The cleanup helper ships with mndw 0.4.1. On an older version, update it first:
+
+```sh
+opkg update && opkg upgrade mndw
+```
+
+To remove mndw data first, then remove the package and unused dependencies, run:
+
+```sh
+mndw-cleanup && opkg remove --autoremove mndw
+```
+
+The helper prompts before deleting mndw data and settings, then asks again before removing installed packages declared
+by approved user plugins. Use `mndw-cleanup --yes` to accept both prompts in an automated shell. A Keenetic user or
+token created for mndw in **Users & Access** is not removed automatically; delete it there separately.
+
 ## Install your own plugin
 
 From your plugins project, run `npx mndw zip hello-widget` on the plugin folder, then upload the ZIP through plugin management in the dashboard. A plugin

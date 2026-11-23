@@ -152,6 +152,39 @@ func Open(path string, loggers ...*slog.Logger) (*Store, error) {
 	return store, nil
 }
 
+// ReadOnly loads a state snapshot without creating directories, recovering
+// corrupt data, or persisting an empty state when the file is absent.
+func ReadOnly(path string) (*State, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return emptyState(), nil
+		}
+
+		return nil, fmt.Errorf("read state: %w", err)
+	}
+
+	if len(data) == 0 {
+		return emptyState(), nil
+	}
+
+	var st State
+
+	if err := json.Unmarshal(data, &st); err != nil {
+		return nil, fmt.Errorf("decode state: %w", err)
+	}
+
+	if !validState(&st) {
+		return nil, fmt.Errorf("decode state: unsupported or invalid state")
+	}
+
+	if st.Plugins == nil {
+		st.Plugins = map[string]*Plugin{}
+	}
+
+	return &st, nil
+}
+
 func load(path string, logger *slog.Logger) (*State, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

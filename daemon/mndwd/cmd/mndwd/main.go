@@ -62,6 +62,15 @@ func main() {
 		return
 	}
 
+	if cfg.PrintPluginPackages {
+		if err := printPluginPackages(cfg, os.Stdout, os.Stderr); err != nil {
+			fmt.Fprintln(os.Stderr, "mndwd:", err)
+			os.Exit(1)
+		}
+
+		return
+	}
+
 	if err := run(cfg); err != nil {
 		fmt.Fprintln(os.Stderr, "mndwd:", err)
 		os.Exit(1)

@@ -129,6 +129,30 @@ Installation starts mndwd and reports the selected dashboard URL after
 3. built-in plugins appear in the list;
 4. upload, approval, and backend dispatch work.
 
+## Uninstall
+
+The cleanup helper ships with mndw 0.4.1. On an older version, run
+`opkg update && opkg upgrade mndw` first.
+
+`opkg remove mndw` removes package-owned files but preserves durable mndw data
+for reinstall. That includes plugin state and uploaded plugins under
+`/opt/var/lib/mndw`, session secrets, daemon crash logs, feed configuration,
+the mndw feed key and package lists, opkg and plugin-runtime caches, and
+`/opt/etc/mndw.conf`. Installed backend packages used by approved user plugins
+also remain installed.
+
+For full removal, run the cleanup helper before removing the package:
+
+```sh
+mndw-cleanup && opkg remove --autoremove mndw
+```
+
+The helper asks once before deleting mndw data and settings, then asks again
+before removing installed plugin packages because other programs may use them.
+Use `mndw-cleanup --yes` to accept both prompts in an automated shell. A
+Keenetic user or token created for mndw in **Users & Access** is not removed;
+delete it there separately.
+
 Before starting mndwd, package init discovers the network-device HTTP port by probing
 `/auth` on local listeners and checking for `x-ndw2-interactive` or
 `x-ndw4-interactive` authentication. Set `MNDW_DEVICE_PORT=<port>` in

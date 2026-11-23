@@ -252,6 +252,7 @@ describe('collectStagePaths', () => {
     expect(paths.indexHtml).toBe(path.join('opt', 'share', 'www', 'mndw', 'index.html'));
     expect(paths.assets).toBe(path.join('opt', 'share', 'www', 'mndw', 'assets'));
     expect(paths.initScript).toBe(path.join('opt', 'etc', 'init.d', 'S70mndwd'));
+    expect(paths.cleanupScript).toBe(path.join('opt', 'bin', 'mndw-cleanup'));
     expect(paths.devicePortHelper).toBe(path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-device-port.sh'));
     expect(paths.daemonConfig).toBe(path.join('opt', 'etc', 'mndw.conf'));
     expect(paths.selfUpdateHelper).toBe(
@@ -359,6 +360,7 @@ describe('verifyStage', () => {
     }
 
     stageFile('opt/etc/init.d/S70mndwd');
+    stageFile('opt/bin/mndw-cleanup');
     stageFile('opt/share/www/mndw/bin/mndw-device-port.sh');
     stageFile('opt/share/www/mndw/bin/mndw-self-update.sh');
     stageFile('opt/etc/mndw.conf');
@@ -522,6 +524,7 @@ describe('buildDataTar', () => {
     // Deliberately stage everything non-executable / mode 0644 on disk; the archive
     // modes must come from policy so they are correct even on hosts where chmod is a no-op.
     stage('opt/etc/init.d/S70mndwd', 0o644, '#!/bin/sh\n');
+    stage('opt/bin/mndw-cleanup', 0o644, '#!/bin/sh\n');
     stage('opt/share/www/mndw/bin/mndw-device-port.sh', 0o644, '#!/bin/sh\n');
     stage('opt/sbin/mndwd', 0o644, '\x7fELF');
     stage('opt/share/www/mndw/plugins/p/backend/p', 0o644, '\x7fELF');
@@ -533,6 +536,7 @@ describe('buildDataTar', () => {
     const modeOf = (rel: string): string | undefined => byName.get(`./${rel}`)?.mode;
 
     expect(modeOf('opt/etc/init.d/S70mndwd')).toBe('755');
+    expect(modeOf('opt/bin/mndw-cleanup')).toBe('755');
     expect(modeOf('opt/share/www/mndw/bin/mndw-device-port.sh')).toBe('755');
     expect(modeOf('opt/sbin/mndwd')).toBe('755');
     expect(modeOf('opt/share/www/mndw/plugins/p/backend/p')).toBe('755');
@@ -768,6 +772,72 @@ describe('stageDeployFiles', () => {
       expect(stagedFiles.some((file) => file.includes('lighttpd'))).toBe(false);
       expect(fs.existsSync(path.join(stagingDir, 'opt', 'etc', 'lighttpd'))).toBe(false);
     } finally {
+      fs.rmSync(stagingDir, {recursive: true, force: true});
+    }
+  });
+
+  it('substitutes a valid feed key id into the staged cleanup helper', () => {
+    const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-stage-key-'));
+    const original = process.env.MNDW_FEED_KEY_ID;
+    const repoRoot = path.resolve(import.meta.dirname, '..', '..');
+
+    process.env.MNDW_FEED_KEY_ID = 'feed.example+2026';
+
+    try {
+      stageDeployFiles(repoRoot, stagingDir);
+
+      const cleanup = fs.readFileSync(path.join(stagingDir, 'opt', 'bin', 'mndw-cleanup'), 'utf8');
+
+      expect(cleanup).toContain('FEED_KEY_ID=feed.example+2026');
+      expect(cleanup).not.toContain('FEED_KEY_ID=__FEED_KEY_ID__');
+      expect(fs.statSync(path.join(stagingDir, 'opt', 'bin', 'mndw-cleanup')).mode.toString(8).slice(-3)).toBe('755');
+    } finally {
+      if (original === undefined) {
+        delete process.env.MNDW_FEED_KEY_ID;
+      } else {
+        process.env.MNDW_FEED_KEY_ID = original;
+      }
+
+      fs.rmSync(stagingDir, {recursive: true, force: true});
+    }
+  });
+
+  it('leaves the feed key token unresolved when no build id is configured', () => {
+    const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-stage-unresolved-key-'));
+    const original = process.env.MNDW_FEED_KEY_ID;
+    const repoRoot = path.resolve(import.meta.dirname, '..', '..');
+
+    delete process.env.MNDW_FEED_KEY_ID;
+
+    try {
+      stageDeployFiles(repoRoot, stagingDir);
+
+      const cleanup = fs.readFileSync(path.join(stagingDir, 'opt', 'bin', 'mndw-cleanup'), 'utf8');
+
+      expect(cleanup).toContain('FEED_KEY_ID=__FEED_KEY_ID__');
+    } finally {
+      if (original !== undefined) { process.env.MNDW_FEED_KEY_ID = original; }
+
+      fs.rmSync(stagingDir, {recursive: true, force: true});
+    }
+  });
+
+  it('rejects invalid configured feed key ids', () => {
+    const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-stage-invalid-key-'));
+    const original = process.env.MNDW_FEED_KEY_ID;
+    const repoRoot = path.resolve(import.meta.dirname, '..', '..');
+
+    process.env.MNDW_FEED_KEY_ID = 'bad/key';
+
+    try {
+      expect(() => stageDeployFiles(repoRoot, stagingDir)).toThrow(/MNDW_FEED_KEY_ID/);
+    } finally {
+      if (original === undefined) {
+        delete process.env.MNDW_FEED_KEY_ID;
+      } else {
+        process.env.MNDW_FEED_KEY_ID = original;
+      }
+
       fs.rmSync(stagingDir, {recursive: true, force: true});
     }
   });

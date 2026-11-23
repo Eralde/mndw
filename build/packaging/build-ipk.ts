@@ -48,6 +48,7 @@ export function dataFileMode(relPosixPath: string): number {
   const segments = relPosixPath.split('/');
   const baseName = segments[segments.length - 1] ?? '';
   const isExecutable = relPosixPath === 'opt/sbin/mndwd'
+    || relPosixPath === 'opt/bin/mndw-cleanup'
     || segments.includes('init.d')
     || relPosixPath.startsWith('opt/etc/ndm/')
     || (segments.includes('bin') && baseName.endsWith('.sh'))
@@ -188,6 +189,7 @@ export function collectStagePaths(): {
   indexHtml: string;
   assets: string;
   initScript: string;
+  cleanupScript: string;
   devicePortHelper: string;
   selfUpdateHelper: string;
   daemonConfig: string;
@@ -209,6 +211,7 @@ export function collectStagePaths(): {
     indexHtml: path.join('opt', 'share', 'www', 'mndw', 'index.html'),
     assets: path.join('opt', 'share', 'www', 'mndw', 'assets'),
     initScript: path.join('opt', 'etc', 'init.d', 'S70mndwd'),
+    cleanupScript: path.join('opt', 'bin', 'mndw-cleanup'),
     devicePortHelper: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-device-port.sh'),
     selfUpdateHelper: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-self-update.sh'),
     daemonConfig: path.join('opt', 'etc', 'mndw.conf'),
@@ -230,6 +233,7 @@ export function verifyStage(
     [p.indexHtml, 'index.html'],
     [p.assets, 'assets directory'],
     [p.initScript, 'init script'],
+    [p.cleanupScript, 'cleanup script'],
     [p.devicePortHelper, 'device port helper'],
     [p.selfUpdateHelper, 'self-update helper'],
     [p.daemonConfig, 'daemon config'],
@@ -376,8 +380,24 @@ export function stageDeployFiles(repoRoot: string, stagingDir: string): void {
     if (chmod !== undefined) { fs.chmodSync(dst, chmod); }
   };
 
+  const feedKeyId = process.env.MNDW_FEED_KEY_ID;
+
+  if (feedKeyId !== undefined && !/^[A-Za-z0-9._+-]+$/.test(feedKeyId)) {
+    throw new Error('MNDW_FEED_KEY_ID must contain only letters, digits, dots, underscores, plus signs, and hyphens');
+  }
+
   copyTo(path.join('init', 'S70mndwd'), path.join('opt', 'etc', 'init.d', 'S70mndwd'), 0o755);
   copyTo(path.join('files', 'opt', 'etc', 'mndw.conf'), path.join('opt', 'etc', 'mndw.conf'), 0o600);
+
+  const cleanupTemplate = readFileSync(path.join(deployDir, 'files', 'opt', 'bin', 'mndw-cleanup'), 'utf8');
+  const cleanupScript = feedKeyId === undefined
+    ? cleanupTemplate
+    : cleanupTemplate.replaceAll('__FEED_KEY_ID__', feedKeyId);
+  const cleanupPath = path.join(stagingDir, 'opt', 'bin', 'mndw-cleanup');
+
+  fs.mkdirSync(path.dirname(cleanupPath), {recursive: true});
+  fs.writeFileSync(cleanupPath, cleanupScript);
+  fs.chmodSync(cleanupPath, 0o755);
   copyTo(
     path.join('files', 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-device-port.sh'),
     path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-device-port.sh'),

@@ -55,6 +55,7 @@ type Config struct {
 	SelfUpdateStateDir      string
 	SelfUpdateHelper        string
 	Dev                     bool
+	PrintPluginPackages     bool
 	Opkg                    string
 	Service                 string
 	LogLevel                string
@@ -226,6 +227,7 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs.StringVar(&cfg.DiagnosticsLogFile, "diagnostics-log-file", "", "read-only log path for diagnostics; defaults to --log-file or /tmp/mndwd.log")
 	fs.StringVar(&cfg.DiagnosticsCrashLogFile, "diagnostics-crash-log-file", defaultDiagnosticsCrashLogFile, "read-only stdout/stderr crash log path for diagnostics")
 	fs.BoolVar(&cfg.Dev, "dev", false, "dev mode: bypass session auth; logged loudly")
+	fs.BoolVar(&cfg.PrintPluginPackages, "print-plugin-packages", false, "print approved user-plugin opkg dependencies and exit")
 	fs.StringVar(&cfg.Opkg, "opkg", "exec", "opkg mode: exec|stub")
 	fs.StringVar(&cfg.Service, "service", "", "service mode: exec|stub; defaults to --opkg")
 	fs.StringVar(&cfg.LogLevel, "log-level", "info", "log level: debug|info|warn|error")

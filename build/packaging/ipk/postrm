@@ -60,5 +60,6 @@ fi
 # /opt/var/log/mndwd.crash.log crash trace are preserved for reinstall. The
 # bounded /tmp/mndwd.log is in RAM and disappears on reboot. Key dir is
 # intentionally outside exportable daemon state and is never removed here.
+# Run /opt/bin/mndw-cleanup before package removal to delete preserved data and settings.
 
 exit 0

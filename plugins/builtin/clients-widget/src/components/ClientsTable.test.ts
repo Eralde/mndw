@@ -4,6 +4,7 @@ import {createTestI18n} from '@mndw/sdk/testing';
 import type {Column} from '@mndw/ui';
 import {type App as VueApp, createApp, nextTick} from 'vue';
 import type {ClientRecord} from '../services/clients.js';
+import {DEFAULT_RSSI_THRESHOLDS} from './rssi.js';
 import ClientsTable from './ClientsTable.vue';
 
 let host: HTMLElement;
@@ -49,6 +50,7 @@ function mount(props: Record<string, unknown> = {}): void {
     columnVisibility: {ip: true, connection: true, uptime: true, lastSeen: true},
     error: null,
     loading: false,
+    rssiThresholds: DEFAULT_RSSI_THRESHOLDS,
     showOffline: false,
     translator,
     ...props,

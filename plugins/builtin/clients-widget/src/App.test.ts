@@ -428,7 +428,7 @@ describe('storage', () => {
     expect(offlineToggle().checked).toBe(false);
   });
 
-  it('restores all three keys', async () => {
+  it('restores the stored column, offline, and interval keys', async () => {
     store.set(
       'column-visibility',
       JSON.stringify({ip: false, connection: true, uptime: true, lastSeen: true}),
@@ -496,6 +496,36 @@ describe('storage', () => {
     expect(offlineToggle().checked).toBe(false);
   });
 
+  it('restores the stored RSSI thresholds', async () => {
+    store.set('rssi-thresholds', JSON.stringify({good: -60, fair: -70}));
+
+    mountWidget();
+    await flush();
+
+    host.querySelector<HTMLElement>('header mndw-button')?.click();
+    await flush();
+
+    expect(vi.mocked(openSettingsDialog).mock.calls[0][1].rssiThresholds).toEqual({good: -60, fair: -70});
+  });
+
+  it.each([
+    ['malformed json', 'not json'],
+    ['an out-of-range value', JSON.stringify({good: -10, fair: -75})],
+    ['a good threshold below the fair one', JSON.stringify({good: -80, fair: -70})],
+    ['a non-integer', JSON.stringify({good: -65.5, fair: -75})],
+  ])('falls back to the default RSSI thresholds for %s and warns', async (_label, value) => {
+    store.set('rssi-thresholds', value);
+
+    mountWidget();
+    await flush();
+
+    host.querySelector<HTMLElement>('header mndw-button')?.click();
+    await flush();
+
+    expect(vi.mocked(openSettingsDialog).mock.calls[0][1].rssiThresholds).toEqual({good: -65, fair: -75});
+    expect(warn).toHaveBeenCalled();
+  });
+
   it('merges a partial column config onto defaults with Last seen hidden', async () => {
     store.set('column-visibility', JSON.stringify({connection: false, unknownColumn: true}));
     mountWidget();
@@ -529,14 +559,14 @@ describe('settings', () => {
 
     expect(openSettingsDialog).toHaveBeenCalledTimes(1);
 
-    const [, visibility, intervalSeconds, onChange, _onRefreshIntervalChange] =
-      vi.mocked(openSettingsDialog).mock.calls[0];
+    const options = vi.mocked(openSettingsDialog).mock.calls[0][1];
 
-    expect(visibility).toMatchObject({ip: true, connection: true});
-    expect(visibility.lastSeen).toBe(false);
-    expect(intervalSeconds).toBe(3);
+    expect(options.visibility).toMatchObject({ip: true, connection: true});
+    expect(options.visibility.lastSeen).toBe(false);
+    expect(options.refreshIntervalSeconds).toBe(3);
+    expect(options.rssiThresholds).toEqual({good: -65, fair: -75});
 
-    onChange('connection', false);
+    options.onColumnChange('connection', false);
     await flush();
     expect(headers()).not.toContain('Connection');
     expect(storageSet).toHaveBeenCalledWith('column-visibility', expect.stringContaining('"connection":false'));
@@ -549,9 +579,9 @@ describe('settings', () => {
     host.querySelector<HTMLElement>('header mndw-button')?.click();
     await flush();
 
-    const [, , , onChange] = vi.mocked(openSettingsDialog).mock.calls[0];
+    const options = vi.mocked(openSettingsDialog).mock.calls[0][1];
 
-    onChange('lastSeen', true);
+    options.onColumnChange('lastSeen', true);
     await flush();
 
     expect(headers()).toContain('Last seen');
@@ -567,9 +597,9 @@ describe('settings', () => {
     host.querySelector<HTMLElement>('header mndw-button')?.click();
     await flush();
 
-    const [, , , , onRefreshIntervalChange] = vi.mocked(openSettingsDialog).mock.calls[0];
+    const options = vi.mocked(openSettingsDialog).mock.calls[0][1];
 
-    onRefreshIntervalChange(1);
+    options.onRefreshIntervalChange(1);
     await flush();
 
     expect(queue).toHaveBeenCalledTimes(initialCalls);
@@ -578,5 +608,28 @@ describe('settings', () => {
     vi.advanceTimersByTime(1000);
     await flush();
     expect(queue).toHaveBeenCalledTimes(initialCalls + 1);
+  });
+
+  it('applies a threshold change to wireless cells at once and persists it', async () => {
+    queue = vi.fn(() =>
+      of({host: [{mac: '02:00:00:00:00:01', name: 'Wi-Fi', active: true, mws: {ap: 'ap-1', rssi: -50, txrate: 300}}]})
+    );
+    mountWidget();
+    await flush();
+
+    const initialCalls = queue.mock.calls.length;
+
+    expect(host.querySelector('.connection-cell__rssi--good')).not.toBeNull();
+
+    host.querySelector<HTMLElement>('header mndw-button')?.click();
+    await flush();
+
+    vi.mocked(openSettingsDialog).mock.calls[0][1].onRssiThresholdsChange({good: -40, fair: -45});
+    await flush();
+
+    expect(host.querySelector('.connection-cell__rssi--weak')).not.toBeNull();
+    expect(host.querySelector('.connection-cell__rssi--good')).toBeNull();
+    expect(queue).toHaveBeenCalledTimes(initialCalls);
+    expect(storageSet).toHaveBeenCalledWith('rssi-thresholds', '{"good":-40,"fair":-45}');
   });
 });

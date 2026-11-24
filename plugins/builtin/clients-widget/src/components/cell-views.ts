@@ -1,3 +1,5 @@
+import type {RssiQuality} from './rssi.js';
+
 export const DASH = '—';
 
 export interface TitledText {
@@ -15,7 +17,16 @@ export interface ClientNameView {
   link: LinkStatusView;
 }
 
+export interface WirelessConnectionView {
+  kind: 'wireless';
+  label: string;
+  rssi: string;
+  rate: string;
+  quality: RssiQuality;
+  title?: string;
+}
+
 export type ConnectionView =
   | {kind: 'none'}
-  | {kind: 'wireless'; text: string}
+  | WirelessConnectionView
   | {kind: 'wired'; speed: string; port: string};

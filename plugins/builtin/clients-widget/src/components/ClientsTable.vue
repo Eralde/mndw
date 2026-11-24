@@ -3,12 +3,14 @@ import {computed} from 'vue';
 import type {Translator} from '@mndw/sdk';
 import type {ClientRecord} from '../services/clients.js';
 import {buildColumns} from './columns.js';
+import type {RssiThresholds} from './rssi.js';
 
 interface Props {
   clients: ClientRecord[];
   columnVisibility: Record<string, boolean>;
   error: string | null;
   loading: boolean;
+  rssiThresholds: RssiThresholds;
   showOffline: boolean;
   translator: Translator;
 }
@@ -17,7 +19,7 @@ const HIDEABLE_COLUMNS = ['ip', 'connection', 'uptime', 'lastSeen'] as const;
 
 const props = defineProps<Props>();
 
-const columns = computed(() => buildColumns(props.translator));
+const columns = computed(() => buildColumns(props.translator, props.rssiThresholds));
 const hiddenColumns = computed(() =>
   HIDEABLE_COLUMNS.filter((key) => props.columnVisibility[key] === false)
 );

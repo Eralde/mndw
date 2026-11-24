@@ -26,7 +26,7 @@ export type HostConnectionType = 'wired' | 'wireless' | 'unknown';
 export interface WirelessConnectionInfo {
   accessPointId: string;
   txrate: number;
-  rssi: number;
+  rssi: number | null;
   txss: number;
 }
 
@@ -148,7 +148,7 @@ const getWirelessConnectionInfo = (host: RawDeviceHost): WirelessConnectionInfo 
     accessPointId,
     txss: connectionInfo.txss ?? 0,
     txrate: connectionInfo.txrate ?? 0,
-    rssi: connectionInfo.rssi ?? 0,
+    rssi: toNumber(connectionInfo.rssi),
   };
 };
 

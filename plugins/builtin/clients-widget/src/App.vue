@@ -5,6 +5,7 @@ import {useTranslator} from '@mndw/sdk/vue';
 import type {MndwCheckboxChangeDetail} from '@mndw/ui';
 import {computed, onMounted, onUnmounted, ref} from 'vue';
 import ClientsTable from './components/ClientsTable.vue';
+import {DEFAULT_RSSI_THRESHOLDS, isValidRssiThresholds, type RssiThresholds} from './components/rssi.js';
 import {type ClientRecord, fetchClients, filterVisibleClients} from './services/clients.js';
 import {openSettingsDialog} from './services/open-settings-dialog.js';
 
@@ -14,6 +15,7 @@ const COLUMN_KEYS = ['ip', 'connection', 'uptime', 'lastSeen'] as const;
 const KEY_COLUMNS = 'column-visibility';
 const KEY_OFFLINE = 'show-offline';
 const KEY_INTERVAL = 'refresh-interval';
+const KEY_RSSI_THRESHOLDS = 'rssi-thresholds';
 const DEFAULT_INTERVAL_SECONDS = 3;
 
 type ClientLoadError = string;
@@ -23,6 +25,7 @@ const lastSuccessAt = ref<number | null>(null);
 const refreshFailed = ref(false);
 const showOffline = ref(false);
 const refreshIntervalSeconds = ref(DEFAULT_INTERVAL_SECONDS);
+const rssiThresholds = ref<RssiThresholds>({...DEFAULT_RSSI_THRESHOLDS});
 const columnVisibility = ref<Record<string, boolean>>(
   Object.fromEntries(COLUMN_KEYS.map((key) => [key, key !== 'lastSeen'])),
 );
@@ -82,21 +85,27 @@ function onOfflineChange(event: CustomEvent<MndwCheckboxChangeDetail>): void {
   persist(KEY_OFFLINE, String(showOffline.value));
 }
 
-function onIntervalChange(value: number): void {
+function onRefreshIntervalChange(value: number): void {
   refreshIntervalSeconds.value = value;
   persist(KEY_INTERVAL, String(value));
   refreshLoop?.setIntervalMs(value * 1000);
 }
 
+function onRssiThresholdsChange(value: RssiThresholds): void {
+  rssiThresholds.value = value;
+  persist(KEY_RSSI_THRESHOLDS, JSON.stringify(value));
+}
+
 function openSettings(): void {
-  openSettingsDialog(
-    props.ctx,
-    columnVisibility.value,
-    refreshIntervalSeconds.value,
+  openSettingsDialog(props.ctx, {
+    visibility: columnVisibility.value,
+    refreshIntervalSeconds: refreshIntervalSeconds.value,
+    rssiThresholds: rssiThresholds.value,
     onColumnChange,
-    onIntervalChange,
+    onRefreshIntervalChange,
+    onRssiThresholdsChange,
     translator,
-  );
+  });
 }
 
 function retry(): void {
@@ -157,6 +166,26 @@ function applyStoredInterval(raw: string): void {
   refreshLoop?.setIntervalMs(parsed * 1000);
 }
 
+function applyStoredRssiThresholds(raw: string): void {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    console.warn('[clients-widget] ignoring malformed rssi-thresholds');
+
+    return;
+  }
+
+  if (!isValidRssiThresholds(parsed)) {
+    console.warn('[clients-widget] ignoring invalid rssi-thresholds');
+
+    return;
+  }
+
+  rssiThresholds.value = parsed;
+}
+
 function restore(key: string, apply: (raw: string) => void): void {
   void props.ctx.storage.instance.get(key).then((raw) => {
     if (raw !== null && !dirty.has(key)) {
@@ -208,6 +237,7 @@ onMounted(() => {
   restore(KEY_COLUMNS, applyStoredColumns);
   restore(KEY_OFFLINE, applyStoredOffline);
   restore(KEY_INTERVAL, applyStoredInterval);
+  restore(KEY_RSSI_THRESHOLDS, applyStoredRssiThresholds);
 });
 
 onUnmounted(() => {
@@ -244,6 +274,7 @@ onUnmounted(() => {
       :column-visibility="columnVisibility"
       :error="tableError"
       :loading="loadState.status === 'loading'"
+      :rssi-thresholds="rssiThresholds"
       :show-offline="showOffline"
       :translator="translator"
     />

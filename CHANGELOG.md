@@ -14,6 +14,10 @@ A part with nothing in it is left out.
 
 ### For users
 
+- Clients widget: the RSSI of wireless clients is coloured green, orange or red, with the level in a tooltip.
+  The two thresholds are set in the widget settings (default −65 and −75 dBm). A client whose router reports no
+  RSSI now shows «—» instead of 0.
+
 ### For plugin authors
 
 ## 0.4.1 — 2026-11-23

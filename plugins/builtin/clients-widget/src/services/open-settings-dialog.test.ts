@@ -3,7 +3,8 @@ import {describe, expect, it, vi} from 'vitest';
 import type {OverlayLayer, OverlayOpenOptions, PluginContext} from '@mndw/sdk';
 import {createTestI18n} from '@mndw/sdk/testing';
 import {useTranslator} from '@mndw/sdk/vue';
-import {openSettingsDialog} from './open-settings-dialog.js';
+import type {RssiThresholds} from '../components/rssi.js';
+import {type SettingsDialogOptions, openSettingsDialog} from './open-settings-dialog.js';
 
 interface Opened {
   options: OverlayOpenOptions;
@@ -13,6 +14,7 @@ interface Opened {
 
 type MndwCheckboxHost = HTMLElement & {checked: boolean};
 type MndwSliderHost = HTMLElement & {min: number; max: number; step: number; value: number};
+type MndwInputHost = HTMLElement & {value: string; type: string};
 
 function createContext(): {ctx: PluginContext; opened: Opened[]} {
   const opened: Opened[] = [];
@@ -43,6 +45,25 @@ function createContext(): {ctx: PluginContext; opened: Opened[]} {
 }
 
 const visibility = {ip: true, connection: false, uptime: true, lastSeen: true};
+const rssiThresholds: RssiThresholds = {good: -60, fair: -70};
+
+function dialogOptions(overrides: Partial<SettingsDialogOptions> = {}): SettingsDialogOptions {
+  return {
+    visibility,
+    refreshIntervalSeconds: 3,
+    rssiThresholds,
+    onColumnChange: vi.fn(),
+    onRefreshIntervalChange: vi.fn(),
+    onRssiThresholdsChange: vi.fn(),
+    translator: useTranslator(
+      createTestI18n({'settings': 'Client settings', 'columns': 'Columns', 'refresh-interval': 'Refresh interval',
+        'rssi-thresholds.label': 'RSSI thresholds', 'rssi-thresholds.good': 'Good signal threshold (dBm)',
+        'rssi-thresholds.fair': 'Fair signal threshold (dBm)', 'column.ip': 'IP address',
+        'column.connection': 'Connection', 'column.uptime': 'Uptime', 'column.last-seen': 'Last seen'}),
+    ),
+    ...overrides,
+  };
+}
 
 function openDialog(): {
   opened: Opened;
@@ -50,23 +71,15 @@ function openDialog(): {
   onRefreshIntervalChange: ReturnType<typeof vi.fn>;
 } {
   const {ctx, opened} = createContext();
-  const onChange = vi.fn();
-  const onRefreshIntervalChange = vi.fn();
+  const options = dialogOptions();
 
-  openSettingsDialog(
-    ctx,
-    visibility,
-    3,
-    onChange,
-    onRefreshIntervalChange,
-    useTranslator(
-      createTestI18n({'settings': 'Client settings', 'columns': 'Columns', 'refresh-interval': 'Refresh interval',
-        'column.ip': 'IP address', 'column.connection': 'Connection', 'column.uptime': 'Uptime',
-        'column.last-seen': 'Last seen'}),
-    ),
-  );
+  openSettingsDialog(ctx, options);
 
-  return {opened: opened[0], onChange, onRefreshIntervalChange};
+  return {
+    opened: opened[0],
+    onChange: options.onColumnChange as ReturnType<typeof vi.fn>,
+    onRefreshIntervalChange: options.onRefreshIntervalChange as ReturnType<typeof vi.fn>,
+  };
 }
 
 describe('overlay options', () => {
@@ -92,16 +105,7 @@ describe('overlay options', () => {
   it('returns void — the session is intentionally discarded', () => {
     const {ctx} = createContext();
 
-    expect(
-      openSettingsDialog(
-        ctx,
-        visibility,
-        3,
-        vi.fn(),
-        vi.fn(),
-        useTranslator(createTestI18n({settings: 'Client settings'})),
-      ),
-    ).toBeUndefined();
+    expect(openSettingsDialog(ctx, dialogOptions())).toBeUndefined();
   });
 });
 
@@ -170,5 +174,15 @@ describe('interval slider', () => {
     );
 
     expect(onRefreshIntervalChange).toHaveBeenCalledWith(7);
+  });
+});
+
+describe('RSSI threshold fields', () => {
+  it('renders the current thresholds as number inputs', () => {
+    const {opened} = openDialog();
+    const inputs = [...opened.target.querySelectorAll<MndwInputHost>('mndw-input')];
+
+    expect(inputs.map((input) => input.type)).toEqual(['number', 'number']);
+    expect(inputs.map((input) => input.value)).toEqual(['-60', '-70']);
   });
 });

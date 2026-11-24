@@ -7,6 +7,7 @@ import ClientNameCell from './ClientNameCell.vue';
 import ConnectionCell from './ConnectionCell.vue';
 import TitledTextCell from './TitledTextCell.vue';
 import {type ClientNameView, type ConnectionView, DASH, type LinkStatusView, type TitledText} from './cell-views.js';
+import {type RssiQuality, type RssiThresholds, rssiQuality} from './rssi.js';
 
 function wiredSpeedText(speed: number | null | undefined): string {
   return speed === undefined || !Number.isFinite(speed) ? DASH : `${speed} Mbps`;
@@ -34,7 +35,21 @@ function nameView(translator: Translator, row: ClientRecord): ClientNameView {
   return {displayName: row.displayName, link: linkView(translator, row)};
 }
 
-function connectionView(translator: Translator, row: ClientRecord): ConnectionView {
+const RSSI_LEVEL_KEYS: Record<Exclude<RssiQuality, 'unknown'>, string> = {
+  good: 'rssi-level.good',
+  fair: 'rssi-level.fair',
+  weak: 'rssi-level.weak',
+};
+
+function rssiLevelTitle(translator: Translator, quality: RssiQuality): string | undefined {
+  return quality === 'unknown' ? undefined : translator.t(RSSI_LEVEL_KEYS[quality]);
+}
+
+function rssiText(rssi: number | null): string {
+  return rssi === null || !Number.isFinite(rssi) ? DASH : String(rssi);
+}
+
+function connectionView(translator: Translator, row: ClientRecord, thresholds: RssiThresholds): ConnectionView {
   const {connection, connectionType} = row;
 
   if (connectionType === 'unknown' || connection === null) {
@@ -42,9 +57,15 @@ function connectionView(translator: Translator, row: ClientRecord): ConnectionVi
   }
 
   if ('accessPointId' in connection) {
+    const quality = rssiQuality(connection.rssi, thresholds);
+
     return {
       kind: 'wireless',
-      text: `${translator.t('rssi')}: ${connection.rssi}; ${connection.txrate} Mbps`,
+      label: translator.t('rssi'),
+      rssi: rssiText(connection.rssi),
+      rate: `${connection.txrate} Mbps`,
+      quality,
+      title: rssiLevelTitle(translator, quality),
     };
   }
 
@@ -57,7 +78,7 @@ function durationView(seconds: number | null, format: (value: number) => string)
     : {text: format(seconds), title: formatFullDuration(seconds)};
 }
 
-export function buildColumns(translator: Translator): Column<ClientRecord>[] {
+export function buildColumns(translator: Translator, thresholds: RssiThresholds): Column<ClientRecord>[] {
   return [
     column<ClientRecord>()({
       id: 'name',
@@ -78,7 +99,7 @@ export function buildColumns(translator: Translator): Column<ClientRecord>[] {
     column<ClientRecord>()({
       id: 'connection',
       label: translator.t('column.connection'),
-      accessor: (row) => connectionView(translator, row),
+      accessor: (row) => connectionView(translator, row, thresholds),
       renderer: vueCell<ClientRecord, ConnectionView>()(ConnectionCell),
       hideable: true,
     }),

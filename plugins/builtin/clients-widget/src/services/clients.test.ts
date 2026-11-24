@@ -171,6 +171,14 @@ describe('normalizeClients — wireless connection', () => {
     });
     expect(record.connection).not.toHaveProperty('bands');
   });
+
+  it('keeps a missing RSSI null instead of defaulting to 0', () => {
+    const [record] = normalizeClients(wrap(rawHost({
+      mws: {ap: 'ap-1', txss: 2, txrate: 866},
+    })));
+
+    expect(record.connection).toMatchObject({rssi: null});
+  });
 });
 
 describe('normalizeClients — sorting', () => {

@@ -24,6 +24,18 @@
   },
   "port": "Port",
   "rssi": "RSSI",
+  "rssi-level": {
+    "good": "Signal: good",
+    "fair": "Signal: fair",
+    "weak": "Signal: weak"
+  },
+  "rssi-thresholds": {
+    "label": "RSSI thresholds",
+    "good": "Good signal threshold (dBm)",
+    "fair": "Fair signal threshold (dBm)",
+    "invalid": "Enter a whole number from {min} to {max} dBm",
+    "order": "Must be above the fair threshold"
+  },
   "link": {
     "online": "Online",
     "offline": "Offline",

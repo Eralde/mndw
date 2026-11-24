@@ -5,6 +5,7 @@ import type {ClientRecord, WirelessConnectionInfo} from '../services/clients.js'
 import {formatCompactDuration, formatElapsed, formatFullDuration} from '../services/format-duration.js';
 import type {ClientNameView, ConnectionView, TitledText} from './cell-views.js';
 import {buildColumns} from './columns.js';
+import {DEFAULT_RSSI_THRESHOLDS} from './rssi.js';
 
 const translator = createTestI18n({
   'column.name': 'Name',
@@ -16,6 +17,9 @@ const translator = createTestI18n({
   'link.offline': 'Offline',
   'link.unavailable': 'Unavailable',
   'rssi': 'RSSI',
+  'rssi-level.good': 'Signal: good',
+  'rssi-level.fair': 'Signal: fair',
+  'rssi-level.weak': 'Signal: weak',
   'port': 'Port',
 });
 
@@ -35,7 +39,7 @@ function client(overrides: Partial<ClientRecord> = {}): ClientRecord {
 }
 
 function accessorOf(id: string): (row: ClientRecord) => unknown {
-  const col = buildColumns(translator).find((candidate) => candidate.id === id);
+  const col = buildColumns(translator, DEFAULT_RSSI_THRESHOLDS).find((candidate) => candidate.id === id);
 
   if (col === undefined || typeof col.accessor !== 'function') {
     throw new Error(`no function accessor for ${id}`);
@@ -46,12 +50,14 @@ function accessorOf(id: string): (row: ClientRecord) => unknown {
 
 describe('buildColumns', () => {
   it('produces the expected column ids in order', () => {
-    expect(buildColumns(translator).map((column) => column.id))
+    expect(buildColumns(translator, DEFAULT_RSSI_THRESHOLDS).map((column) => column.id))
       .toEqual(['name', 'ip', 'connection', 'uptime', 'lastSeen']);
   });
 
   it('marks only ip/connection/uptime/lastSeen hideable; name explicitly not', () => {
-    const byId = new Map(buildColumns(translator).map((column) => [column.id, column.hideable]));
+    const byId = new Map(
+      buildColumns(translator, DEFAULT_RSSI_THRESHOLDS).map((column) => [column.id, column.hideable]),
+    );
 
     expect(byId.get('name')).toBe(false);
     expect([byId.get('ip'), byId.get('connection'), byId.get('uptime'), byId.get('lastSeen')])
@@ -59,7 +65,7 @@ describe('buildColumns', () => {
   });
 
   it('pins the name column and marks uptime/lastSeen nowrap', () => {
-    const byId = new Map(buildColumns(translator).map((column) => [column.id, column]));
+    const byId = new Map(buildColumns(translator, DEFAULT_RSSI_THRESHOLDS).map((column) => [column.id, column]));
 
     expect(byId.get('name')?.sticky).toBe('start');
     expect(byId.get('name')?.width).toBe('12rem');
@@ -81,11 +87,36 @@ describe('buildColumns', () => {
     expect(accessorOf('ip')(client({ip: '10.0.0.1'}))).toBe('10.0.0.1');
   });
 
-  it('connection accessor keeps wireless rows identifiable with RSSI and transmit rate', () => {
+  it('connection accessor keeps wireless rows identifiable with RSSI, transmit rate, and level', () => {
     const wireless: WirelessConnectionInfo = {accessPointId: 'ap0', txrate: 300, rssi: -50, txss: 2};
 
     expect(accessorOf('connection')(client({connectionType: 'wireless', connection: wireless})))
-      .toEqual({kind: 'wireless', text: 'RSSI: -50; 300 Mbps'} satisfies ConnectionView);
+      .toEqual(
+        {
+          kind: 'wireless',
+          label: 'RSSI',
+          rssi: '-50',
+          rate: '300 Mbps',
+          quality: 'good',
+          title: 'Signal: good',
+        } satisfies ConnectionView,
+      );
+  });
+
+  it('connection accessor dashes a missing RSSI and leaves it uncoloured', () => {
+    const wireless: WirelessConnectionInfo = {accessPointId: 'ap0', txrate: 300, rssi: null, txss: 2};
+
+    expect(accessorOf('connection')(client({connectionType: 'wireless', connection: wireless})))
+      .toEqual(
+        {
+          kind: 'wireless',
+          label: 'RSSI',
+          rssi: '—',
+          rate: '300 Mbps',
+          quality: 'unknown',
+          title: undefined,
+        } satisfies ConnectionView,
+      );
   });
 
   it('connection accessor is none for unknown', () => {

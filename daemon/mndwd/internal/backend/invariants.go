@@ -413,7 +413,7 @@ func checkInvariantI7(s *Supervisor) (invariantViolation, bool) {
 }
 
 func checkInvariantI8(pluginID string, record *pluginRecord) (invariantViolation, bool) {
-	if record.servicePresent || (record.launch == nil && record.process == nil && record.retryTimer == nil &&
+	if record.service != nil || (record.launch == nil && record.process == nil && record.retryTimer == nil &&
 		!record.stopping && !record.serviceHeld && !record.pendingStart && !record.startupQueued) {
 		return invariantViolation{}, false
 	}
@@ -422,8 +422,8 @@ func checkInvariantI8(pluginID string, record *pluginRecord) (invariantViolation
 		ID:       invI8,
 		PluginID: pluginID,
 		Detail: fmt.Sprintf(
-			"servicePresent=%t launch=%t process=%t retryTimer=%t stopping=%t serviceHeld=%t pendingStart=%t startupQueued=%t",
-			record.servicePresent,
+			"service=%t launch=%t process=%t retryTimer=%t stopping=%t serviceHeld=%t pendingStart=%t startupQueued=%t",
+			record.service != nil,
 			record.launch != nil,
 			record.process != nil,
 			record.retryTimer != nil,
@@ -436,33 +436,41 @@ func checkInvariantI8(pluginID string, record *pluginRecord) (invariantViolation
 }
 
 func checkInvariantI9(pluginID string, record *pluginRecord) (invariantViolation, bool) {
-	if !record.transitionPresent {
+	transition := record.transition
+
+	if transition == nil {
 		return invariantViolation{}, false
 	}
 
-	runCompleted := record.run != nil && record.run.completed
-	runActive := record.run != nil && !record.run.completed
+	runCompleted := transition.run != nil && transition.run.completed
+	runActive := transition.run != nil && !transition.run.completed
 
-	if (record.operation != OpNone) == runActive {
+	if (transition.operation != OpNone) == runActive {
 		return invariantViolation{}, false
 	}
 
 	return invariantViolation{
 		ID:       invI9,
 		PluginID: pluginID,
-		Detail:   fmt.Sprintf("transitionPresent=true operation=%d runActive=%t runCompleted=%t", record.operation, runActive, runCompleted),
+		Detail:   fmt.Sprintf("transition=true operation=%d runActive=%t runCompleted=%t", transition.operation, runActive, runCompleted),
 	}, true
 }
 
 func checkInvariantI10(pluginID string, record *pluginRecord) (invariantViolation, bool) {
-	if record.status.State != StateReady || (record.process != nil && record.processRegistered) {
+	status := RuntimeStatus{}
+
+	if record.service != nil {
+		status = record.service.status
+	}
+
+	if status.State != StateReady || (record.process != nil && record.processRegistered) {
 		return invariantViolation{}, false
 	}
 
 	return invariantViolation{
 		ID:       invI10,
 		PluginID: pluginID,
-		Detail:   fmt.Sprintf("status.State=%q process=%t processRegistered=%t", record.status.State, record.process != nil, record.processRegistered),
+		Detail:   fmt.Sprintf("status.State=%q process=%t processRegistered=%t", status.State, record.process != nil, record.processRegistered),
 	}, true
 }
 
@@ -489,11 +497,19 @@ func checkInvariantI12(pluginID string, record *pluginRecord) (invariantViolatio
 }
 
 func checkInvariantI13(pluginID string, record *pluginRecord, reservedServices int, maxServices int) (invariantViolation, bool) {
-	// promoteBlocked copies desired at supervisor.go:2336-2342, then compares desired with that copy at :2365-2368,
-	// so serviceSpec is not part of admissibility. reserveForReconcileLocked rejects stopping at :1204.
-	if record.status.State != StateCapacityBlocked || !record.servicePresent || record.desired == nil ||
-		!record.desired.Enabled || record.serviceHeld || record.stopping || !record.transitionPresent ||
-		record.operation != OpNone || record.intent != IntentRun {
+	// promoteBlocked compares desired with a copy, so service.spec is not part of admissibility.
+	// reserveForReconcileLocked rejects stopping records.
+	status := RuntimeStatus{}
+
+	if record.service != nil {
+		status = record.service.status
+	}
+
+	transition := record.transition
+
+	if status.State != StateCapacityBlocked || record.service == nil || record.desired == nil ||
+		!record.desired.Enabled || record.serviceHeld || record.stopping || transition == nil ||
+		transition.operation != OpNone || transition.intent != IntentRun {
 		return invariantViolation{}, false
 	}
 
@@ -501,26 +517,33 @@ func checkInvariantI13(pluginID string, record *pluginRecord, reservedServices i
 		ID:       invI13,
 		PluginID: pluginID,
 		Detail: fmt.Sprintf(
-			"reservedServices=%d maxSupervisedServices=%d status.State=%q servicePresent=%t desired.Enabled=%t serviceHeld=%t stopping=%t transitionPresent=%t operation=%d intent=%d",
+			"reservedServices=%d maxSupervisedServices=%d status.State=%q service=%t desired.Enabled=%t serviceHeld=%t stopping=%t transition=%t operation=%d intent=%d",
 			reservedServices,
 			maxServices,
-			record.status.State,
-			record.servicePresent,
+			status.State,
+			record.service != nil,
 			record.desired.Enabled,
 			record.serviceHeld,
 			record.stopping,
-			record.transitionPresent,
-			record.operation,
-			record.intent,
+			transition != nil,
+			transition.operation,
+			transition.intent,
 		),
 	}, true
 }
 
 func checkInvariantI14(pluginID string, record *pluginRecord) (invariantViolation, bool) {
+	status := RuntimeStatus{}
+
+	if record.service != nil {
+		status = record.service.status
+	}
+
+	activeRun := record.transition != nil && record.transition.run != nil && !record.transition.run.completed
+
 	if !record.serviceHeld || record.reservationPending || record.launch != nil || record.process != nil ||
-		record.stopping || record.pendingStart || record.startupQueued || record.status.State == StateBackoff ||
-		record.status.State == StateFailed ||
-		(record.transitionPresent && record.run != nil && !record.run.completed) {
+		record.stopping || record.pendingStart || record.startupQueued || status.State == StateBackoff ||
+		status.State == StateFailed || activeRun {
 		return invariantViolation{}, false
 	}
 
@@ -536,8 +559,8 @@ func checkInvariantI14(pluginID string, record *pluginRecord) (invariantViolatio
 			record.stopping,
 			record.pendingStart,
 			record.startupQueued,
-			record.status.State,
-			record.transitionPresent && record.run != nil && !record.run.completed,
+			status.State,
+			activeRun,
 		),
 	}, true
 }

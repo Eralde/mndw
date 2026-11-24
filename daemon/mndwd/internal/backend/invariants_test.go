@@ -327,7 +327,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantID:     "I8",
 			wantPlugin: "demo",
 			configure: func(s *Supervisor, record *pluginRecord) {
-				record.servicePresent = false
+				record.service = nil
 				record.launch = &launchIdentity{}
 				record.serviceHeld = true
 				s.reservedServices = 1
@@ -338,7 +338,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantID:     "I8",
 			wantPlugin: "demo",
 			configure: func(s *Supervisor, record *pluginRecord) {
-				record.servicePresent = false
+				record.service = nil
 				record.process = &registeredProcess{}
 				record.serviceHeld = true
 				s.reservedServices = 1
@@ -349,7 +349,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantID:     "I8",
 			wantPlugin: "demo",
 			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.servicePresent = false
+				record.service = nil
 				desired := ServiceSpec{PluginID: "demo", Enabled: true}
 				record.desired = &desired
 				record.retryTimer = time.NewTimer(time.Hour)
@@ -360,7 +360,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantID:     "I8",
 			wantPlugin: "demo",
 			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.servicePresent = false
+				record.service = nil
 				record.stopping = true
 				record.stopDone = make(chan struct{})
 			},
@@ -370,9 +370,9 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantID:     "I8",
 			wantPlugin: "demo",
 			configure: func(s *Supervisor, record *pluginRecord) {
-				record.servicePresent = false
+				record.service = nil
 				record.serviceHeld = true
-				record.status.State = StateBackoff
+				record.reservationPending = true
 				s.reservedServices = 1
 			},
 		},
@@ -381,7 +381,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantID:     "I8",
 			wantPlugin: "demo",
 			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.servicePresent = false
+				record.service = nil
 				record.pendingStart = true
 			},
 		},
@@ -390,7 +390,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantID:     "I8",
 			wantPlugin: "demo",
 			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.servicePresent = false
+				record.service = nil
 				record.startupQueued = true
 			},
 		},
@@ -399,8 +399,8 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantID:     "I9",
 			wantPlugin: "demo",
 			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.transitionPresent = true
-				record.operation = OpStarting
+				record.transition = &transitionState{}
+				record.transition.operation = OpStarting
 			},
 		},
 		{
@@ -408,8 +408,8 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantID:     "I9",
 			wantPlugin: "demo",
 			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.transitionPresent = true
-				record.run = &operationRun{}
+				record.transition = &transitionState{}
+				record.transition.run = &operationRun{}
 			},
 		},
 		{
@@ -417,9 +417,9 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantID:     "I9",
 			wantPlugin: "demo",
 			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.transitionPresent = true
-				record.operation = OpStarting
-				record.run = &operationRun{completed: true}
+				record.transition = &transitionState{}
+				record.transition.operation = OpStarting
+				record.transition.run = &operationRun{completed: true}
 			},
 		},
 		{
@@ -427,7 +427,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantID:     "I10",
 			wantPlugin: "demo",
 			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.status.State = StateReady
+				record.service.status.State = StateReady
 			},
 		},
 		{
@@ -435,7 +435,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantID:     "I10",
 			wantPlugin: "demo",
 			configure: func(s *Supervisor, record *pluginRecord) {
-				record.status.State = StateReady
+				record.service.status.State = StateReady
 				record.process = &registeredProcess{}
 				record.serviceHeld = true
 				s.reservedServices = 1
@@ -478,10 +478,10 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			configure: func(_ *Supervisor, record *pluginRecord) {
 				spec := ServiceSpec{PluginID: "demo", Enabled: true}
 				record.desired = &spec
-				record.serviceSpec = ServiceSpec{PluginID: "demo", Enabled: false}
-				record.transitionPresent = true
-				record.intent = IntentRun
-				record.status.State = StateCapacityBlocked
+				record.service.spec = ServiceSpec{PluginID: "demo", Enabled: false}
+				record.transition = &transitionState{}
+				record.transition.intent = IntentRun
+				record.service.status.State = StateCapacityBlocked
 			},
 		},
 		{
@@ -489,9 +489,9 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			configure: func(_ *Supervisor, record *pluginRecord) {
 				spec := ServiceSpec{PluginID: "demo", Enabled: false}
 				record.desired = &spec
-				record.transitionPresent = true
-				record.intent = IntentRun
-				record.status.State = StateCapacityBlocked
+				record.transition = &transitionState{}
+				record.transition.intent = IntentRun
+				record.service.status.State = StateCapacityBlocked
 			},
 		},
 		{
@@ -499,7 +499,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			configure: func(_ *Supervisor, record *pluginRecord) {
 				spec := ServiceSpec{PluginID: "demo", Enabled: true}
 				record.desired = &spec
-				record.status.State = StateCapacityBlocked
+				record.service.status.State = StateCapacityBlocked
 			},
 		},
 		{
@@ -507,11 +507,11 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			configure: func(_ *Supervisor, record *pluginRecord) {
 				spec := ServiceSpec{PluginID: "demo", Enabled: true}
 				record.desired = &spec
-				record.transitionPresent = true
-				record.intent = IntentRun
-				record.operation = OpStarting
-				record.run = &operationRun{}
-				record.status.State = StateCapacityBlocked
+				record.transition = &transitionState{}
+				record.transition.intent = IntentRun
+				record.transition.operation = OpStarting
+				record.transition.run = &operationRun{}
+				record.service.status.State = StateCapacityBlocked
 			},
 		},
 		{
@@ -519,11 +519,11 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			configure: func(s *Supervisor, record *pluginRecord) {
 				spec := ServiceSpec{PluginID: "demo", Enabled: true}
 				record.desired = &spec
-				record.transitionPresent = true
-				record.intent = IntentRun
+				record.transition = &transitionState{}
+				record.transition.intent = IntentRun
 				record.serviceHeld = true
 				record.pendingStart = true
-				record.status.State = StateCapacityBlocked
+				record.service.status.State = StateCapacityBlocked
 				s.reservedServices = 1
 			},
 		},
@@ -532,17 +532,17 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			configure: func(s *Supervisor, record *pluginRecord) {
 				spec := ServiceSpec{PluginID: "demo", Enabled: true}
 				record.desired = &spec
-				record.transitionPresent = true
-				record.intent = IntentRun
-				record.status.State = StateCapacityBlocked
+				record.transition = &transitionState{}
+				record.transition.intent = IntentRun
+				record.service.status.State = StateCapacityBlocked
 				s.reservedServices = s.cfg.Limits.MaxSupervisedServices
 
 				for index := 0; index < s.reservedServices; index++ {
 					pluginID := fmt.Sprintf("slot-%d", index)
 					s.plugins[pluginID] = &pluginRecord{
-						servicePresent: true,
-						serviceHeld:    true,
-						pendingStart:   true,
+						service:      &serviceState{},
+						serviceHeld:  true,
+						pendingStart: true,
 					}
 				}
 			},
@@ -553,9 +553,9 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			configure: func(_ *Supervisor, record *pluginRecord) {
 				spec := ServiceSpec{PluginID: "demo", Enabled: true}
 				record.desired = &spec
-				record.transitionPresent = true
-				record.intent = IntentRun
-				record.status.State = StateCapacityBlocked
+				record.transition = &transitionState{}
+				record.transition.intent = IntentRun
+				record.service.status.State = StateCapacityBlocked
 			},
 		},
 		{
@@ -563,9 +563,9 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			configure: func(_ *Supervisor, record *pluginRecord) {
 				spec := ServiceSpec{PluginID: "demo", Enabled: true}
 				record.desired = &spec
-				record.transitionPresent = true
-				record.intent = IntentStop
-				record.status.State = StateCapacityBlocked
+				record.transition = &transitionState{}
+				record.transition.intent = IntentStop
+				record.service.status.State = StateCapacityBlocked
 			},
 		},
 		{
@@ -573,9 +573,9 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			configure: func(_ *Supervisor, record *pluginRecord) {
 				spec := ServiceSpec{PluginID: "demo", Enabled: true}
 				record.desired = &spec
-				record.transitionPresent = true
-				record.intent = IntentRun
-				record.status.State = StateCapacityBlocked
+				record.transition = &transitionState{}
+				record.transition.intent = IntentRun
+				record.service.status.State = StateCapacityBlocked
 				record.stopping = true
 				record.stopDone = make(chan struct{})
 			},
@@ -585,10 +585,10 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			configure: func(_ *Supervisor, record *pluginRecord) {
 				spec := ServiceSpec{PluginID: "demo", Enabled: true}
 				record.desired = &spec
-				record.transitionPresent = true
-				record.intent = IntentRun
-				record.status.State = StateCapacityBlocked
-				record.servicePresent = false
+				record.transition = &transitionState{}
+				record.transition.intent = IntentRun
+				// The absent service's zero status already skips this I13 candidate.
+				record.service = nil
 			},
 		},
 		{
@@ -596,10 +596,10 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			configure: func(s *Supervisor, record *pluginRecord) {
 				spec := ServiceSpec{PluginID: "demo", Enabled: true}
 				record.desired = &spec
-				record.serviceSpec = spec
-				record.transitionPresent = true
-				record.intent = IntentRun
-				record.status.State = StateCapacityBlocked
+				record.service.spec = spec
+				record.transition = &transitionState{}
+				record.transition.intent = IntentRun
+				record.service.status.State = StateCapacityBlocked
 				s.shuttingDown = true
 			},
 		},
@@ -641,7 +641,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			name: "I14 held slot can be in backoff",
 			configure: func(s *Supervisor, record *pluginRecord) {
 				record.serviceHeld = true
-				record.status.State = StateBackoff
+				record.service.status.State = StateBackoff
 				s.reservedServices = 1
 			},
 		},
@@ -649,7 +649,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			name: "I14 held slot can be failed",
 			configure: func(s *Supervisor, record *pluginRecord) {
 				record.serviceHeld = true
-				record.status.State = StateFailed
+				record.service.status.State = StateFailed
 				s.reservedServices = 1
 			},
 		},
@@ -657,9 +657,9 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			name: "I14 held slot can belong to an active run",
 			configure: func(s *Supervisor, record *pluginRecord) {
 				record.serviceHeld = true
-				record.transitionPresent = true
-				record.operation = OpStarting
-				record.run = &operationRun{}
+				record.transition = &transitionState{}
+				record.transition.operation = OpStarting
+				record.transition.run = &operationRun{}
 				s.reservedServices = 1
 			},
 		},
@@ -681,7 +681,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			s.startDesired = func(ServiceSpec) {}
 
 			spec := ServiceSpec{PluginID: "demo", Enabled: true}
-			record := &pluginRecord{servicePresent: true, serviceSpec: spec}
+			record := &pluginRecord{service: &serviceState{spec: spec}}
 
 			s.mu.Lock()
 
@@ -733,21 +733,21 @@ func TestCheckInvariantsSortsByPluginAndPreservesInvariantOrder(t *testing.T) {
 	s.startDesired = func(ServiceSpec) {}
 
 	demo := &pluginRecord{
-		servicePresent: true,
-		serviceSpec:    ServiceSpec{PluginID: "demo", Enabled: true},
-		process:        &registeredProcess{},
+		service: &serviceState{
+			spec: ServiceSpec{PluginID: "demo", Enabled: true},
+		},
+		process: &registeredProcess{},
 	}
 	alpha := &pluginRecord{
-		servicePresent: false,
-		serviceHeld:    true,
-		launch:         &launchIdentity{},
+		serviceHeld: true,
+		launch:      &launchIdentity{},
 	}
 
 	s.mu.Lock()
 
 	s.plugins["demo"] = demo
 	s.plugins["alpha"] = alpha
-	demo.status.State = StateReady
+	demo.service.status.State = StateReady
 	s.reservedServices = 1
 	got := s.checkInvariantsLocked()
 
@@ -819,6 +819,166 @@ func TestNoRawSupervisorUnlocks(t *testing.T) {
 	}
 }
 
+func TestPresencePointersNeverReset(t *testing.T) {
+	files, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("read backend package: %v", err)
+	}
+
+	var violations []string
+
+	for _, file := range files {
+		name := file.Name()
+
+		if file.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+
+		contents, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+
+		for _, violation := range presencePointerAssignmentViolations(string(contents)) {
+			violations = append(violations, name+":"+violation)
+		}
+	}
+
+	if len(violations) > 0 {
+		t.Errorf("presence pointer assignments violate allocation rules: %s", strings.Join(violations, ", "))
+	}
+
+	for _, source := range []string{
+		"func reset(record *pluginRecord) { record.service = nil }",
+		"func replace(record *pluginRecord) { record.transition = &transitionState{} }",
+		"func replace(record *pluginRecord) { record.service = &serviceState{} }",
+		"func replace(record *pluginRecord) { *record.service = serviceState{} }",
+		"func replace(record *pluginRecord) { *record.transition = transitionState{} }",
+		"func reset(record *pluginRecord) { record.transition, record.stopErr = nil, nil }",
+		"func (s *Supervisor) ensureServiceRecordLocked(id string) { record.service = &serviceState{} }",
+		"func (s *Supervisor) ensureTransitionRecordLocked(id string) { record.transition = &transitionState{} }",
+	} {
+		if got := presencePointerAssignmentViolations(source); len(got) != 1 {
+			t.Errorf("presence pointer matcher did not reject %q: got %v", source, got)
+		}
+	}
+
+	allowed := "func (s *Supervisor) ensureServiceRecordLocked(id string) {\n" +
+		"\tif record.service == nil {\n\t\trecord.service = &serviceState{}\n\t}\n}\n" +
+		"func (s *Supervisor) ensureTransitionRecordLocked(id string) {\n" +
+		"\tif record.transition == nil {\n\t\trecord.transition = &transitionState{}\n\t}\n}"
+
+	if got := presencePointerAssignmentViolations(allowed); len(got) != 0 {
+		t.Errorf("presence pointer matcher rejected ensure allocations: %v", got)
+	}
+}
+
+func presencePointerAssignmentViolations(source string) []string {
+	functionPattern := regexp.MustCompile(`^\s*func\s+(?:\([^)]*\)\s*)?([[:alnum:]_]+)\s*\(`)
+	nilPattern := regexp.MustCompile(`\b[[:alnum:]_.]+\.(service|transition)\s*=\s*nil\b`)
+	indirectPattern := regexp.MustCompile(`\*\s*[[:alnum:]_.]+\.(service|transition)\s*=`)
+	fieldPattern := regexp.MustCompile(`\b[[:alnum:]_.]+\.(service|transition)\b`)
+	allocationPattern := regexp.MustCompile(`\b([[:alnum:]_.]+)\.(service|transition)\s*=\s*&\s*(serviceState|transitionState)\s*\{`)
+	newPattern := regexp.MustCompile(`\b([[:alnum:]_.]+)\.(service|transition)\s*=\s*new\((serviceState|transitionState)\)`)
+	nilGuardPattern := regexp.MustCompile(`\bif\b[^{]*?([[:alnum:]_.]+)\.(service|transition)\s*==\s*nil\s*\{`)
+
+	type nilGuard struct {
+		receiver  string
+		field     string
+		bodyDepth int
+	}
+
+	lines := strings.Split(source, "\n")
+	violations := make([]string, 0)
+	functionName := ""
+	braceDepth := 0
+	guards := make([]nilGuard, 0)
+
+	for lineIndex, line := range lines {
+		if match := functionPattern.FindStringSubmatch(line); len(match) == 2 {
+			functionName = match[1]
+			braceDepth = 0
+			guards = guards[:0]
+		}
+
+		lineNumber := fmt.Sprintf("%d", lineIndex+1)
+
+		if nilPattern.MatchString(line) {
+			violations = append(violations, lineNumber+": pointer reset to nil")
+		}
+
+		if indirectPattern.MatchString(line) {
+			violations = append(violations, lineNumber+": in-place overwrite of presence pointer")
+		}
+
+		if assignment := strings.Index(line, "="); assignment >= 0 && !strings.Contains(line, "==") {
+			left := strings.Split(line[:assignment], ",")
+			right := strings.Split(line[assignment+1:], ",")
+
+			if len(left) > 1 && len(left) == len(right) {
+				for index, target := range left {
+					value := strings.TrimSpace(strings.TrimRight(right[index], " };"))
+
+					if fieldPattern.MatchString(target) && value == "nil" {
+						violations = append(violations, lineNumber+": pointer reset to nil")
+
+						break
+					}
+				}
+			}
+		}
+
+		if match := nilGuardPattern.FindStringSubmatch(line); len(match) == 3 {
+			guards = append(guards, nilGuard{receiver: match[1], field: match[2], bodyDepth: braceDepth + 1})
+		}
+
+		for _, pattern := range []*regexp.Regexp{allocationPattern, newPattern} {
+			match := pattern.FindStringSubmatch(line)
+
+			if len(match) != 4 {
+				continue
+			}
+
+			receiver := match[1]
+			field := match[2]
+			stateType := match[3]
+			allowedFunction := "ensureServiceRecordLocked"
+
+			if field == "transition" {
+				allowedFunction = "ensureTransitionRecordLocked"
+			}
+
+			guarded := false
+
+			for _, guard := range guards {
+				if guard.receiver == receiver && guard.field == field && guard.bodyDepth <= braceDepth+1 {
+					guarded = true
+
+					break
+				}
+			}
+
+			if functionName != allowedFunction || (field == "service") != (stateType == "serviceState") || !guarded {
+				violations = append(violations, lineNumber+": state allocation outside "+allowedFunction)
+			}
+		}
+
+		braceDepth += strings.Count(line, "{") - strings.Count(line, "}")
+
+		activeGuards := guards[:0]
+
+		for _, guard := range guards {
+			if guard.bodyDepth <= braceDepth {
+				activeGuards = append(activeGuards, guard)
+			}
+		}
+
+		guards = activeGuards
+	}
+
+	return violations
+}
+
 func TestInvariantViolationRecordsSites(t *testing.T) {
 	s := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 2}))
 
@@ -883,12 +1043,12 @@ func TestInvariantViolationRecordsSites(t *testing.T) {
 	setSupervisorServiceRecordForTest(recovered, "demo", &serviceRecord{status: RuntimeStatus{State: StateReady}})
 	recovered.mu.Lock()
 
-	recovered.plugins["demo"].status.State = StateStopped
+	recovered.plugins["demo"].service.status.State = StateStopped
 
 	recovered.unlock()
 	recovered.mu.Lock()
 
-	recovered.plugins["demo"].status.State = StateReady
+	recovered.plugins["demo"].service.status.State = StateReady
 
 	recovered.unlock()
 
@@ -908,12 +1068,12 @@ func TestInvariantViolationRecordsSites(t *testing.T) {
 	clearInvariantRecordsForTest(declared)
 	declared.mu.Lock()
 
-	declared.plugins["demo"].status.State = StateStopped
+	declared.plugins["demo"].service.status.State = StateStopped
 
 	declared.unlock()
 	declared.mu.Lock()
 
-	declared.plugins["demo"].status.State = StateReady
+	declared.plugins["demo"].service.status.State = StateReady
 	declared.plugins["demo"].reservationPending = true
 
 	declared.unlock()
@@ -970,9 +1130,11 @@ func TestMarkInvariantFixtureForTestFiltersIDs(t *testing.T) {
 			s.mu.Lock()
 
 			record := s.ensurePluginRecordLocked("demo")
-			record.servicePresent = true
+
+			s.ensureServiceRecordLocked("demo")
+
 			record.serviceHeld = true
-			record.status.State = StateReady
+			record.service.status.State = StateReady
 			s.reservedServices = 1
 
 			markInvariantFixtureForTest(s, "demo", test.ids...)

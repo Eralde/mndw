@@ -115,19 +115,24 @@ type Supervisor struct {
 	invariantDropped               map[invariantMode]int
 }
 
-type pluginRecord struct {
-	desired        *ServiceSpec
-	servicePresent bool
-	serviceSpec    ServiceSpec
-	paths          RuntimePaths
-	status         RuntimeStatus
-	recentStderr   *StderrRing
+type serviceState struct {
+	spec         ServiceSpec
+	paths        RuntimePaths
+	status       RuntimeStatus
+	recentStderr *StderrRing
+}
 
-	transitionPresent bool
-	intent            Intent
-	operation         Operation
-	priorIntent       Intent
-	run               *operationRun
+type transitionState struct {
+	intent      Intent
+	operation   Operation
+	priorIntent Intent
+	run         *operationRun
+}
+
+type pluginRecord struct {
+	desired    *ServiceSpec
+	service    *serviceState
+	transition *transitionState
 
 	serviceHeld        bool
 	reservationPending bool
@@ -230,7 +235,7 @@ func (s *Supervisor) ensurePluginRecordLocked(pluginID string) *pluginRecord {
 func (s *Supervisor) serviceRecordLocked(pluginID string) *pluginRecord {
 	record := s.plugins[pluginID]
 
-	if record == nil || !record.servicePresent {
+	if record == nil || record.service == nil {
 		return nil
 	}
 
@@ -240,7 +245,7 @@ func (s *Supervisor) serviceRecordLocked(pluginID string) *pluginRecord {
 func (s *Supervisor) transitionRecordLocked(pluginID string) *pluginRecord {
 	record := s.plugins[pluginID]
 
-	if record == nil || !record.transitionPresent {
+	if record == nil || record.transition == nil {
 		return nil
 	}
 
@@ -249,7 +254,10 @@ func (s *Supervisor) transitionRecordLocked(pluginID string) *pluginRecord {
 
 func (s *Supervisor) ensureTransitionRecordLocked(pluginID string) *pluginRecord {
 	record := s.ensurePluginRecordLocked(pluginID)
-	record.transitionPresent = true
+
+	if record.transition == nil {
+		record.transition = &transitionState{}
+	}
 
 	return record
 }
@@ -257,9 +265,8 @@ func (s *Supervisor) ensureTransitionRecordLocked(pluginID string) *pluginRecord
 func (s *Supervisor) ensureServiceRecordLocked(pluginID string) *pluginRecord {
 	record := s.ensurePluginRecordLocked(pluginID)
 
-	if !record.servicePresent {
-		record.servicePresent = true
-		record.status = RuntimeStatus{State: StateStopped}
+	if record.service == nil {
+		record.service = &serviceState{status: RuntimeStatus{State: StateStopped}}
 	}
 
 	return record
@@ -423,8 +430,8 @@ func (s *Supervisor) clearDesiredLocked() {
 func (s *Supervisor) prunePluginRecordLocked(pluginID string) {
 	record := s.plugins[pluginID]
 
-	if record == nil || record.desired != nil || record.servicePresent || record.transitionPresent || record.run != nil ||
-		record.operation != OpNone || record.serviceHeld || record.reservationPending || record.launch != nil ||
+	if record == nil || record.desired != nil || record.service != nil || record.transition != nil ||
+		record.serviceHeld || record.reservationPending || record.launch != nil ||
 		record.process != nil || record.stopping ||
 		record.stopDone != nil || record.startupQueued || record.pendingStart || record.retryTimer != nil ||
 		len(record.sockets) > 0 {
@@ -438,24 +445,24 @@ func (s *Supervisor) prunePluginRecordLocked(pluginID string) {
 func (s *Supervisor) beginLocked(name string, op Operation, want Intent) beginOutcome {
 	record := s.transitionRecordLocked(name)
 
-	if record != nil && record.operation != OpNone {
-		if record.operation == op && traitsOf(op).joinable {
-			return beginOutcome{run: record.run, joined: true}
+	if record != nil && record.transition.operation != OpNone {
+		if record.transition.operation == op && traitsOf(op).joinable {
+			return beginOutcome{run: record.transition.run, joined: true}
 		}
 
-		if traitsOf(op).supersedes && traitsOf(record.operation).supersedable {
-			oldRun := record.run
-			priorIntent := record.intent
+		if traitsOf(op).supersedes && traitsOf(record.transition.operation).supersedable {
+			oldRun := record.transition.run
+			priorIntent := record.transition.intent
 
 			s.completeSupersededLocked(oldRun)
 			oldRun.cancel()
 
 			run := s.newRunLocked(name, op, want)
 			record = s.ensureTransitionRecordLocked(name)
-			record.intent = want
-			record.operation = op
-			record.priorIntent = priorIntent
-			record.run = run
+			record.transition.intent = want
+			record.transition.operation = op
+			record.transition.priorIntent = priorIntent
+			record.transition.run = run
 
 			return beginOutcome{run: run, supersededWorkDone: oldRun.workDone}
 		}
@@ -466,19 +473,19 @@ func (s *Supervisor) beginLocked(name string, op Operation, want Intent) beginOu
 	priorIntent := IntentRemove
 
 	if record != nil {
-		priorIntent = record.intent
+		priorIntent = record.transition.intent
 
-		if record.intent == IntentRemove && op != OpInstalling && op != OpDeleting {
+		if record.transition.intent == IntentRemove && op != OpInstalling && op != OpDeleting {
 			return beginOutcome{conflict: true}
 		}
 	}
 
 	run := s.newRunLocked(name, op, want)
 	record = s.ensureTransitionRecordLocked(name)
-	record.intent = want
-	record.operation = op
-	record.priorIntent = priorIntent
-	record.run = run
+	record.transition.intent = want
+	record.transition.operation = op
+	record.transition.priorIntent = priorIntent
+	record.transition.run = run
 
 	return beginOutcome{run: run}
 }
@@ -491,7 +498,7 @@ func (s *Supervisor) isCurrentLocked(run *operationRun) bool {
 
 	record := s.transitionRecordLocked(run.name)
 
-	return record != nil && record.run == run && record.operation == run.op
+	return record != nil && record.transition.run == run && record.transition.operation == run.op
 }
 
 // commitLocked requires Supervisor.mu held.
@@ -523,7 +530,7 @@ func (s *Supervisor) failRestoreLocked(run *operationRun, err error) {
 		return
 	}
 
-	s.terminalizeLocked(run, record.priorIntent, err)
+	s.terminalizeLocked(run, record.transition.priorIntent, err)
 }
 
 // failKeepLocked requires Supervisor.mu held.
@@ -577,8 +584,8 @@ func (s *Supervisor) terminalizeLocked(run *operationRun, intent Intent, err err
 	}
 
 	record := s.transitionRecordLocked(run.name)
-	record.intent = intent
-	record.operation = OpNone
+	record.transition.intent = intent
+	record.transition.operation = OpNone
 	run.result = err
 	run.completed = true
 
@@ -636,8 +643,8 @@ func (s *Supervisor) beginDesiredStartupOutcome(spec ServiceSpec) beginOutcome {
 	transitionRecord := s.transitionRecordLocked(spec.PluginID)
 
 	if s.shuttingDown || s.lifetimeCtx.Err() != nil || desired == nil || desired.desired == nil || !desired.desired.Enabled ||
-		!desired.desired.Equal(spec) || transitionRecord == nil || transitionRecord.intent != IntentRun ||
-		transitionRecord.operation != OpNone {
+		!desired.desired.Equal(spec) || transitionRecord == nil || transitionRecord.transition.intent != IntentRun ||
+		transitionRecord.transition.operation != OpNone {
 		return beginOutcome{conflict: true}
 	}
 
@@ -774,11 +781,11 @@ func (s *Supervisor) blocksTraffic(pluginID string) bool {
 		return false
 	}
 
-	if record.intent == IntentStop || record.intent == IntentRemove {
+	if record.transition.intent == IntentStop || record.transition.intent == IntentRemove {
 		return true
 	}
 
-	return traitsOf(record.operation).exclusive
+	return traitsOf(record.transition.operation).exclusive
 }
 
 func (s *Supervisor) transitionStateLocked(pluginID string) transitionSnapshot {
@@ -790,12 +797,12 @@ func (s *Supervisor) transitionStateLocked(pluginID string) transitionSnapshot {
 
 	snapshot := transitionSnapshot{
 		present:   true,
-		intent:    record.intent,
-		operation: record.operation,
+		intent:    record.transition.intent,
+		operation: record.transition.operation,
 	}
 
-	if record.run != nil {
-		snapshot.generation = record.run.generation
+	if record.transition.run != nil {
+		snapshot.generation = record.transition.run.generation
 	}
 
 	return snapshot
@@ -811,13 +818,13 @@ func (s *Supervisor) trackDesiredStartupLocked(spec ServiceSpec) func() {
 	transitionRecord := s.transitionRecordLocked(spec.PluginID)
 
 	if desiredRecord == nil || desiredRecord.desired == nil || !desiredRecord.desired.Enabled ||
-		!desiredRecord.desired.Equal(spec) || serviceRecord == nil || transitionRecord == nil || transitionRecord.intent != IntentRun ||
-		transitionRecord.operation != OpNone {
+		!desiredRecord.desired.Equal(spec) || serviceRecord == nil || transitionRecord == nil || transitionRecord.transition.intent != IntentRun ||
+		transitionRecord.transition.operation != OpNone {
 		return nil
 	}
 
 	if serviceRecord.launch != nil || serviceRecord.stopping ||
-		(serviceRecord.process != nil && serviceRecord.serviceSpec.Equal(spec)) {
+		(serviceRecord.process != nil && serviceRecord.service.spec.Equal(spec)) {
 		s.markPendingStartLocked(serviceRecord, spec, false)
 
 		return nil
@@ -848,11 +855,11 @@ func (s *Supervisor) trackDesiredStartupLocked(spec ServiceSpec) func() {
 func (s *Supervisor) transitionGenerationLocked(pluginID string) uint64 {
 	transition := s.transitionRecordLocked(pluginID)
 
-	if transition == nil || transition.run == nil {
+	if transition == nil || transition.transition.run == nil {
 		return 0
 	}
 
-	return transition.run.generation
+	return transition.transition.run.generation
 }
 
 func (s *Supervisor) markPendingStartLocked(record *pluginRecord, spec ServiceSpec, retry bool) {
@@ -916,8 +923,8 @@ func (s *Supervisor) StopAll(ctx context.Context) error {
 	s.stopRetryTimersLocked()
 
 	for _, record := range s.plugins {
-		if record.transitionPresent && record.run != nil && !record.run.completed {
-			record.run.cancel()
+		if record.transition != nil && record.transition.run != nil && !record.transition.run.completed {
+			record.transition.run.cancel()
 		}
 	}
 
@@ -929,7 +936,7 @@ func (s *Supervisor) StopAll(ctx context.Context) error {
 	pluginIDs := make([]string, 0, len(s.plugins))
 
 	for pluginID, record := range s.plugins {
-		if record.servicePresent {
+		if record.service != nil {
 			pluginIDs = append(pluginIDs, pluginID)
 		}
 	}
@@ -1038,7 +1045,7 @@ func (s *Supervisor) runningPluginIDs() []string {
 	pluginIDs := make([]string, 0, len(s.plugins))
 
 	for pluginID, record := range s.plugins {
-		if record.servicePresent {
+		if record.service != nil {
 			pluginIDs = append(pluginIDs, pluginID)
 		}
 	}
@@ -1120,17 +1127,17 @@ func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) reconci
 
 		if transitionRecord == nil {
 			transitionRecord = s.ensureTransitionRecordLocked(spec.PluginID)
-			transitionRecord.intent = want
-			transitionRecord.operation = OpNone
-		} else if transitionRecord.operation == OpNone && transitionRecord.intent != IntentRemove {
-			transitionRecord.intent = want
+			transitionRecord.transition.intent = want
+			transitionRecord.transition.operation = OpNone
+		} else if transitionRecord.transition.operation == OpNone && transitionRecord.transition.intent != IntentRemove {
+			transitionRecord.transition.intent = want
 		}
 
-		if transitionRecord.operation != OpNone {
+		if transitionRecord.transition.operation != OpNone {
 			continue
 		}
 
-		if transitionRecord.intent == IntentRemove {
+		if transitionRecord.transition.intent == IntentRemove {
 			s.setDesiredLocked(spec.PluginID, nil)
 
 			plan.removeIDs = append(plan.removeIDs, spec.PluginID)
@@ -1138,26 +1145,26 @@ func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) reconci
 			continue
 		}
 
-		spec.Enabled = transitionRecord.intent == IntentRun && spec.Enabled
+		spec.Enabled = transitionRecord.transition.intent == IntentRun && spec.Enabled
 
 		s.setDesiredLocked(spec.PluginID, &spec)
 
 		service := s.serviceRecordLocked(spec.PluginID)
 
-		if service != nil && !service.serviceSpec.Equal(spec) {
+		if service != nil && !service.service.spec.Equal(spec) {
 			s.stopRetryTimerLocked(spec.PluginID)
 		}
 
-		if transitionRecord.intent == IntentStop {
-			if service != nil && (service.status.State != StateStopped || service.serviceHeld) {
+		if transitionRecord.transition.intent == IntentStop {
+			if service != nil && (service.service.status.State != StateStopped || service.serviceHeld) {
 				plan.stopIDs = append(plan.stopIDs, spec.PluginID)
 			}
 
 			continue
 		}
 
-		if service == nil || service.status.State == StateStopped || service.status.State == StateCapacityBlocked ||
-			!service.serviceSpec.Equal(spec) {
+		if service == nil || service.service.status.State == StateStopped || service.service.status.State == StateCapacityBlocked ||
+			!service.service.spec.Equal(spec) {
 			if s.reserveForReconcileLocked(spec) {
 				plan.startIDs = append(plan.startIDs, spec.PluginID)
 			}
@@ -1165,7 +1172,7 @@ func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) reconci
 	}
 
 	for pluginID, service := range s.plugins {
-		if !service.servicePresent {
+		if service.service == nil {
 			continue
 		}
 
@@ -1178,16 +1185,16 @@ func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) reconci
 
 		transitionRecord := s.transitionRecordLocked(pluginID)
 
-		if transitionRecord != nil && transitionRecord.operation != OpNone {
+		if transitionRecord != nil && transitionRecord.transition.operation != OpNone {
 			continue
 		}
 
 		if transitionRecord == nil {
 			transitionRecord = s.ensureTransitionRecordLocked(pluginID)
-			transitionRecord.intent = IntentRemove
-			transitionRecord.operation = OpNone
+			transitionRecord.transition.intent = IntentRemove
+			transitionRecord.transition.operation = OpNone
 		} else {
-			transitionRecord.intent = IntentRemove
+			transitionRecord.transition.intent = IntentRemove
 		}
 
 		plan.removeIDs = append(plan.removeIDs, pluginID)
@@ -1206,11 +1213,11 @@ func (s *Supervisor) reserveForReconcileLocked(spec ServiceSpec) bool {
 
 	if record == nil {
 		record = s.ensureServiceRecordLocked(spec.PluginID)
-		record.serviceSpec = spec
-	} else if record.process == nil && (record.status.State == StateStopped || record.status.State == StateCapacityBlocked) {
+		record.service.spec = spec
+	} else if record.process == nil && (record.service.status.State == StateStopped || record.service.status.State == StateCapacityBlocked) {
 		// No process is using the old spec, so a pre-launch update can safely
 		// replace the record spec without forcing a stop/re-reserve cycle.
-		record.serviceSpec = spec
+		record.service.spec = spec
 	}
 
 	if record.stopping {
@@ -1220,16 +1227,16 @@ func (s *Supervisor) reserveForReconcileLocked(spec ServiceSpec) bool {
 	compatible := s.supportedProtocol(spec.ProtocolVersion)
 
 	if !compatible {
-		if record.status.State == StateCapacityBlocked {
-			record.status.State = StateStopped
-			record.status.NextAttemptAt = nil
+		if record.service.status.State == StateCapacityBlocked {
+			record.service.status.State = StateStopped
+			record.service.status.NextAttemptAt = nil
 		}
 
 		return true
 	}
 
 	if record.serviceHeld {
-		if record.status.State == StateCapacityBlocked {
+		if record.service.status.State == StateCapacityBlocked {
 			record.reservationPending = record.process == nil
 		}
 
@@ -1237,16 +1244,16 @@ func (s *Supervisor) reserveForReconcileLocked(spec ServiceSpec) bool {
 	}
 
 	if !s.acquireServiceSlotLocked(record) {
-		record.status.State = StateCapacityBlocked
-		record.status.NextAttemptAt = nil
-		record.status.RequiredProtocol = spec.ProtocolVersion
-		record.status.SupportedProtocols = slices.Clone(s.cfg.SupportedProtocols)
-		record.status.Compatible = &compatible
+		record.service.status.State = StateCapacityBlocked
+		record.service.status.NextAttemptAt = nil
+		record.service.status.RequiredProtocol = spec.ProtocolVersion
+		record.service.status.SupportedProtocols = slices.Clone(s.cfg.SupportedProtocols)
+		record.service.status.Compatible = &compatible
 
 		return false
 	}
 
-	record.reservationPending = record.status.State == StateStopped || record.status.State == StateCapacityBlocked
+	record.reservationPending = record.service.status.State == StateStopped || record.service.status.State == StateCapacityBlocked
 
 	return true
 }
@@ -1299,25 +1306,25 @@ func (s *Supervisor) planStartLocked(spec ServiceSpec, paths RuntimePaths) start
 	previousSpec := ServiceSpec{}
 
 	if record != nil {
-		previousSpec = record.serviceSpec
+		previousSpec = record.service.spec
 	}
 
 	if record == nil {
 		record = s.ensureServiceRecordLocked(spec.PluginID)
-		record.paths = paths
-		record.serviceSpec = spec
+		record.service.paths = paths
+		record.service.spec = spec
 	} else {
 		if record.process == nil && record.launch == nil {
-			record.serviceSpec = spec
+			record.service.spec = spec
 		}
 
-		record.paths = paths
+		record.service.paths = paths
 	}
 
-	record.status.RequiredProtocol = spec.ProtocolVersion
-	record.status.SupportedProtocols = slices.Clone(s.cfg.SupportedProtocols)
+	record.service.status.RequiredProtocol = spec.ProtocolVersion
+	record.service.status.SupportedProtocols = slices.Clone(s.cfg.SupportedProtocols)
 	compatible := s.supportedProtocol(spec.ProtocolVersion)
-	record.status.Compatible = &compatible
+	record.service.status.Compatible = &compatible
 
 	if !compatible {
 		unsupported := fmt.Errorf("unsupported service protocol %d", spec.ProtocolVersion)
@@ -1359,13 +1366,13 @@ func (s *Supervisor) planStartLocked(spec ServiceSpec, paths RuntimePaths) start
 		s.releaseServiceSlotLocked(record)
 
 		record.reservationPending = false
-		record.status.State = StateStopped
-		record.status.NextAttemptAt = nil
+		record.service.status.State = StateStopped
+		record.service.status.NextAttemptAt = nil
 	}
 
 	now := s.now()
 
-	if record.status.State == StateReady || record.status.State == StateStarting {
+	if record.service.status.State == StateReady || record.service.status.State == StateStarting {
 		if !previousSpec.Equal(spec) {
 			return startPlan{record: record, action: startReplace}
 		}
@@ -1373,8 +1380,8 @@ func (s *Supervisor) planStartLocked(spec ServiceSpec, paths RuntimePaths) start
 		return startPlan{action: startNoop}
 	}
 
-	if record.status.State == StateBackoff && record.status.NextAttemptAt != nil && now.Before(*record.status.NextAttemptAt) {
-		return startPlan{action: startNoop, err: fmt.Errorf("service is in backoff until %s", record.status.NextAttemptAt.Format(time.RFC3339))}
+	if record.service.status.State == StateBackoff && record.service.status.NextAttemptAt != nil && now.Before(*record.service.status.NextAttemptAt) {
+		return startPlan{action: startNoop, err: fmt.Errorf("service is in backoff until %s", record.service.status.NextAttemptAt.Format(time.RFC3339))}
 	}
 
 	record.reservationPending = false
@@ -1382,13 +1389,13 @@ func (s *Supervisor) planStartLocked(spec ServiceSpec, paths RuntimePaths) start
 	s.clearPendingStartLocked(record)
 
 	if !s.acquireServiceSlotLocked(record) {
-		record.status.State = StateCapacityBlocked
+		record.service.status.State = StateCapacityBlocked
 
 		return startPlan{action: startNoop, err: ErrServiceCapacityExceeded}
 	}
 
-	record.status.State = StateStarting
-	record.status.NextAttemptAt = nil
+	record.service.status.State = StateStarting
+	record.service.status.NextAttemptAt = nil
 
 	return startPlan{record: record, action: startProceed}
 }
@@ -1411,10 +1418,10 @@ func (s *Supervisor) restampIncompatible(run *operationRun, spec ServiceSpec) {
 		return
 	}
 
-	record.status.RequiredProtocol = spec.ProtocolVersion
-	record.status.SupportedProtocols = slices.Clone(s.cfg.SupportedProtocols)
+	record.service.status.RequiredProtocol = spec.ProtocolVersion
+	record.service.status.SupportedProtocols = slices.Clone(s.cfg.SupportedProtocols)
 	compatible := s.supportedProtocol(spec.ProtocolVersion)
-	record.status.Compatible = &compatible
+	record.service.status.Compatible = &compatible
 }
 
 func (s *Supervisor) startService(run *operationRun, spec ServiceSpec) error {
@@ -1635,7 +1642,7 @@ func (s *Supervisor) registerServiceProcess(
 
 	if registered {
 		record.processRegistered = true
-		record.recentStderr = stderr
+		record.service.recentStderr = stderr
 	}
 
 	s.unlock()
@@ -1670,9 +1677,9 @@ func (s *Supervisor) markServiceReady(run *operationRun, record *pluginRecord) b
 		return false
 	}
 
-	record.status.State = StateReady
-	record.status.StartedAt = ptrTime(s.now())
-	record.status.NextAttemptAt = nil
+	record.service.status.State = StateReady
+	record.service.status.StartedAt = ptrTime(s.now())
+	record.service.status.NextAttemptAt = nil
 
 	return true
 }
@@ -1701,8 +1708,8 @@ func (s *Supervisor) Status(pluginID string) RuntimeStatus {
 	s.mu.Lock()
 
 	if record := s.serviceRecordLocked(pluginID); record != nil {
-		status := record.status
-		recentStderr := record.recentStderr
+		status := record.service.status
+		recentStderr := record.service.recentStderr
 
 		s.unlock()
 
@@ -1729,7 +1736,7 @@ func (s *Supervisor) SocketPath(pluginID string) (string, bool) {
 		return "", false
 	}
 
-	socketPath := record.paths.BackendSocket
+	socketPath := record.service.paths.BackendSocket
 
 	s.unlock()
 
@@ -1813,18 +1820,18 @@ func (s *Supervisor) observeProcessExit(pluginID string, process *registeredProc
 	plugin := s.plugins[pluginID]
 	transition := s.transitionRecordLocked(pluginID)
 	desiredChanged := plugin != nil && plugin.desired != nil && plugin.desired.Enabled &&
-		!plugin.desired.Equal(record.serviceSpec)
-	healthy := record.status.StartedAt != nil && s.now().Sub(*record.status.StartedAt) >= healthyServiceDuration
+		!plugin.desired.Equal(record.service.spec)
+	healthy := record.service.status.StartedAt != nil && s.now().Sub(*record.service.status.StartedAt) >= healthyServiceDuration
 
 	if healthy {
-		record.status.ConsecutiveFailures = 0
+		record.service.status.ConsecutiveFailures = 0
 	}
 
-	if desiredChanged && transition != nil && transition.intent == IntentRun && transition.operation == OpNone {
+	if desiredChanged && transition != nil && transition.transition.intent == IntentRun && transition.transition.operation == OpNone {
 		s.stopRetryTimerLocked(pluginID)
 
-		record.status.State = StateStopped
-		record.status.NextAttemptAt = nil
+		record.service.status.State = StateStopped
+		record.service.status.NextAttemptAt = nil
 		record.reservationPending = false
 
 		if record.serviceHeld {
@@ -1840,16 +1847,16 @@ func (s *Supervisor) observeProcessExit(pluginID string, process *registeredProc
 		} else {
 			shouldResume = true
 		}
-	} else if record.status.State != StateStopped {
+	} else if record.service.status.State != StateStopped {
 		pendingStart := record.pendingStart
 
 		if pendingStart {
-			_, retry := recordFailure(&record.status, s.now(), "exited", err)
+			_, retry := recordFailure(&record.service.status, s.now(), "exited", err)
 
 			if retry {
 				s.stopRetryTimerOnlyLocked(record)
 
-				record.status.NextAttemptAt = nil
+				record.service.status.NextAttemptAt = nil
 				shouldResume = true
 			} else {
 				s.stopRetryTimerLocked(pluginID)
@@ -1879,7 +1886,7 @@ func (s *Supervisor) pendingStartEligibleLocked(pluginID string, spec ServiceSpe
 
 	return !s.shuttingDown && s.lifetimeCtx.Err() == nil && plugin != nil && plugin.desired != nil &&
 		plugin.desired.Enabled && plugin.desired.Equal(spec) && service != nil && transition != nil &&
-		transition.intent == IntentRun && transition.operation == OpNone &&
+		transition.transition.intent == IntentRun && transition.transition.operation == OpNone &&
 		s.transitionGenerationLocked(pluginID) == generation
 }
 
@@ -1910,7 +1917,7 @@ func recordFailure(status *RuntimeStatus, now time.Time, lastExit string, err er
 }
 
 func (s *Supervisor) transitionFailureLocked(record *pluginRecord, pluginID, lastExit string, err error) {
-	delay, retry := recordFailure(&record.status, s.now(), lastExit, err)
+	delay, retry := recordFailure(&record.service.status, s.now(), lastExit, err)
 
 	if retry {
 		s.scheduleRetry(pluginID, delay)
@@ -2008,7 +2015,7 @@ func (s *Supervisor) scheduleRetry(pluginID string, delay time.Duration) {
 			return
 		}
 
-		if service.status.State != StateBackoff {
+		if service.service.status.State != StateBackoff {
 			s.unlock()
 
 			return
@@ -2038,7 +2045,7 @@ func (s *Supervisor) resumePendingStartup(pluginID string) {
 		return
 	}
 
-	if record.launch != nil || record.process != nil || record.stopping || transition.operation != OpNone {
+	if record.launch != nil || record.process != nil || record.stopping || transition.transition.operation != OpNone {
 		s.unlock()
 
 		return
@@ -2055,7 +2062,7 @@ func (s *Supervisor) resumePendingStartup(pluginID string) {
 		return
 	}
 
-	if record.pendingStartRetry && record.status.State != StateBackoff {
+	if record.pendingStartRetry && record.service.status.State != StateBackoff {
 		s.clearPendingStartLocked(record)
 
 		s.unlock()
@@ -2063,12 +2070,12 @@ func (s *Supervisor) resumePendingStartup(pluginID string) {
 		return
 	}
 
-	if !record.serviceSpec.Equal(spec) && record.serviceHeld {
+	if !record.service.spec.Equal(spec) && record.serviceHeld {
 		s.releaseServiceSlotLocked(record)
 
 		record.reservationPending = false
-		record.status.State = StateStopped
-		record.status.NextAttemptAt = nil
+		record.service.status.State = StateStopped
+		record.service.status.NextAttemptAt = nil
 	}
 
 	if !s.reserveForReconcileLocked(spec) {
@@ -2081,7 +2088,7 @@ func (s *Supervisor) resumePendingStartup(pluginID string) {
 
 	s.clearPendingStartLocked(record)
 
-	record.status.NextAttemptAt = nil
+	record.service.status.NextAttemptAt = nil
 	launch := s.trackDesiredStartupLocked(spec)
 
 	s.unlock()
@@ -2118,9 +2125,9 @@ func (s *Supervisor) takeUnstartedReservationLocked(run *operationRun) bool {
 
 	record.reservationPending = false
 
-	if record.status.State == StateCapacityBlocked {
-		record.status.State = StateStopped
-		record.status.NextAttemptAt = nil
+	if record.service.status.State == StateCapacityBlocked {
+		record.service.status.State = StateStopped
+		record.service.status.NextAttemptAt = nil
 	}
 
 	return true
@@ -2143,12 +2150,12 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseRe
 
 	if record.launch != nil {
 		launchDone := record.launch.done
-		restartCount := record.status.RestartCount
+		restartCount := record.service.status.RestartCount
 
 		s.stopRetryTimerLocked(pluginID)
 
 		if releaseReservation {
-			record.status = RuntimeStatus{State: StateStopped, RestartCount: restartCount}
+			record.service.status = RuntimeStatus{State: StateStopped, RestartCount: restartCount}
 			record.reservationPending = false
 		}
 
@@ -2165,8 +2172,8 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseRe
 	if record.stopping {
 		if releaseReservation {
 			record.releaseOnStop = true
-			restartCount := record.status.RestartCount
-			record.status = RuntimeStatus{State: StateStopped, RestartCount: restartCount}
+			restartCount := record.service.status.RestartCount
+			record.service.status = RuntimeStatus{State: StateStopped, RestartCount: restartCount}
 			record.reservationPending = false
 		}
 
@@ -2193,8 +2200,8 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseRe
 		}
 	}
 
-	process, paths := record.process, record.paths
-	restartCount := record.status.RestartCount
+	process, paths := record.process, record.service.paths
+	restartCount := record.service.status.RestartCount
 	stopDone := make(chan struct{})
 	record.stopping = true
 	record.stopDone = stopDone
@@ -2204,7 +2211,7 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseRe
 	s.stopRetryTimerLocked(pluginID)
 
 	if releaseReservation {
-		record.status = RuntimeStatus{State: StateStopped, RestartCount: restartCount}
+		record.service.status = RuntimeStatus{State: StateStopped, RestartCount: restartCount}
 		record.reservationPending = false
 	}
 
@@ -2348,7 +2355,7 @@ func (s *Supervisor) promoteBlocked() {
 	for pluginID, plugin := range s.plugins {
 		service := s.serviceRecordLocked(pluginID)
 
-		if plugin.desired != nil && service != nil && service.status.State == StateCapacityBlocked && plugin.desired.Enabled {
+		if plugin.desired != nil && service != nil && service.service.status.State == StateCapacityBlocked && plugin.desired.Enabled {
 			blocked = append(blocked, *plugin.desired)
 		}
 	}
@@ -2373,8 +2380,8 @@ func (s *Supervisor) promoteBlocked() {
 		transitionRecord := s.transitionRecordLocked(spec.PluginID)
 
 		if plugin == nil || plugin.desired == nil || !plugin.desired.Equal(spec) || record == nil || record.serviceHeld ||
-			record.status.State != StateCapacityBlocked || transitionRecord == nil ||
-			transitionRecord.operation != OpNone || transitionRecord.intent != IntentRun {
+			record.service.status.State != StateCapacityBlocked || transitionRecord == nil ||
+			transitionRecord.transition.operation != OpNone || transitionRecord.transition.intent != IntentRun {
 			continue
 		}
 

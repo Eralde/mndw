@@ -21,7 +21,7 @@ func setRecentStderrForTest(supervisor *Supervisor, pluginID string, stderr *Std
 	defer supervisor.mu.Unlock()
 
 	if record := supervisor.serviceRecordLocked(pluginID); record != nil {
-		record.recentStderr = stderr
+		record.service.recentStderr = stderr
 	}
 }
 
@@ -1139,8 +1139,8 @@ func TestOldProcessExitCannotMutateNewRegisteredProcess(t *testing.T) {
 		t.Fatal("old process exit replaced the current process identity")
 	}
 
-	if current.status.State != StateReady {
-		t.Fatalf("new process status after stale exit = %q, want ready", current.status.State)
+	if current.service.status.State != StateReady {
+		t.Fatalf("new process status after stale exit = %q, want ready", current.service.status.State)
 	}
 
 	if got := runtime.supervisor.reservedServiceCount(); got != 1 {

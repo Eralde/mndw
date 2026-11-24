@@ -201,7 +201,7 @@ func (s *Supervisor) pluginSnapshotLocked(name string) pluginSnapshot {
 
 	if record := s.serviceRecordLocked(name); record != nil {
 		snapshot.servicePresent = true
-		snapshot.status = cloneRuntimeStatus(record.status)
+		snapshot.status = cloneRuntimeStatus(record.service.status)
 		snapshot.serviceSlotHeld = record.serviceHeld
 		snapshot.reservationPending = record.reservationPending
 		snapshot.startupQueued = record.startupQueued
@@ -289,11 +289,10 @@ func seedSupervisorStateForTest(
 }
 
 func setSupervisorServiceRecordLockedForTest(s *Supervisor, pluginID string, fixture *serviceRecord) *pluginRecord {
-	record := s.ensurePluginRecordLocked(pluginID)
-	record.servicePresent = true
-	record.serviceSpec = fixture.spec
-	record.paths = fixture.paths
-	record.status = fixture.status
+	record := s.ensureServiceRecordLocked(pluginID)
+	record.service.spec = fixture.spec
+	record.service.paths = fixture.paths
+	record.service.status = fixture.status
 
 	if fixture.serviceHeld && !record.serviceHeld {
 		if !s.acquireServiceSlotLocked(record) {
@@ -323,7 +322,7 @@ func setSupervisorServiceRecordLockedForTest(s *Supervisor, pluginID string, fix
 		record.processRegistered = true
 	}
 
-	record.recentStderr = fixture.stderr
+	record.service.recentStderr = fixture.stderr
 	record.stopping = fixture.stopping
 	record.stopDone = fixture.stopDone
 	record.stopErr = fixture.stopErr
@@ -352,7 +351,7 @@ func setSupervisorServiceStateForTest(s *Supervisor, pluginID string, state Serv
 	record := s.serviceRecordLocked(pluginID)
 
 	if record != nil {
-		record.status.State = state
+		record.service.status.State = state
 
 		markInvariantFixtureForTest(s, pluginID)
 	}
@@ -413,11 +412,7 @@ func resetSupervisorServicesForTest(s *Supervisor) {
 
 		s.releaseServiceSlotLocked(record)
 
-		record.servicePresent = false
-		record.serviceSpec = ServiceSpec{}
-		record.paths = RuntimePaths{}
-		record.status = RuntimeStatus{}
-		record.recentStderr = nil
+		record.service = nil
 		record.reservationPending = false
 		record.stopping = false
 		record.stopDone = nil
@@ -462,11 +457,7 @@ func setSupervisorTransitionLockedForTest(s *Supervisor, pluginID string, fixtur
 
 	if fixture == nil {
 		if record != nil {
-			record.transitionPresent = false
-			record.intent = IntentRun
-			record.operation = OpNone
-			record.priorIntent = IntentRun
-			record.run = nil
+			record.transition = nil
 
 			s.prunePluginRecordLocked(pluginID)
 
@@ -478,12 +469,11 @@ func setSupervisorTransitionLockedForTest(s *Supervisor, pluginID string, fixtur
 		return
 	}
 
-	record = s.ensurePluginRecordLocked(pluginID)
-	record.transitionPresent = true
-	record.intent = fixture.intent
-	record.operation = fixture.operation
-	record.priorIntent = fixture.priorIntent
-	record.run = fixture.run
+	record = s.ensureTransitionRecordLocked(pluginID)
+	record.transition.intent = fixture.intent
+	record.transition.operation = fixture.operation
+	record.transition.priorIntent = fixture.priorIntent
+	record.transition.run = fixture.run
 
 	markInvariantFixtureForTest(s, pluginID)
 }

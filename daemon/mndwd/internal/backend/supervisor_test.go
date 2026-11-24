@@ -6,9 +6,22 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 )
+
+type observedDoneContext struct {
+	context.Context
+	observed chan struct{}
+	once     sync.Once
+}
+
+func (ctx *observedDoneContext) Done() <-chan struct{} {
+	ctx.once.Do(func() { close(ctx.observed) })
+
+	return ctx.Context.Done()
+}
 
 func TestReconcileSeedsEnabledStartupCandidate(t *testing.T) {
 	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 4}))
@@ -739,5 +752,103 @@ func TestPlanStartBackoffNotElapsedIsNoop(t *testing.T) {
 
 	if plan.action != startNoop || plan.err == nil {
 		t.Fatalf("action=%d err=%v, want startNoop + backoff error", plan.action, plan.err)
+	}
+}
+
+func TestStopWaiterReadsItsOwnStopResult(t *testing.T) {
+	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 1}))
+	stopA := &stopState{done: make(chan struct{})}
+	record := setSupervisorServiceRecordForTest(supervisor, "demo", &serviceRecord{stop: stopA})
+
+	waitCtx := &observedDoneContext{Context: context.Background(), observed: make(chan struct{})}
+	waitResult := make(chan error, 1)
+
+	go func() {
+		waitResult <- supervisor.stopProcess(waitCtx, "demo", false)
+	}()
+
+	// Done signals after stopProcess captured stopA and reached the joiner select.
+	select {
+	case <-waitCtx.observed:
+	case <-time.After(time.Second):
+		t.Fatal("stop waiter did not reach its wait")
+	}
+
+	errA := errors.New("first stop error")
+	errB := errors.New("second stop error")
+
+	// Keep a reread of service.lastStopErr blocked until stop B has replaced stop A's summary.
+	supervisor.mu.Lock()
+
+	stopA.err = errA
+	record.service.stop = nil
+	record.service.lastStopErr = errA
+
+	close(stopA.done)
+
+	stopB := &stopState{done: make(chan struct{})}
+	record.service.stop = stopB
+	stopB.err = errB
+	record.service.stop = nil
+	record.service.lastStopErr = errB
+
+	close(stopB.done)
+	supervisor.unlock()
+
+	select {
+	case got := <-waitResult:
+		if got != errA {
+			t.Fatalf("stop waiter error = %v, want its own result %v", got, errA)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("stop waiter did not return")
+	}
+}
+
+func TestStopFinishedPrefersDone(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	cancel()
+
+	done := make(chan struct{})
+
+	close(done)
+
+	for attempt := 0; attempt < 100; attempt++ {
+		if !stopFinished(ctx, done) {
+			t.Fatalf("stopFinished returned false with done and context both ready on attempt %d", attempt+1)
+		}
+	}
+}
+
+func TestStopAllWaiterReadsItsOwnStopResult(t *testing.T) {
+	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 1}))
+	stopA := &stopState{done: make(chan struct{})}
+	record := setSupervisorServiceRecordForTest(supervisor, "demo", &serviceRecord{stop: stopA})
+	errA := errors.New("first stop error")
+	errB := errors.New("second stop error")
+	results := []stopOperationResult{{stop: stopA, record: record}}
+
+	supervisor.mu.Lock()
+
+	stopA.err = errA
+	record.service.stop = nil
+	record.service.lastStopErr = errA
+
+	close(stopA.done)
+
+	stopB := &stopState{done: make(chan struct{})}
+	record.service.stop = stopB
+	stopB.err = errB
+	record.service.stop = nil
+	record.service.lastStopErr = errB
+
+	close(stopB.done)
+	supervisor.unlock()
+
+	supervisor.waitForStopFinalizers(context.Background(), results)
+
+	if results[0].err != errA {
+		t.Fatalf("StopAll waiter error = %v, want its own result %v", results[0].err, errA)
 	}
 }

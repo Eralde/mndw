@@ -104,10 +104,8 @@ type serviceRecord struct {
 	command            *exec.Cmd
 	done               *processExit
 	stderr             *StderrRing
-	stopping           bool
-	stopDone           chan struct{}
-	stopErr            error
-	releaseOnStop      bool
+	stop               *stopState
+	lastStopErr        error
 	startupQueued      bool
 	startupSeq         uint64
 }
@@ -323,10 +321,8 @@ func setSupervisorServiceRecordLockedForTest(s *Supervisor, pluginID string, fix
 	}
 
 	record.service.recentStderr = fixture.stderr
-	record.stopping = fixture.stopping
-	record.stopDone = fixture.stopDone
-	record.stopErr = fixture.stopErr
-	record.releaseOnStop = fixture.releaseOnStop
+	record.service.stop = fixture.stop
+	record.service.lastStopErr = fixture.lastStopErr
 	record.startupQueued = fixture.startupQueued
 	record.startupSeq = fixture.startupSeq
 
@@ -375,8 +371,8 @@ func waitForSupervisorStopForTest(t *testing.T, s *Supervisor, pluginID string) 
 	record := s.serviceRecordLocked(pluginID)
 	var stopDone <-chan struct{}
 
-	if record != nil {
-		stopDone = record.stopDone
+	if record != nil && record.service.stop != nil {
+		stopDone = record.service.stop.done
 	}
 
 	s.unlock()
@@ -414,10 +410,6 @@ func resetSupervisorServicesForTest(s *Supervisor) {
 
 		record.service = nil
 		record.reservationPending = false
-		record.stopping = false
-		record.stopDone = nil
-		record.stopErr = nil
-		record.releaseOnStop = false
 
 		s.clearPendingStartLocked(record)
 

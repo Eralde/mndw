@@ -61,7 +61,7 @@ func waitForDeferredStopForTest(t *testing.T, supervisor *Supervisor, pluginID s
 		supervisor.mu.Lock()
 
 		record := supervisor.plugins[pluginID]
-		deferred := record != nil && record.stopping && record.stopDone != nil && record.stopErr != nil
+		deferred := record != nil && record.service.stop != nil && record.service.stop.done != nil && record.service.stop.err != nil
 
 		supervisor.mu.Unlock()
 
@@ -406,11 +406,11 @@ func timeoutTermIgnoringService(t *testing.T, runtime *Runtime, pluginID string)
 
 	record := supervisorServiceForTest(runtime.supervisor, pluginID)
 
-	if record.process == nil || record.stopDone == nil || !record.stopping {
+	if record.process == nil || record.service.stop == nil || record.service.stop.done == nil {
 		t.Fatal("timed-out stop did not retain process ownership")
 	}
 
-	return record.stopDone
+	return record.service.stop.done
 }
 
 func TestStopProcessJoinHonorsCallerDeadline(t *testing.T) {
@@ -592,8 +592,8 @@ func TestStopAllRefreshesResultAfterDeferredFinalizerCompletes(t *testing.T) {
 	firstRecord := runtime.supervisor.plugins[firstSpec.PluginID]
 	var firstStopDone chan struct{}
 
-	if firstRecord != nil {
-		firstStopDone = firstRecord.stopDone
+	if firstRecord != nil && firstRecord.service.stop != nil {
+		firstStopDone = firstRecord.service.stop.done
 	}
 
 	runtime.supervisor.mu.Unlock()
@@ -730,11 +730,11 @@ func TestChangedSpecLifecycleStartSurvivesItsReplacementStop(t *testing.T) {
 
 	record := supervisorServiceForTest(runtime.supervisor, plugin.Name)
 
-	if record.process == nil || record.stopDone == nil || !record.stopping {
+	if record.process == nil || record.service.stop == nil || record.service.stop.done == nil {
 		t.Fatal("replacement stop timeout did not retain old process ownership")
 	}
 
-	stopDone := record.stopDone
+	stopDone := record.service.stop.done
 
 	for attempt := 0; attempt < 2; attempt++ {
 		plan := runtime.supervisor.Reconcile(context.Background(), []ServiceSpec{newSpec})
@@ -887,11 +887,11 @@ func TestStopProcessLogsUnreapedPID(t *testing.T) {
 
 	current := supervisorServiceForTest(runtime.supervisor, pluginID)
 
-	if current.process == nil || current.process.command != command || current.process.exit != done || current.stopDone == nil {
+	if current.process == nil || current.process.command != command || current.process.exit != done || current.service.stop == nil {
 		t.Fatal("timed-out stop released process ownership before exact Wait")
 	}
 
-	stopDone := current.stopDone
+	stopDone := current.service.stop.done
 
 	startWait()
 

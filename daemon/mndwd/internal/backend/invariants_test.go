@@ -260,35 +260,17 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			},
 		},
 		{
-			name:       "I4 stopping and stop channel agree",
+			name:       "I4 stop state requires done channel",
 			wantID:     "I4",
 			wantPlugin: "demo",
 			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.stopping = true
+				record.service.stop = &stopState{}
 			},
 		},
 		{
-			name:       "I4 stop channel requires stopping",
-			wantID:     "I4",
-			wantPlugin: "demo",
+			name: "I4 stop state with done channel is valid",
 			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.stopDone = make(chan struct{})
-			},
-		},
-		{
-			name:       "I4 release on stop requires stopping",
-			wantID:     "I4",
-			wantPlugin: "demo",
-			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.releaseOnStop = true
-			},
-		},
-		{
-			name: "I4 release on stop is valid while stopping",
-			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.stopping = true
-				record.stopDone = make(chan struct{})
-				record.releaseOnStop = true
+				record.service.stop = &stopState{done: make(chan struct{}), releaseSlot: true}
 			},
 		},
 		{
@@ -353,16 +335,6 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 				desired := ServiceSpec{PluginID: "demo", Enabled: true}
 				record.desired = &desired
 				record.retryTimer = time.NewTimer(time.Hour)
-			},
-		},
-		{
-			name:       "I8 absent service has no stopping state",
-			wantID:     "I8",
-			wantPlugin: "demo",
-			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.service = nil
-				record.stopping = true
-				record.stopDone = make(chan struct{})
 			},
 		},
 		{
@@ -460,12 +432,11 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			},
 		},
 		{
-			name:       "I12 stopping record has no launch",
+			name:       "I12 stop record has no launch",
 			wantID:     "I12",
 			wantPlugin: "demo",
 			configure: func(s *Supervisor, record *pluginRecord) {
-				record.stopping = true
-				record.stopDone = make(chan struct{})
+				record.service.stop = &stopState{done: make(chan struct{})}
 				record.launch = &launchIdentity{}
 				record.serviceHeld = true
 				s.reservedServices = 1
@@ -569,15 +540,14 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			},
 		},
 		{
-			name: "I13 skips stopping records",
+			name: "I13 skips stop records",
 			configure: func(_ *Supervisor, record *pluginRecord) {
 				spec := ServiceSpec{PluginID: "demo", Enabled: true}
 				record.desired = &spec
 				record.transition = &transitionState{}
 				record.transition.intent = IntentRun
 				record.service.status.State = StateCapacityBlocked
-				record.stopping = true
-				record.stopDone = make(chan struct{})
+				record.service.stop = &stopState{done: make(chan struct{})}
 			},
 		},
 		{
@@ -616,8 +586,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			name: "I14 held slot can be stopping",
 			configure: func(s *Supervisor, record *pluginRecord) {
 				record.serviceHeld = true
-				record.stopping = true
-				record.stopDone = make(chan struct{})
+				record.service.stop = &stopState{done: make(chan struct{})}
 				s.reservedServices = 1
 			},
 		},
@@ -854,7 +823,7 @@ func TestPresencePointersNeverReset(t *testing.T) {
 		"func replace(record *pluginRecord) { record.service = &serviceState{} }",
 		"func replace(record *pluginRecord) { *record.service = serviceState{} }",
 		"func replace(record *pluginRecord) { *record.transition = transitionState{} }",
-		"func reset(record *pluginRecord) { record.transition, record.stopErr = nil, nil }",
+		"func reset(record *pluginRecord) { record.transition, record.service.lastStopErr = nil, nil }",
 		"func (s *Supervisor) ensureServiceRecordLocked(id string) { record.service = &serviceState{} }",
 		"func (s *Supervisor) ensureTransitionRecordLocked(id string) { record.transition = &transitionState{} }",
 	} {

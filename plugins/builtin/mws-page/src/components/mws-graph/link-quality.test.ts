@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import type {MwsNode} from '../../domain/mws/mws.types';
-import {edgeTooltip, edgeType, linkQuality} from './link-quality';
+import {DEFAULT_RSSI_THRESHOLDS, edgeLinkValue, edgeTooltip, edgeType, linkQuality} from './link-quality';
 
 function node(backhaul: MwsNode['backhaul']): MwsNode {
   return {
@@ -36,6 +36,25 @@ describe('link quality', () => {
     expect(linkQuality(node({ap: null, speed: '99'} as MwsNode['backhaul']))).toBe('weak');
     expect(linkQuality(node({ap: null, speed: '0'} as MwsNode['backhaul']))).toBe('unknown');
     expect(linkQuality(node(null))).toBe('unknown');
+  });
+
+  it('applies the default wireless thresholds and honours custom ones', () => {
+    expect(linkQuality(node({ap: 'ap', rssi: -55} as MwsNode['backhaul']), DEFAULT_RSSI_THRESHOLDS)).toBe('good');
+    expect(linkQuality(node({ap: 'ap', rssi: -70} as MwsNode['backhaul']), DEFAULT_RSSI_THRESHOLDS)).toBe('fair');
+    expect(linkQuality(node({ap: 'ap', rssi: -54} as MwsNode['backhaul']), {good: -60, fair: -80})).toBe('good');
+    expect(linkQuality(node({ap: 'ap', rssi: -60} as MwsNode['backhaul']), {good: -60, fair: -80})).toBe('good');
+    expect(linkQuality(node({ap: 'ap', rssi: -61} as MwsNode['backhaul']), {good: -60, fair: -80})).toBe('fair');
+    expect(linkQuality(node({ap: 'ap', rssi: -80} as MwsNode['backhaul']), {good: -60, fair: -80})).toBe('fair');
+    expect(linkQuality(node({ap: 'ap', rssi: -81} as MwsNode['backhaul']), {good: -60, fair: -80})).toBe('weak');
+  });
+
+  it('labels a link with the target rate only', () => {
+    expect(edgeLinkValue(node({ap: 'ap', txrate: 1400, rssi: -40, mode: '11ax'} as MwsNode['backhaul'])))
+      .toBe('1.4 Gbit/s');
+    expect(edgeLinkValue(node({ap: null, speed: '1000', duplex: 'full'} as MwsNode['backhaul']))).toBe('1 Gbit/s');
+    expect(edgeLinkValue(node(null))).toBeNull();
+    expect(edgeLinkValue(node({ap: 'ap', rssi: -40, mode: '11ax'} as MwsNode['backhaul']))).toBeNull();
+    expect(edgeLinkValue(node({ap: null, speed: '0'} as MwsNode['backhaul']))).toBeNull();
   });
 
   it('derives edge type and omits unreadable tooltip segments', () => {

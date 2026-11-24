@@ -7,16 +7,19 @@ import {
   HostListener,
   type OnDestroy,
   ViewChild,
+  computed,
   effect,
   inject,
   input,
   output,
+  signal,
 } from '@angular/core';
 import * as d3 from 'd3';
 import type {MwsNode} from '../../domain/mws/mws.types';
 import {findNodeById, hasUpdate} from '../../domain/mws/map-builder';
 import type {PositionsLoadOutcome} from '../../services/node-position.store';
 import type {ExtraFeaturesAvailability} from '../../services/mwsd-status.service';
+import {RSSI_THRESHOLD_MAX, RSSI_THRESHOLD_MIN, RssiThresholdsStore} from '../../services/rssi-thresholds.store';
 import {
   DEFAULT_LAYOUT_CONFIG,
   type GraphLayout,
@@ -25,18 +28,45 @@ import {
   layoutForest,
   topologySignature,
 } from './graph-layout';
-import {edgeTooltip, edgeType, linkQuality} from './link-quality';
+import {edgeLinkValue, edgeTooltip, edgeType, linkQuality} from './link-quality';
 import {TRANSLATOR} from '../../tokens';
 import {getNodeStatusLabels} from '../../status-labels';
 import {type MndwIconName, mndwIconHref, subscribeMndwIconSprite} from '@mndw/ui';
 import {dragPosition, isClickWithinSlop} from './graph-interaction';
-import {type GraphSelectionState, edgePath, effectivePosition, nodeClass, pathSelectionClass} from './graph-rendering';
+import {
+  type GraphSelectionState,
+  edgeLabelPosition,
+  edgePath,
+  effectivePosition,
+  nodeClass,
+  pathSelectionClass,
+} from './graph-rendering';
 
 export const FIT_PADDING = 40;
 export const CLICK_SLOP = 4;
 const MAX_TEXT_FIT_RETRIES = 2;
 const NAME_AVERAGE_GLYPH_WIDTH = 8.5;
 const DETAIL_AVERAGE_GLYPH_WIDTH = 7.5;
+const EDITABLE_TAGS = new Set(['input', 'textarea', 'select', 'mndw-input']);
+
+let nextThresholdsPanelId = 0;
+
+function isEditableKeyTarget(event: KeyboardEvent): boolean {
+  return event.composedPath().some((target) => {
+    if (!(target instanceof Element)) {
+      return false;
+    }
+
+    if (EDITABLE_TAGS.has(target.localName)) {
+      return true;
+    }
+
+    const contentEditable = target.getAttribute('contenteditable');
+
+    return (contentEditable !== null && contentEditable !== 'false')
+      || target.closest('.rssi-thresholds-panel') !== null;
+  });
+}
 
 interface Position {
   x: number;
@@ -69,6 +99,18 @@ function truncateTextByEstimatedWidth(value: string, maxWidth: number, averageGl
   }
 
   return `${value.slice(0, maxCharacters - 1)}…`;
+}
+
+function parseRssiThreshold(value: string): number | null {
+  const trimmed = value.trim();
+
+  if (trimmed === '') {
+    return null;
+  }
+
+  const parsed = Number(trimmed);
+
+  return Number.isInteger(parsed) && parsed >= RSSI_THRESHOLD_MIN && parsed <= RSSI_THRESHOLD_MAX ? parsed : null;
 }
 
 function truncateSvgText(
@@ -143,6 +185,16 @@ function truncateSvgText(
       <mndw-button variant="secondary" [attr.aria-label]="t('action.zoom-in')" (click)="zoomIn()">+</mndw-button>
       <mndw-button variant="secondary" [attr.aria-label]="t('action.zoom-out')" (click)="zoomOut()">−</mndw-button>
       <mndw-button variant="secondary" [attr.aria-label]="t('action.fit')" (click)="recenter()">⌖</mndw-button>
+      <mndw-button
+        #thresholdsToggle
+        variant="secondary"
+        type="button"
+        class="thresholds-button"
+        [attr.aria-label]="t('graph.rssi-thresholds')"
+        [attr.aria-expanded]="thresholdsOpen()"
+        [attr.aria-controls]="thresholdsPanelId"
+        (click)="toggleThresholdsPanel()"
+      >{{ t('graph.rssi-thresholds-button') }}</mndw-button>
     </div>
     <div class="graph-edit-controls" [attr.aria-label]="t('graph.layout-controls')">
       @if (editMode()) {
@@ -159,6 +211,47 @@ function truncateSvgText(
         (click)="toggleEditMode()"
       ><mndw-icon name="pencil"></mndw-icon>{{ t('action.rearrange') }}</mndw-button>
     </div>
+    @if (thresholdsOpen()) {
+      <div
+        [id]="thresholdsPanelId"
+        class="rssi-thresholds-panel"
+        role="group"
+        [attr.aria-label]="t('graph.rssi-thresholds')"
+      >
+        <p class="rssi-thresholds-title">{{ t('graph.rssi-thresholds-title') }}</p>
+        <mndw-field [label]="t('graph.rssi-good')" [error]="goodError()">
+          <mndw-input
+            data-field="rssi-good"
+            type="number"
+            [min]="thresholdMin"
+            [max]="thresholdMax"
+            step="1"
+            [value]="goodDraft()"
+            (mndwinput)="onThresholdInput('good', $event)"
+          ></mndw-input>
+        </mndw-field>
+        <mndw-field [label]="t('graph.rssi-fair')" [error]="fairError()">
+          <mndw-input
+            data-field="rssi-fair"
+            type="number"
+            [min]="thresholdMin"
+            [max]="thresholdMax"
+            step="1"
+            [value]="fairDraft()"
+            (mndwinput)="onThresholdInput('fair', $event)"
+          ></mndw-input>
+        </mndw-field>
+        <div class="rssi-thresholds-actions">
+          <mndw-button
+            variant="primary"
+            type="button"
+            data-action="apply-rssi-thresholds"
+            (click)="saveThresholds()"
+          >{{ t('action.apply') }}</mndw-button>
+          <mndw-button variant="secondary" type="button" (click)="closeThresholdsPanel()">{{ t('action.cancel') }}</mndw-button>
+        </div>
+      </div>
+    }
     <svg #svg class="mws-graph" role="group" [attr.aria-label]="t('graph.topology')" tabindex="0"></svg>
   `,
   styleUrls: ['./mws-graph.component.scss'],
@@ -166,6 +259,8 @@ function truncateSvgText(
 })
 export class MwsGraphComponent implements AfterViewInit, OnDestroy {
   private readonly translator = inject(TRANSLATOR);
+  private readonly thresholdsStore = inject(RssiThresholdsStore);
+
   public readonly roots = input.required<MwsNode[]>();
 
   public readonly nodePositions = input<ReadonlyMap<string, Position>>(new Map());
@@ -188,6 +283,30 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
 
   public readonly doneEditingRequested = output<void>();
 
+  protected readonly thresholdMin = RSSI_THRESHOLD_MIN;
+  protected readonly thresholdMax = RSSI_THRESHOLD_MAX;
+  protected readonly thresholdsPanelId = `mws-rssi-thresholds-panel-${++nextThresholdsPanelId}`;
+  protected readonly thresholdsOpen = signal(false);
+  protected readonly goodDraft = signal('');
+  protected readonly fairDraft = signal('');
+  protected readonly goodError = computed(() => {
+    void this.translator.locale;
+
+    const good = parseRssiThreshold(this.goodDraft());
+    const fair = parseRssiThreshold(this.fairDraft());
+
+    if (good === null) {
+      return this.t('graph.rssi-invalid');
+    }
+
+    return fair !== null && good <= fair ? this.t('graph.rssi-order') : '';
+  });
+  protected readonly fairError = computed(() => {
+    void this.translator.locale;
+
+    return parseRssiThreshold(this.fairDraft()) === null ? this.t('graph.rssi-invalid') : '';
+  });
+
   @HostBinding('class.editing')
   public get editingClass(): boolean {
     return this.editMode();
@@ -195,6 +314,9 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
 
   @ViewChild('svg', {static: true})
   private svgRef?: ElementRef<SVGSVGElement>;
+
+  @ViewChild('thresholdsToggle', {static: true})
+  private thresholdsToggleRef?: ElementRef<HTMLElement>;
 
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null;
   private zoomGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
@@ -224,6 +346,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
     this.nodePositions();
     this.positionsLoadOutcome();
     this.extraFeaturesAvailability();
+    this.thresholdsStore.thresholds();
     void this.translator.locale;
 
     const editMode = this.editMode();
@@ -299,6 +422,17 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
 
   @HostListener('keydown', ['$event'])
   public onHostKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && this.thresholdsOpen()) {
+      event.preventDefault();
+      this.closeThresholdsPanel();
+
+      return;
+    }
+
+    if (isEditableKeyTarget(event)) {
+      return;
+    }
+
     if (event.key === '+' || event.key === '=') {
       event.preventDefault();
       this.zoomIn();
@@ -337,6 +471,47 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
   public recenter(): void {
     this.userAdjusted = false;
     this.fitToContent(true);
+  }
+
+  protected toggleThresholdsPanel(): void {
+    if (this.thresholdsOpen()) {
+      this.closeThresholdsPanel();
+
+      return;
+    }
+
+    const current = this.thresholdsStore.thresholds();
+
+    this.goodDraft.set(String(current.good));
+    this.fairDraft.set(String(current.fair));
+    this.thresholdsOpen.set(true);
+  }
+
+  protected closeThresholdsPanel(): void {
+    this.thresholdsOpen.set(false);
+    this.thresholdsToggleRef?.nativeElement.focus();
+  }
+
+  protected onThresholdInput(field: 'good' | 'fair', event: Event): void {
+    const value = (event as CustomEvent<{value?: string}>).detail?.value ?? '';
+
+    if (field === 'good') {
+      this.goodDraft.set(value);
+    } else {
+      this.fairDraft.set(value);
+    }
+  }
+
+  protected saveThresholds(): void {
+    const good = parseRssiThreshold(this.goodDraft());
+    const fair = parseRssiThreshold(this.fairDraft());
+
+    if (good === null || fair === null || good <= fair) {
+      return;
+    }
+
+    this.thresholdsStore.setThresholds({good, fair});
+    this.closeThresholdsPanel();
   }
 
   private observeResize(svgElement: SVGSVGElement): void {
@@ -394,6 +569,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
 
     this.renderEdges(group, layout.edges);
     this.renderNodes(group, layout.nodes);
+    this.renderEdgeLabels(group, layout.edges);
 
     const positionLoadFinished = !this.initialPositionFit
       && this.previousPositionsLoadOutcome === 'pending'
@@ -457,6 +633,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
     edges: PositionedEdge[],
   ): void {
     const selected = this.selectionState();
+    const thresholds = this.thresholdsStore.thresholds();
 
     group.selectAll<SVGPathElement, PositionedEdge>('path.edge')
       .data(edges, (edge) => `${edge.source.node.id}->${edge.target.node.id}`)
@@ -470,7 +647,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
       .attr('class', (edge) => {
         const pathClass = pathSelectionClass(edge, selected);
 
-        return ['edge', edgeType(edge.target.node), linkQuality(edge.target.node), pathClass]
+        return ['edge', edgeType(edge.target.node), linkQuality(edge.target.node, thresholds), pathClass]
           .filter((value) => value !== '')
           .join(' ');
       })
@@ -483,6 +660,34 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
       .text((edge) => edgeTooltip(edge.target.node, (key) => this.t(key)));
 
     group.selectAll('g.edge-indicator').remove();
+  }
+
+  private renderEdgeLabels(
+    group: d3.Selection<SVGGElement, unknown, null, undefined>,
+    edges: PositionedEdge[],
+  ): void {
+    const labelled = edges.filter((edge) => edgeLinkValue(edge.target.node) !== null);
+    const layer = group.selectAll<SVGGElement, null>('g.edge-labels')
+      .data([null])
+      .join('g')
+      .attr('class', 'edge-labels')
+      .raise();
+
+    layer.selectAll<SVGTextElement, PositionedEdge>('text.edge-label')
+      .data(labelled, (edge) => `${edge.source.node.id}->${edge.target.node.id}`)
+      .join('text')
+      .attr('class', 'edge-label')
+      .attr('aria-hidden', 'true')
+      .attr('data-target-id', (edge) => edge.target.node.id)
+      .attr(
+        'x',
+        (edge) => edgeLabelPosition(effectivePosition(edge.target, this.nodePositions(), this.dragPositions)).x,
+      )
+      .attr(
+        'y',
+        (edge) => edgeLabelPosition(effectivePosition(edge.target, this.nodePositions(), this.dragPositions)).y,
+      )
+      .text((edge) => edgeLinkValue(edge.target.node) ?? '');
   }
 
   private renderNodes(
@@ -838,6 +1043,17 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
           source: effectivePosition(edge.source, this.nodePositions(), this.dragPositions),
           target: effectivePosition(edge.target, this.nodePositions(), this.dragPositions),
         }));
+
+    this.zoomGroup.selectAll<SVGTextElement, PositionedEdge>('text.edge-label')
+      .filter((edge) => edge.target.node.id === id)
+      .attr(
+        'x',
+        (edge) => edgeLabelPosition(effectivePosition(edge.target, this.nodePositions(), this.dragPositions)).x,
+      )
+      .attr(
+        'y',
+        (edge) => edgeLabelPosition(effectivePosition(edge.target, this.nodePositions(), this.dragPositions)).y,
+      );
   }
 
   private reconcileDragPositions(): void {
@@ -918,6 +1134,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
 
     const selection = this.selectionState();
     const {nodeWidth, nodeHeight} = DEFAULT_LAYOUT_CONFIG;
+    const thresholds = this.thresholdsStore.thresholds();
 
     group.selectAll<SVGGElement, PositionedNode>('g.node')
       .attr('class', (positioned) => nodeClass(positioned.node, selection))
@@ -933,7 +1150,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
       .attr('class', (edge) => {
         const pathClass = pathSelectionClass(edge, selection);
 
-        return ['edge', edgeType(edge.target.node), linkQuality(edge.target.node), pathClass]
+        return ['edge', edgeType(edge.target.node), linkQuality(edge.target.node, thresholds), pathClass]
           .filter((value) => value !== '')
           .join(' ');
       });

@@ -11,8 +11,11 @@ import {buildMap} from '../../domain/mws/map-builder';
 import type {ControllerInfo, MwsNode} from '../../domain/mws/mws.types';
 import {loadFixture} from '../../fixtures/load';
 import {DEFAULT_LAYOUT_CONFIG} from './graph-layout';
+import {EDGE_LABEL_GAP} from './graph-rendering';
 import {MwsGraphComponent} from './mws-graph.component';
-import {TRANSLATOR} from '../../tokens';
+import {RSSI_THRESHOLDS_KEY, RssiThresholdsStore} from '../../services/rssi-thresholds.store';
+import {SHARED_PLUGIN_STORAGE, TRANSLATOR} from '../../tokens';
+import {FakePluginStorage} from '../../test-support/plugin-storage.fake';
 import enCatalog from '../../../i18n/en.json';
 import ruCatalog from '../../../i18n/ru.json';
 
@@ -70,10 +73,14 @@ describe('MwsGraphComponent', () => {
     });
     await TestBed.configureTestingModule({
       imports: [MwsGraphComponent],
-      providers: [{
-        provide: TRANSLATOR,
-        useFactory: () => createTranslatorSignals(testI18n, inject(DestroyRef)),
-      }],
+      providers: [
+        RssiThresholdsStore,
+        {provide: SHARED_PLUGIN_STORAGE, useValue: new FakePluginStorage()},
+        {
+          provide: TRANSLATOR,
+          useFactory: () => createTranslatorSignals(testI18n, inject(DestroyRef)),
+        },
+      ],
     }).compileComponents();
   });
 
@@ -741,6 +748,287 @@ describe('MwsGraphComponent', () => {
       'Done',
       'Rearrange',
     ]);
+  });
+
+  it('labels each link with the target rate above the top-left card corner', () => {
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', fixtureRoots());
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const labels = [...element.querySelectorAll<SVGTextElement>('text.edge-label')];
+
+    expect(labels.map((label) => label.textContent).sort()).toEqual(['1 Gbit/s', '1.2 Gbit/s']);
+
+    for (const label of labels) {
+      const id = label.getAttribute('data-target-id') ?? '';
+      const node = element.querySelector<SVGGElement>(`g.node[data-node-id="${id}"]`);
+      const transform = node?.getAttribute('transform') ?? '';
+      const [, nodeX = '0', nodeY = '0'] = /translate\(([-\d.]+),([-\d.]+)\)/.exec(transform) ?? [];
+
+      expect(Number(label.getAttribute('x'))).toBeCloseTo(Number(nodeX) - DEFAULT_LAYOUT_CONFIG.nodeWidth / 2);
+      expect(Number(label.getAttribute('y'))).toBeCloseTo(
+        Number(nodeY) - DEFAULT_LAYOUT_CONFIG.nodeHeight / 2 - EDGE_LABEL_GAP,
+      );
+      expect(label.getAttribute('aria-hidden')).toBe('true');
+    }
+
+    expect(graphStyles).toMatch(/\.zoom-hide-indicators \.edge-label\s*\{[^}]*display:\s*none;/s);
+  });
+
+  it('draws no label when the target has no link value', () => {
+    const roots = fixtureRoots();
+
+    for (const node of roots.flatMap((root) => collectNodes(root))) {
+      if (node.backhaul !== null) {
+        node.backhaul.txrate = null;
+        node.backhaul.speed = null;
+      }
+    }
+
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', roots);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelectorAll('text.edge-label')).toHaveLength(0);
+  });
+
+  it('keeps the label layer above node cards added after the first render', () => {
+    const roots = fixtureRoots();
+    const controller = roots[0];
+    const firstChild = controller?.children[0]?.node;
+
+    if (controller === undefined || firstChild === undefined) {
+      throw new Error('fixture roots missing controller child');
+    }
+
+    const extra: MwsNode = {
+      ...firstChild,
+      id: 'extra-node',
+      mac: 'extra-node',
+      name: 'Extra node',
+      children: [],
+      parent: {type: 'wired', node: controller},
+    };
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', roots);
+    fixture.detectChanges();
+
+    controller.children = [...controller.children, {type: 'wired', node: extra}];
+    fixture.componentRef.setInput('roots', [...roots]);
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const group = element.querySelector('svg > g');
+    const children = [...(group?.children ?? [])];
+    const layerIndex = children.findIndex((child) => child.classList.contains('edge-labels'));
+    const nodeIndexes = children.flatMap((child, index) => child.classList.contains('node') ? [index] : []);
+    const lastNodeIndex = Math.max(...nodeIndexes);
+
+    expect(element.querySelector('g.node[data-node-id="extra-node"]')).not.toBeNull();
+    expect(children[layerIndex]?.classList.contains('edge-labels')).toBe(true);
+    expect(layerIndex).toBeGreaterThan(lastNodeIndex);
+    expect(element.querySelectorAll('text.edge-label')).toHaveLength(3);
+  });
+
+  it('moves the label with the node position', () => {
+    const roots = fixtureRoots();
+    const target = roots.flatMap((root) => collectNodes(root))
+      .find((node) => !node.isController && node.backhaul?.txrate !== null && node.backhaul?.txrate !== undefined);
+
+    if (target === undefined) {
+      throw new Error('fixture roots missing a wireless extender');
+    }
+
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', roots);
+    fixture.detectChanges();
+
+    fixture.componentRef.setInput('nodePositions', new Map([[target.id, {x: 360, y: 240}]]));
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const label = element.querySelector<SVGTextElement>(`text.edge-label[data-target-id="${target.id}"]`);
+    const node = element.querySelector<SVGGElement>(`g.node[data-node-id="${target.id}"]`);
+
+    expect(label).not.toBeNull();
+    expect(node?.getAttribute('transform')).toBe('translate(360,240)');
+    expect(Number(label?.getAttribute('x'))).toBeCloseTo(360 - DEFAULT_LAYOUT_CONFIG.nodeWidth / 2);
+    expect(Number(label?.getAttribute('y'))).toBeCloseTo(
+      240 - DEFAULT_LAYOUT_CONFIG.nodeHeight / 2 - EDGE_LABEL_GAP,
+    );
+  });
+
+  it('updates the label through the drag update path', () => {
+    const roots = fixtureRoots();
+    const target = roots.flatMap((root) => collectNodes(root))
+      .find((node) => !node.isController && node.backhaul?.txrate !== null && node.backhaul?.txrate !== undefined);
+
+    if (target === undefined) {
+      throw new Error('fixture roots missing a wireless extender');
+    }
+
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', roots);
+    fixture.detectChanges();
+
+    const component = fixture.componentInstance as unknown as {
+      dragPositions: Map<string, {x: number; y: number}>;
+      updateIncidentEdges: (id: string) => void;
+    };
+
+    component.dragPositions.set(target.id, {x: 360, y: 240});
+    component.updateIncidentEdges(target.id);
+
+    const label = (fixture.nativeElement as HTMLElement)
+      .querySelector<SVGTextElement>(`text.edge-label[data-target-id="${target.id}"]`);
+
+    expect(Number(label?.getAttribute('x'))).toBeCloseTo(360 - DEFAULT_LAYOUT_CONFIG.nodeWidth / 2);
+    expect(Number(label?.getAttribute('y'))).toBeCloseTo(
+      240 - DEFAULT_LAYOUT_CONFIG.nodeHeight / 2 - EDGE_LABEL_GAP,
+    );
+  });
+
+  it('recolours edges when the RSSI thresholds change', () => {
+    const store = TestBed.inject(RssiThresholdsStore);
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', fixtureRoots());
+    fixture.detectChanges();
+
+    const edge = (): SVGPathElement | null => fixture.nativeElement.querySelector('path.edge.wireless');
+
+    expect(edge()?.classList.contains('good')).toBe(true);
+
+    store.setThresholds({good: -20, fair: -30});
+    fixture.detectChanges();
+
+    expect(edge()?.classList.contains('good')).toBe(false);
+    expect(edge()?.classList.contains('weak')).toBe(true);
+  });
+
+  it('validates and saves RSSI thresholds from the map toolbar', async () => {
+    const store = TestBed.inject(RssiThresholdsStore);
+    const storage = TestBed.inject(SHARED_PLUGIN_STORAGE) as FakePluginStorage;
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', fixtureRoots());
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const toggle = element.querySelector<HTMLElement>('[aria-label="Wireless signal thresholds"]');
+    const panel = (): HTMLElement | null => element.querySelector('.rssi-thresholds-panel');
+
+    expect(panel()).toBeNull();
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+
+    toggle?.click();
+    fixture.detectChanges();
+
+    expect(panel()).not.toBeNull();
+    expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+
+    const good = element.querySelector<HTMLElement & {value: string}>('[data-field="rssi-good"]');
+    const fair = element.querySelector<HTMLElement & {value: string}>('[data-field="rssi-fair"]');
+    const goodField = element.querySelector<HTMLElement & {error: string}>('.rssi-thresholds-panel mndw-field');
+
+    expect(good?.value).toBe('-55');
+    expect(fair?.value).toBe('-70');
+
+    good?.dispatchEvent(new CustomEvent('mndwinput', {bubbles: true, composed: true, detail: {value: '-10'}}));
+    fixture.detectChanges();
+
+    expect(goodField?.error).toBe('Enter a whole number from −100 to −20.');
+
+    element.querySelector<HTMLElement>('[data-action="apply-rssi-thresholds"]')?.click();
+    await store.flush();
+
+    expect(store.thresholds()).toEqual({good: -55, fair: -70});
+    expect(storage.read(RSSI_THRESHOLDS_KEY)).toBeNull();
+
+    good?.dispatchEvent(new CustomEvent('mndwinput', {bubbles: true, composed: true, detail: {value: '-50'}}));
+    fair?.dispatchEvent(new CustomEvent('mndwinput', {bubbles: true, composed: true, detail: {value: '-75'}}));
+    fixture.detectChanges();
+
+    element.querySelector<HTMLElement>('[data-action="apply-rssi-thresholds"]')?.click();
+    await store.flush();
+    fixture.detectChanges();
+
+    expect(store.thresholds()).toEqual({good: -50, fair: -75});
+    expect(JSON.parse(storage.read(RSSI_THRESHOLDS_KEY) ?? '{}')).toEqual({
+      version: 1,
+      thresholds: {good: -50, fair: -75},
+    });
+    expect(panel()).toBeNull();
+  });
+
+  it('closes the RSSI panel with Escape and the toolbar button', () => {
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', fixtureRoots());
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const toggle = element.querySelector<HTMLElement>('[aria-label="Wireless signal thresholds"]');
+
+    toggle?.click();
+    fixture.detectChanges();
+    expect(element.querySelector('.rssi-thresholds-panel')).not.toBeNull();
+
+    element.querySelector('[data-field="rssi-good"]')?.dispatchEvent(
+      new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}),
+    );
+    fixture.detectChanges();
+    expect(element.querySelector('.rssi-thresholds-panel')).toBeNull();
+
+    toggle?.click();
+    fixture.detectChanges();
+    expect(element.querySelector('.rssi-thresholds-panel')).not.toBeNull();
+
+    toggle?.click();
+    fixture.detectChanges();
+    expect(element.querySelector('.rssi-thresholds-panel')).toBeNull();
+  });
+
+  it('lets threshold inputs type keys that are graph shortcuts', () => {
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', fixtureRoots());
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const toggle = element.querySelector<HTMLElement>('[aria-label="Wireless signal thresholds"]');
+
+    toggle?.click();
+    fixture.detectChanges();
+
+    const input = element.querySelector<HTMLElement>('[data-field="rssi-good"]');
+    const svg = element.querySelector('svg');
+    const zoomGroup = element.querySelector('svg > g');
+    const beforeTransform = zoomGroup?.getAttribute('transform');
+    const minus = new KeyboardEvent('keydown', {key: '-', bubbles: true, composed: true, cancelable: true});
+    const zero = new KeyboardEvent('keydown', {key: '0', bubbles: true, composed: true, cancelable: true});
+
+    input?.dispatchEvent(minus);
+    input?.dispatchEvent(zero);
+    fixture.detectChanges();
+
+    expect(minus.defaultPrevented).toBe(false);
+    expect(zero.defaultPrevented).toBe(false);
+    expect(zoomGroup?.getAttribute('transform')).toBe(beforeTransform);
+
+    const svgMinus = new KeyboardEvent('keydown', {key: '-', bubbles: true, composed: true, cancelable: true});
+
+    svg?.dispatchEvent(svgMinus);
+    fixture.detectChanges();
+
+    expect(svgMinus.defaultPrevented).toBe(true);
+    expect(zoomGroup?.getAttribute('transform')).not.toBe(beforeTransform);
   });
 
   it('truncates visible names while retaining one top-level full-name title across rerenders', () => {

@@ -1,18 +1,32 @@
-import type {MwsNode} from '../../domain/mws/mws.types';
-import {formatRate, formatRssi, formatSpeed} from '../../format';
+import type {MwsBackhaul, MwsNode} from '../../domain/mws/mws.types';
+import {DASH, formatRate, formatRssi, formatSpeed} from '../../format';
 
 export type LinkQuality = 'good' | 'fair' | 'weak' | 'unknown';
 
-export const WIRELESS_GOOD_RSSI = -55;
-export const WIRELESS_FAIR_RSSI = -70;
+export interface RssiThresholds {
+  readonly good: number;
+  readonly fair: number;
+}
+
+export const DEFAULT_RSSI_THRESHOLDS: RssiThresholds = {good: -55, fair: -70};
 export const WIRED_GOOD_SPEED = 1000;
 export const WIRED_FAIR_SPEED = 100;
+
+function present(value: unknown): boolean {
+  return value !== null && value !== undefined;
+}
+
+/** The Nodes tab rule: any wireless backhaul field marks a wireless link. */
+export function isWirelessBackhaul(backhaul: MwsBackhaul | null): boolean {
+  return backhaul !== null
+    && (present(backhaul.mode) || present(backhaul.txrate) || present(backhaul.rssi) || present(backhaul.security));
+}
 
 export function edgeType(node: MwsNode): 'wired' | 'wireless' {
   return node.backhaul !== null && node.backhaul.ap !== null ? 'wireless' : 'wired';
 }
 
-export function linkQuality(node: MwsNode): LinkQuality {
+export function linkQuality(node: MwsNode, thresholds: RssiThresholds = DEFAULT_RSSI_THRESHOLDS): LinkQuality {
   const backhaul = node.backhaul;
 
   if (backhaul === null) {
@@ -26,11 +40,11 @@ export function linkQuality(node: MwsNode): LinkQuality {
       return 'unknown';
     }
 
-    if (rssi >= WIRELESS_GOOD_RSSI) {
+    if (rssi >= thresholds.good) {
       return 'good';
     }
 
-    if (rssi >= WIRELESS_FAIR_RSSI) {
+    if (rssi >= thresholds.fair) {
       return 'fair';
     }
 
@@ -62,6 +76,19 @@ function includeSegment(segments: string[], value: string | null | undefined): v
   if (value !== null && value !== undefined && value !== '' && value !== '—') {
     segments.push(value);
   }
+}
+
+/** The rate shown next to a link, matching the Nodes tab, or null when there is none. */
+export function edgeLinkValue(node: MwsNode): string | null {
+  const backhaul = node.backhaul;
+
+  if (backhaul === null) {
+    return null;
+  }
+
+  const value = isWirelessBackhaul(backhaul) ? formatRate(backhaul.txrate) : formatSpeed(backhaul.speed);
+
+  return value === DASH ? null : value;
 }
 
 export function edgeTooltip(

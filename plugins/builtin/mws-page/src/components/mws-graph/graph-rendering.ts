@@ -13,6 +13,15 @@ export interface GraphPosition {
   y: number;
 }
 
+export const EDGE_LABEL_GAP = 6;
+
+export function edgeLabelPosition(target: GraphPosition): GraphPosition {
+  return {
+    x: target.x - DEFAULT_LAYOUT_CONFIG.nodeWidth / 2,
+    y: target.y - DEFAULT_LAYOUT_CONFIG.nodeHeight / 2 - EDGE_LABEL_GAP,
+  };
+}
+
 export function edgePath(edge: {source: GraphPosition; target: GraphPosition}): string {
   const half = DEFAULT_LAYOUT_CONFIG.nodeHeight / 2;
   const y1 = edge.source.y + half;

@@ -21,6 +21,7 @@ import type {MwsNode} from '../../domain/mws/mws.types';
 import {DASH, formatRate, formatSpeed, formatUptime} from '../../format';
 import {NodeTableColumnsStore, OPTIONAL_NODE_COLUMN_IDS} from '../../services/node-table-columns.store';
 import {TRANSLATOR} from '../../tokens';
+import {isWirelessBackhaul} from '../mws-graph/link-quality';
 import {type NodeRow, buildNodeRows, compareIpStrings, filterNodeRows} from './node-rows';
 
 @Component({
@@ -155,10 +156,7 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
       return DASH;
     }
 
-    const wireless = backhaul.mode !== null
-      || backhaul.txrate !== null
-      || backhaul.rssi !== null
-      || backhaul.security !== null;
+    const wireless = isWirelessBackhaul(backhaul);
 
     const values = wireless
       ? [formatRate(backhaul.txrate), backhaul.mode]

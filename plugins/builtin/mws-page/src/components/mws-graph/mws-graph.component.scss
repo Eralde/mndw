@@ -28,6 +28,15 @@
     }
   }
 
+  .thresholds-button {
+    width: auto;
+
+    &::part(button) {
+      padding: 0 var(--mndw-space-2);
+      font-size: 0.75rem;
+    }
+  }
+
 }
 
 .graph-edit-controls {
@@ -67,6 +76,35 @@
   .node {
     cursor: grab;
   }
+}
+
+.rssi-thresholds-panel {
+  position: absolute;
+  right: var(--mndw-space-3);
+  bottom: calc(var(--mndw-space-3) + var(--mndw-control-h) + var(--mndw-space-2));
+  z-index: 2;
+  display: grid;
+  gap: var(--mndw-space-3);
+  width: min(18rem, calc(100% - 2 * var(--mndw-space-3)));
+  padding: var(--mndw-space-4);
+  border: var(--mndw-border-w) solid var(--mndw-border);
+  border-radius: var(--mndw-radius-md);
+  background: var(--mndw-surface-raised);
+  box-shadow: var(--mndw-shadow-2);
+  color: var(--mndw-text);
+}
+
+.rssi-thresholds-title {
+  margin: 0;
+  color: var(--mndw-text-subtle);
+  font-weight: var(--mndw-weight-semibold);
+  font-size: 0.75rem;
+}
+
+.rssi-thresholds-actions {
+  display: flex;
+  gap: var(--mndw-space-2);
+  justify-content: flex-end;
 }
 
 .mws-graph {
@@ -150,6 +188,16 @@
 
   .zoom-hide-indicators .node-icon {
     display: none;
+  }
+
+  .zoom-hide-indicators .edge-label {
+    display: none;
+  }
+
+  .edge-label {
+    font-size: 0.6875rem;
+    pointer-events: none;
+    fill: var(--mndw-text-subtle);
   }
 
   .node {

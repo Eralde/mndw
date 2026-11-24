@@ -13,6 +13,7 @@ import {MwsWriteService} from './services/mws-write.service';
 import {ExtraFeaturesBannerStore} from './services/extra-features-banner.store';
 import {NodePositionStore} from './services/node-position.store';
 import {NodeTableColumnsStore} from './services/node-table-columns.store';
+import {RssiThresholdsStore} from './services/rssi-thresholds.store';
 import {
   DEVICE_INFO,
   HOST_NAVIGATION,
@@ -41,6 +42,7 @@ export function createMwsMapInstance(
 ): Promise<PluginInstance> {
   let positions: NodePositionStore | null = null;
   let columns: NodeTableColumnsStore | null = null;
+  let rssiThresholds: RssiThresholdsStore | null = null;
   const themeSubscription = ctx.appearance.theme$.subscribe((theme) => {
     el.dataset.mndwTheme = theme;
   });
@@ -88,6 +90,7 @@ export function createMwsMapInstance(
       ExtraFeaturesBannerStore,
       NodePositionStore,
       NodeTableColumnsStore,
+      RssiThresholdsStore,
     ],
     configure: ({appRef, injector, component}) => {
       const dataService = injector.get(MwsDataService);
@@ -95,6 +98,8 @@ export function createMwsMapInstance(
 
       positions = injector.get(NodePositionStore);
       columns = injector.get(NodeTableColumnsStore);
+      rssiThresholds = injector.get(RssiThresholdsStore);
+      void rssiThresholds.load();
       component.setInput('openNodeDrawer', (nodeId: string, title: string, onClose: () => void) => {
         openNodeDrawer(ctx, appRef, detailsSource, nodeId, title, onClose);
       });
@@ -105,6 +110,7 @@ export function createMwsMapInstance(
       ctx.overlay.closeAll();
       void positions?.flush();
       void columns?.flush();
+      void rssiThresholds?.flush();
     },
   });
 }

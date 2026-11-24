@@ -30,6 +30,7 @@ import {MwsdStatusService} from '../services/mwsd-status.service';
 import {FakePluginStorage} from '../test-support/plugin-storage.fake';
 import {HOST} from '../test-support/mws-data-test-support';
 import {NodeTableColumnsStore} from '../services/node-table-columns.store';
+import {RssiThresholdsStore} from '../services/rssi-thresholds.store';
 import {MwsWriteService} from '../services/mws-write.service';
 import {
   DEVICE_INFO,
@@ -250,6 +251,7 @@ describe('AppComponent', () => {
         {provide: TRANSLATOR, useFactory: () => createTranslatorSignals(testI18n, inject(DestroyRef))},
         NodePositionStore,
         NodeTableColumnsStore,
+        RssiThresholdsStore,
         {
           provide: MwsApiService,
           useValue: {

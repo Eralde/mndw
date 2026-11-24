@@ -111,6 +111,7 @@
     "fit": "Fit to content",
     "auto-layout": "Auto layout",
     "done": "Done",
+    "apply": "Apply",
     "rearrange": "Rearrange"
   },
   "auto-layout": {
@@ -135,7 +136,14 @@
     "wireless": "Wireless",
     "wired": "Wired",
     "clients": "clients",
-    "duplex": "duplex"
+    "duplex": "duplex",
+    "rssi-thresholds": "Wireless signal thresholds",
+    "rssi-thresholds-button": "dBm",
+    "rssi-thresholds-title": "Wireless link colours",
+    "rssi-good": "Good, dBm",
+    "rssi-fair": "Fair, dBm",
+    "rssi-invalid": "Enter a whole number from −100 to −20.",
+    "rssi-order": "Good must be above fair."
   },
   "clients": {
     "search": "Search clients",

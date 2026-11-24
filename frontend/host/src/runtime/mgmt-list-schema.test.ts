@@ -24,6 +24,15 @@ describe('decodeMgmtList', () => {
     expect(entries[0]).toMatchObject({name: 'demo', type: 'widget', source: 'builtin'});
   });
 
+  it('accepts optional installedAt and omits it when absent', () => {
+    const installedAt = '2026-09-01T09:30:00Z';
+    const withTime = decodeMgmtListEntry({...widgetEntry, installedAt});
+    const withoutTime = decodeMgmtListEntry(widgetEntry);
+
+    expect(withTime.installedAt).toBe(installedAt);
+    expect(withoutTime).not.toHaveProperty('installedAt');
+  });
+
   it('preserves optional description and ignores retired icon wire data', () => {
     const entry = decodeMgmtListEntry({...widgetEntry, description: 'Shows device status.', icon: 'chart'});
 

@@ -55,16 +55,17 @@ const goldenGammaExecManifest = `{"manifestVersion":1,"name":"gamma-exec","versi
 // and compatible is false.
 const goldenEpsilonBackoffManifest = `{"manifestVersion":1,"name":"epsilon-backoff","version":"0.9.0","type":"widget","label":"Epsilon","entry":"index.js","size":{"w":4,"h":3},"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`
 
-func seedGoldenPlugin(t *testing.T, store *state.Store, name string, approval state.Approval, enabled bool, manifestJSON string) {
+func seedGoldenPlugin(t *testing.T, store *state.Store, name string, approval state.Approval, enabled bool, manifestJSON string, installedAt time.Time) {
 	t.Helper()
 
 	err := store.Mutate(func(st *state.State) error {
 		st.Plugins[name] = &state.Plugin{
-			Name:     name,
-			Source:   state.SourceUpload,
-			Approval: approval,
-			Enabled:  enabled,
-			Manifest: json.RawMessage(manifestJSON),
+			Name:        name,
+			Source:      state.SourceUpload,
+			Approval:    approval,
+			Enabled:     enabled,
+			Manifest:    json.RawMessage(manifestJSON),
+			InstalledAt: installedAt,
 		}
 
 		return nil
@@ -168,11 +169,13 @@ func TestWireGoldenFixtures(t *testing.T) {
 	}}
 	srv, store, _, cfg := newLifecycleHarness(t, runtime, &capabilityTestController{available: true})
 
-	seedGoldenPlugin(t, store, "alpha-page", state.ApprovalApproved, true, goldenAlphaPageManifest)
-	seedGoldenPlugin(t, store, "beta-service", state.ApprovalApproved, true, goldenBetaServiceManifest)
-	seedGoldenPlugin(t, store, "delta-rci", state.ApprovalApproved, true, goldenDeltaRCIManifest)
-	seedGoldenPlugin(t, store, "gamma-exec", state.ApprovalPending, false, goldenGammaExecManifest)
-	seedGoldenPlugin(t, store, "epsilon-backoff", state.ApprovalApproved, true, goldenEpsilonBackoffManifest)
+	installedAt := time.Date(2026, 9, 1, 9, 30, 0, 0, time.UTC)
+
+	seedGoldenPlugin(t, store, "alpha-page", state.ApprovalApproved, true, goldenAlphaPageManifest, installedAt)
+	seedGoldenPlugin(t, store, "beta-service", state.ApprovalApproved, true, goldenBetaServiceManifest, installedAt)
+	seedGoldenPlugin(t, store, "delta-rci", state.ApprovalApproved, true, goldenDeltaRCIManifest, installedAt)
+	seedGoldenPlugin(t, store, "gamma-exec", state.ApprovalPending, false, goldenGammaExecManifest, installedAt)
+	seedGoldenPlugin(t, store, "epsilon-backoff", state.ApprovalApproved, true, goldenEpsilonBackoffManifest, installedAt)
 
 	for _, pluginDir := range []string{
 		filepath.Join(cfg.UserPluginsDir, "alpha-page"),

@@ -72,6 +72,7 @@ const lockSchema: z.ZodType<HostLock> = z.object({
 const baseFields = {
   name: z.string(),
   version: z.string(),
+  installedAt: z.string().optional(),
   label: z.string(),
   description: z.string().optional(),
   entry: z.string(),

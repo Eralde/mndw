@@ -102,6 +102,7 @@ func (h *Handler) serveUserPlugin(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 
+	writer.Header().Set("Cache-Control", "no-cache")
 	h.serveFile(writer, request, full)
 }
 

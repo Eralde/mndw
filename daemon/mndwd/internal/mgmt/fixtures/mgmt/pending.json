@@ -9,6 +9,7 @@
       "source": "upload",
       "approval": "pending",
       "enabled": false,
+      "installedAt": "2026-09-01T09:30:00Z",
       "size": {
         "w": 4,
         "h": 3

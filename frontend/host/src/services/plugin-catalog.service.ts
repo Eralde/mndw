@@ -11,7 +11,7 @@ export type PluginCatalogFallbackStatus = 'primary' | 'default' | 'key';
 
 export interface PluginCatalogSource {
   name: string;
-  version: string;
+  revision: string;
   baseUrl: string;
   defaultLocale: string;
   locales: Record<string, string>;
@@ -77,7 +77,7 @@ function createRuntime(deps: PluginCatalogDeps = {}): CatalogRuntime {
 }
 
 function cacheKey(source: PluginCatalogSource, locale: string): string {
-  return `${source.name}/${source.version}/${locale}`;
+  return `${source.name}/${source.revision}/${locale}`;
 }
 
 function catalogUrl(source: PluginCatalogSource, locale: string): string | undefined {
@@ -87,7 +87,7 @@ function catalogUrl(source: PluginCatalogSource, locale: string): string | undef
     return undefined;
   }
 
-  return `${source.baseUrl.replace(/\/$/, '')}/${path}?v=${encodeURIComponent(source.version)}`;
+  return `${source.baseUrl.replace(/\/$/, '')}/${path}?v=${encodeURIComponent(source.revision)}`;
 }
 
 function languageOnly(locale: string): string | undefined {
@@ -277,7 +277,7 @@ function clearPluginCatalogCellsForRuntime(runtime: CatalogRuntime): void {
 
 export function createPluginCatalogSource(
   name: string,
-  version: string,
+  revision: string,
   baseUrl: string,
   i18n: PluginManifestI18n | undefined,
 ): PluginCatalogSource | undefined {
@@ -285,7 +285,7 @@ export function createPluginCatalogSource(
     return undefined;
   }
 
-  return {name, version, baseUrl, defaultLocale: i18n.defaultLocale, locales: i18n.locales};
+  return {name, revision, baseUrl, defaultLocale: i18n.defaultLocale, locales: i18n.locales};
 }
 
 async function loadInitialPluginCatalogForRuntime(

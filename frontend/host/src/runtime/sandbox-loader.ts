@@ -6,7 +6,7 @@ import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import type {LoadedPlugin} from './plugin-registry.js';
 import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
 import type {PluginContextServices} from './plugin-context.js';
-import type {PluginStylesheets} from './plugin-stylesheets.js';
+import {type PluginStylesheets, assetRevision} from './plugin-stylesheets.js';
 import {
   applyPluginListSnapshot,
   getPluginLoadState,
@@ -158,7 +158,7 @@ async function buildLoadedPlugin(
   const localeOf = deps.getLocale;
   const source = createPluginCatalogSource(
     entry.name,
-    entry.version,
+    assetRevision(entry),
     entry.catalogBaseUrl ?? `/plugins/${entry.name}`,
     entry.i18n,
   );
@@ -408,7 +408,7 @@ export async function reloadSandboxPlugin(deps: SandboxLoaderDeps): Promise<Sand
   const priorRun = activeSandboxRun;
   let restored: LoadedPlugin;
   const stylesheets = deps.pluginStylesheets;
-  const priorStylesheetHold = stylesheets.retain(name, prior.entry.version);
+  const priorStylesheetHold = stylesheets.retain(name, assetRevision(prior.entry));
 
   try {
     restored = registry.replace(candidate);
@@ -457,9 +457,11 @@ export async function reloadSandboxPlugin(deps: SandboxLoaderDeps): Promise<Sand
 
     const restoredWithStylesheet = {
       ...restored,
-      stylesheetLease: stylesheets.retain(name, restored.entry.version),
+      stylesheetLease: stylesheets.retain(name, assetRevision(restored.entry)),
     };
+
     registry.replace(restoredWithStylesheet);
+
     activeSandboxRun = priorRun;
     console.error(`[mndw] Sandbox reload failed, kept previous plugin "${name}":`, err);
 

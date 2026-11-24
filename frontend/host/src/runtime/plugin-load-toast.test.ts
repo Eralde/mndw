@@ -157,7 +157,7 @@ describe('plugin load failure toast locale changes', () => {
     });
     const cell = catalogService.createPluginCatalogCell({
       name: 'weather',
-      version: '1.0.0',
+      revision: '1.0.0',
       baseUrl: '/plugins/weather',
       defaultLocale: 'en',
       locales: {en: 'i18n/en.json', ru: 'i18n/ru.json'},

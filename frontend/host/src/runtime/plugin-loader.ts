@@ -6,7 +6,7 @@ import {pristineFetch} from '../services/pristine-fetch.js';
 import {type PluginCatalogService, createPluginCatalogSource} from '../services/plugin-catalog.service.js';
 import {checkPluginVersions, readPluginLock} from './plugin-lock.js';
 import type {PluginRegistry} from './plugin-registry.js';
-import {type PluginStylesheetLease, type PluginStylesheets} from './plugin-stylesheets.js';
+import {type PluginStylesheetLease, type PluginStylesheets, assetRevision} from './plugin-stylesheets.js';
 import {decodeMgmtList} from './mgmt-list-schema.js';
 import type {PluginListEntry} from './plugin-types.js';
 import {clearPluginVersionWarnings, setPluginVersionWarnings} from './plugin-version-warnings.svelte.js';
@@ -36,7 +36,7 @@ import {
 export interface LoaderDeps {
   fetchList?: (signal: AbortSignal) => Promise<PluginListEntry[]>;
   importModule?: (url: string) => Promise<unknown>;
-  acquireStylesheet?: (href: string, pluginName: string, version: string) => PluginStylesheetLease;
+  acquireStylesheet?: (href: string, pluginName: string, revision: string) => PluginStylesheetLease;
   checkVersions?: (entry: PluginListEntry, dir: string) => string[] | Promise<string[]>;
   catalogService: PluginCatalogService;
   registry: Pick<PluginRegistry, 'register' | 'clear' | 'get' | 'remove'>;
@@ -58,8 +58,9 @@ let activePluginLoadToastAuthBinding: {
  */
 export const PLUGIN_LOAD_TIMEOUT_MS = 15_000;
 
-function versionedAssetUrl(dir: string, asset: string, version: string): string {
-  return `${dir}/${asset}?v=${encodeURIComponent(version)}`;
+function versionedAssetUrl(dir: string, asset: string, revision: string): string {
+  // encodeURIComponent keeps version and install time inside one cache query value.
+  return `${dir}/${asset}?v=${encodeURIComponent(revision)}`;
 }
 
 function validateModule(module: unknown, name: string): MndwPlugin {
@@ -138,7 +139,7 @@ function dedupe(entries: PluginListEntry[]): PluginListEntry[] {
 
 interface ResolvedLoaderDeps {
   importModule: (url: string) => Promise<unknown>;
-  acquireStylesheet: (href: string, pluginName: string, version: string) => PluginStylesheetLease;
+  acquireStylesheet: (href: string, pluginName: string, revision: string) => PluginStylesheetLease;
   checkVersions: (entry: PluginListEntry, dir: string) => string[] | Promise<string[]>;
   catalogService: PluginCatalogService;
   registry: Pick<PluginRegistry, 'register' | 'clear' | 'get' | 'remove'>;
@@ -172,7 +173,8 @@ async function loadOne(
 ): Promise<PluginLoadResult> {
   const base = entry.source === 'builtin' ? PLUGIN_SOURCE_PATHS.builtin : PLUGIN_SOURCE_PATHS.user;
   const dir = `${base}${entry.name}`;
-  const assetUrl = (asset: string): string => versionedAssetUrl(dir, asset, entry.version);
+  const revision = assetRevision(entry);
+  const assetUrl = (asset: string): string => versionedAssetUrl(dir, asset, revision);
   let stylesheetLease: PluginStylesheetLease | undefined;
   let transferred = false;
   let abortStylesheetLoad: (() => void) | undefined;
@@ -180,7 +182,7 @@ async function loadOne(
   try {
     const source = createPluginCatalogSource(
       entry.name,
-      entry.version,
+      revision,
       entry.catalogBaseUrl ?? dir,
       entry.i18n,
     );
@@ -198,7 +200,7 @@ async function loadOne(
       return {loaded: false};
     }
 
-    stylesheetLease = deps.acquireStylesheet(assetUrl('index.css'), entry.name, entry.version);
+    stylesheetLease = deps.acquireStylesheet(assetUrl('index.css'), entry.name, revision);
     abortStylesheetLoad = (): void => stylesheetLease?.release();
     signal.addEventListener('abort', abortStylesheetLoad, {once: true});
 
@@ -371,14 +373,14 @@ export async function syncPlugins(entries: PluginListEntry[]): Promise<boolean> 
     const previousEntry = run.entries.get(name);
     const previousState = previousStates[name];
     const loaded = run.deps.registry.get(name);
-    const versionChanged = previousEntry !== undefined && previousEntry.version !== entry.version;
+    const revisionChanged = previousEntry !== undefined && assetRevision(previousEntry) !== assetRevision(entry);
 
     run.entries.set(name, entry);
 
     if (loaded !== undefined) {
       setPluginLoadCatalog(name, loaded.catalog);
 
-      if (loaded.entry.version !== entry.version) {
+      if (assetRevision(loaded.entry) !== assetRevision(entry)) {
         reloadRequired = true;
       }
 
@@ -386,7 +388,7 @@ export async function syncPlugins(entries: PluginListEntry[]): Promise<boolean> 
       continue;
     }
 
-    if (previousEntry === undefined || versionChanged) {
+    if (previousEntry === undefined || revisionChanged) {
       const token = (run.pluginTokens.get(name) ?? 0) + 1;
 
       run.pluginTokens.set(name, token);
@@ -445,7 +447,7 @@ export async function loadPlugins(deps: LoaderDeps): Promise<void> {
   const resolved: ResolvedLoaderDeps = {
     importModule: deps.importModule ?? ((url) => import(/* @vite-ignore */ url)),
     acquireStylesheet: deps.acquireStylesheet
-      ?? ((href, pluginName, version) => deps.pluginStylesheets.acquire(pluginName, version, href)),
+      ?? ((href, pluginName, revision) => deps.pluginStylesheets.acquire(pluginName, revision, href)),
     checkVersions: deps.checkVersions ?? defaultCheckVersions,
     catalogService,
     registry,

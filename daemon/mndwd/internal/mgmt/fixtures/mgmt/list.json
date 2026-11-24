@@ -9,6 +9,7 @@
       "source": "upload",
       "approval": "approved",
       "enabled": true,
+      "installedAt": "2026-09-01T09:30:00Z",
       "route": "/alpha",
       "i18n": {
         "defaultLocale": "en",
@@ -37,6 +38,7 @@
       "source": "upload",
       "approval": "approved",
       "enabled": true,
+      "installedAt": "2026-09-01T09:30:00Z",
       "size": {
         "w": 6,
         "h": 4,
@@ -96,6 +98,7 @@
       "source": "upload",
       "approval": "approved",
       "enabled": true,
+      "installedAt": "2026-09-01T09:30:00Z",
       "capabilities": [
         "persistent-rci-session:read",
         "persistent-rci-session:write",
@@ -122,6 +125,7 @@
       "source": "upload",
       "approval": "approved",
       "enabled": true,
+      "installedAt": "2026-09-01T09:30:00Z",
       "size": {
         "w": 4,
         "h": 3
@@ -167,6 +171,7 @@
       "source": "upload",
       "approval": "pending",
       "enabled": false,
+      "installedAt": "2026-09-01T09:30:00Z",
       "size": {
         "w": 4,
         "h": 3

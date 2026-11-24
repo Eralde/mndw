@@ -379,6 +379,45 @@ func TestServesETagAndConditionalGet(t *testing.T) {
 	}
 }
 
+func TestUserPluginResponsesAreNoCache(t *testing.T) {
+	h, _, _ := setup(t)
+	first := serve(h, http.MethodGet, "/user-plugins/myplugin/u.js")
+
+	if first.Code != http.StatusOK {
+		t.Fatalf("GET status = %d, want 200", first.Code)
+	}
+
+	if got := first.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Fatalf("GET Cache-Control = %q, want no-cache", got)
+	}
+
+	etag := first.Header().Get("ETag")
+
+	if etag == "" {
+		t.Fatal("expected ETag on user plugin asset")
+	}
+
+	mux := http.NewServeMux()
+
+	h.Register(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/user-plugins/myplugin/u.js", nil)
+
+	req.Header.Set("If-None-Match", etag)
+
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotModified {
+		t.Fatalf("conditional GET status = %d, want 304", rec.Code)
+	}
+
+	if got := rec.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Fatalf("304 Cache-Control = %q, want no-cache", got)
+	}
+}
+
 func TestServesRange(t *testing.T) {
 	h, _, _ := setup(t)
 	mux := http.NewServeMux()

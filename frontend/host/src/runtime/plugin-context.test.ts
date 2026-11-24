@@ -175,7 +175,7 @@ describe('createPluginContext', () => {
   it('exposes a frozen synchronous translator backed by the host catalog cell', () => {
     const cell = createPluginCatalogService().createPluginCatalogCell({
       name: 'demo',
-      version: '1.0.0',
+      revision: '1.0.0',
       baseUrl: '/plugins/demo',
       defaultLocale: 'en',
       locales: {en: 'i18n/en.json'},

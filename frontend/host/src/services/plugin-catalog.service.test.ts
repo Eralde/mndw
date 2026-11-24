@@ -229,7 +229,7 @@ describe('plugin catalog loading', () => {
     expect(cell.readCurrentState().resolvedCatalogLocale).toBe('en');
   });
 
-  it('memoizes successes by plugin, version, and locale but retries failures', async () => {
+  it('memoizes successes by plugin, revision, and locale but retries failures', async () => {
     const fetcher = vi.fn(() => Promise.resolve({title: 'Hello'}));
 
     catalogService = createPluginCatalogService({fetchCatalog: fetcher});
@@ -244,8 +244,8 @@ describe('plugin catalog loading', () => {
 
     catalogService = createPluginCatalogService({fetchCatalog: failing});
 
-    const first = catalogService.createPluginCatalogCell({...source, version: '2.0.0'}, 'en');
-    const second = catalogService.createPluginCatalogCell({...source, version: '2.0.0'}, 'en');
+    const first = catalogService.createPluginCatalogCell({...source, revision: '2.0.0'}, 'en');
+    const second = catalogService.createPluginCatalogCell({...source, revision: '2.0.0'}, 'en');
 
     await catalogService.loadInitialPluginCatalog(first, 'ru', 20);
     await catalogService.loadInitialPluginCatalog(second, 'ru', 20);

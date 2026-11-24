@@ -28,7 +28,7 @@ import {toast} from '../services/toast/toast.svelte.js';
 import {buildPluginRoutes} from '../router/create-app-router.js';
 import {getPagePluginCandidates} from './page-plugin-candidates.js';
 import {mountPluginWithContext} from './plugin-lifecycle.js';
-import {PluginStylesheets} from './plugin-stylesheets.js';
+import {PluginStylesheets, assetRevision} from './plugin-stylesheets.js';
 import {createTestPluginRegistry} from '../testing/plugin-registry.js';
 
 (window as unknown as {happyDOM: {settings: {disableCSSFileLoading: boolean}}})
@@ -152,6 +152,74 @@ afterEach(() => {
 
 // eslint-disable-next-line max-lines-per-function -- loader behavior cases stay together.
 describe('loadPlugins', () => {
+  it('builds an asset revision from manifest version and optional install time', () => {
+    const installedAt = '2026-09-01T09:30:00Z';
+
+    expect(assetRevision(widget('revisioned'))).toBe('1.0.0');
+    expect(assetRevision(widget('revisioned', {installedAt}))).toBe(`1.0.0@${installedAt}`);
+  });
+
+  it('separates asset, stylesheet, and catalog cache identities by install time', async () => {
+    const firstInstalledAt = '2026-09-01T09:30:00Z';
+    const secondInstalledAt = '2026-09-02T09:30:00Z';
+    const catalogRequests: string[] = [];
+    const stylesheetRequests: Array<{href: string; revision: string}> = [];
+    const catalogService = createPluginCatalogService({fetchCatalog: (url) => {
+      catalogRequests.push(url);
+
+      return Promise.resolve({});
+    }});
+    const entry = widget('revisioned', {
+      i18n: {defaultLocale: 'en', locales: {en: 'i18n/en.json'}},
+    });
+    const imports: string[] = [];
+    const run = async (installedAt: string): Promise<void> => {
+      const current = {...entry, installedAt};
+
+      await loadPlugins({
+        fetchList: () => Promise.resolve([current]),
+        importModule: (url) => {
+          imports.push(url);
+
+          return Promise.resolve(goodModule);
+        },
+        acquireStylesheet: (href, _name, revision) => {
+          stylesheetRequests.push({href, revision});
+
+          return emptyStylesheetLease();
+        },
+        checkVersions: () => [],
+        catalogService,
+        getLocale: () => 'en',
+      });
+    };
+
+    await run(firstInstalledAt);
+
+    const importsBeforeSync = imports.length;
+
+    await expect(syncPlugins([{...entry, installedAt: secondInstalledAt}])).resolves.toBe(true);
+    expect(imports).toHaveLength(importsBeforeSync);
+
+    await run(secondInstalledAt);
+
+    const firstRevision = assetRevision({...entry, installedAt: firstInstalledAt});
+    const secondRevision = assetRevision({...entry, installedAt: secondInstalledAt});
+
+    expect(imports).toEqual([
+      `/user-plugins/revisioned/index.js?v=${encodeURIComponent(firstRevision)}`,
+      `/user-plugins/revisioned/index.js?v=${encodeURIComponent(secondRevision)}`,
+    ]);
+    expect(stylesheetRequests).toEqual([
+      {href: `/user-plugins/revisioned/index.css?v=${encodeURIComponent(firstRevision)}`, revision: firstRevision},
+      {href: `/user-plugins/revisioned/index.css?v=${encodeURIComponent(secondRevision)}`, revision: secondRevision},
+    ]);
+    expect(catalogRequests).toEqual([
+      `/user-plugins/revisioned/i18n/en.json?v=${encodeURIComponent(firstRevision)}`,
+      `/user-plugins/revisioned/i18n/en.json?v=${encodeURIComponent(secondRevision)}`,
+    ]);
+  });
+
   it('registers into the injected registry using the injected locale', async () => {
     const registry = createTestPluginRegistry();
     const getLocale = vi.fn(() => 'ru');
@@ -885,7 +953,7 @@ describe('loadPlugins', () => {
   });
 });
 
-describe('syncPlugins', () => {
+const registerTranslatedPageSyncTest = (): void => {
   it('keeps a translated page name after reconciling the plugin list', async () => {
     const registry = createTestPluginRegistry();
     const entry = page('localized-page', '/localized', {
@@ -913,6 +981,10 @@ describe('syncPlugins', () => {
 
     expect(getPagePluginCandidates(registry).map(({label}) => label)).toEqual(['Локализованная страница']);
   });
+};
+
+describe('syncPlugins', () => {
+  registerTranslatedPageSyncTest();
 
   it('increments the successful plugin-list revision on startup and every sync', async () => {
     const revision = getPluginListRevision();

@@ -38,7 +38,14 @@ func (h *pluginsAPI) handleApprove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("plugin approved", "plugin", name)
-	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true, filepath.Join(h.userPluginsDir, name)))
+
+	installedAt := time.Time{}
+
+	if p, exists := h.store.Get(name); exists {
+		installedAt = p.InstalledAt
+	}
+
+	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true, filepath.Join(h.userPluginsDir, name), installedAt))
 }
 
 // installDeps installs a plugin's declared opkg packages. No-op when none declared.
@@ -105,7 +112,7 @@ func (h *pluginsAPI) handleEnable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if p.Enabled {
-		httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, p.Source, p.Approval, true, h.togglePluginDir(p)))
+		httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, p.Source, p.Approval, true, h.togglePluginDir(p), p.InstalledAt))
 
 		return
 	}
@@ -141,7 +148,7 @@ func (h *pluginsAPI) handleEnable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("plugin enabled", "plugin", name)
-	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, p.Source, state.ApprovalApproved, true, h.togglePluginDir(p)))
+	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, p.Source, state.ApprovalApproved, true, h.togglePluginDir(p), p.InstalledAt))
 }
 
 // handleDisable deactivates a plugin and marks it disabled. Routes are gated on
@@ -162,7 +169,7 @@ func (h *pluginsAPI) handleDisable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !p.Enabled {
-		httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, p.Source, p.Approval, false, h.togglePluginDir(p)))
+		httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, p.Source, p.Approval, false, h.togglePluginDir(p), p.InstalledAt))
 
 		return
 	}
@@ -193,7 +200,7 @@ func (h *pluginsAPI) handleDisable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("plugin disabled", "plugin", name)
-	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, p.Source, p.Approval, false, h.togglePluginDir(p)))
+	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, p.Source, p.Approval, false, h.togglePluginDir(p), p.InstalledAt))
 }
 
 // lookupForToggle resolves a user or builtin plugin and its manifest for enable/disable.
@@ -280,7 +287,7 @@ func stateForBuiltin(plugin *registry.Plugin) (*state.Plugin, error) {
 	return &state.Plugin{
 		Name: plugin.Name, Source: state.SourceBuiltin, Type: string(plugin.Manifest.Type),
 		Version: plugin.Manifest.Version, Label: plugin.Manifest.Label,
-		Approval: state.ApprovalApproved, Enabled: true, Manifest: append([]byte(nil), plugin.ManifestJSON...), InstalledAt: time.Now().UTC(),
+		Approval: state.ApprovalApproved, Enabled: true, Manifest: append([]byte(nil), plugin.ManifestJSON...),
 	}, nil
 }
 

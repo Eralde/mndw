@@ -90,9 +90,19 @@ func (h *pluginsAPI) handleUpdate(w http.ResponseWriter, r *http.Request) {
 
 	activeDir := filepath.Join(h.userPluginsDir, name)
 	backupDir := filepath.Join(h.userPluginsDir, name+".previous-"+safeVersion(previous.Version))
+	var installedAt time.Time
+
 	err = h.runtime.ExecuteLifecycle(name, backend.OpUpdating, backend.IntentRun,
 		func(ctx context.Context, ctrl backend.LifecycleControl) error {
-			return h.executeUpdate(ctx, ctrl, name, previous, m, manifestBytes, zr, activeDir, backupDir)
+			if err := h.executeUpdate(ctx, ctrl, name, previous, m, manifestBytes, zr, activeDir, backupDir); err != nil {
+				return err
+			}
+
+			if updated, exists := h.store.Get(name); exists {
+				installedAt = updated.InstalledAt
+			}
+
+			return nil
 		})
 	if err != nil {
 		if errors.Is(err, backend.ErrForceStopTerminal) {
@@ -111,7 +121,7 @@ func (h *pluginsAPI) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: name, Version: m.Version})
 	})
 
-	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, previous.Source, state.ApprovalApproved, true, activeDir))
+	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, previous.Source, state.ApprovalApproved, true, activeDir, installedAt))
 }
 
 func safeVersion(version string) string {

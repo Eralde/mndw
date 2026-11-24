@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"path/filepath"
+	"time"
 
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
@@ -51,7 +52,7 @@ func (h *pluginsAPI) handleCapability(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m, source, approval, enabled, dir, apiErr := h.capabilityTarget(request.Name)
+	m, source, approval, enabled, dir, installedAt, apiErr := h.capabilityTarget(request.Name)
 
 	if apiErr != nil {
 		httpx.WriteError(w, h.logger, apiErr)
@@ -113,7 +114,7 @@ func (h *pluginsAPI) handleCapability(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, source, approval, enabled, dir))
+	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, source, approval, enabled, dir, installedAt))
 }
 
 func (h *pluginsAPI) reconcileCapability(plugin, reason string) {
@@ -126,25 +127,25 @@ func (h *pluginsAPI) reconcileCapability(plugin, reason string) {
 	}
 }
 
-func (h *pluginsAPI) capabilityTarget(name string) (*manifest.Manifest, state.Source, state.Approval, bool, string, *httpx.APIError) {
+func (h *pluginsAPI) capabilityTarget(name string) (*manifest.Manifest, state.Source, state.Approval, bool, string, time.Time, *httpx.APIError) {
 	if plugin, ok := h.store.Get(name); ok {
 		if plugin.Source == state.SourceBuiltin {
 			builtin, apiErr := h.lookupBuiltin(name)
 
 			if apiErr != nil {
-				return nil, "", "", false, "", apiErr
+				return nil, "", "", false, "", time.Time{}, apiErr
 			}
 
 			if builtin == nil {
-				return nil, "", "", false, "", httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name)
+				return nil, "", "", false, "", time.Time{}, httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name)
 			}
 
-			return builtin.Manifest, state.SourceBuiltin, plugin.Approval, plugin.Enabled, builtin.Dir, nil
+			return builtin.Manifest, state.SourceBuiltin, plugin.Approval, plugin.Enabled, builtin.Dir, plugin.InstalledAt, nil
 		}
 
 		m, err := manifest.Validate(plugin.Manifest)
 		if err != nil {
-			return nil, "", "", false, "", httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "stored manifest is invalid")
+			return nil, "", "", false, "", time.Time{}, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "stored manifest is invalid")
 		}
 
 		dir := filepath.Join(h.userPluginsDir, name)
@@ -153,21 +154,21 @@ func (h *pluginsAPI) capabilityTarget(name string) (*manifest.Manifest, state.So
 			dir = filepath.Join(h.stagingDir, name)
 		}
 
-		return m, plugin.Source, plugin.Approval, plugin.Enabled, dir, nil
+		return m, plugin.Source, plugin.Approval, plugin.Enabled, dir, plugin.InstalledAt, nil
 	}
 
 	builtins, err := h.builtins.ListBuiltins()
 	if err != nil {
-		return nil, "", "", false, "", httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "cannot read builtin plugins dir")
+		return nil, "", "", false, "", time.Time{}, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "cannot read builtin plugins dir")
 	}
 
 	for _, plugin := range builtins {
 		if plugin.Name == name {
-			return plugin.Manifest, state.SourceBuiltin, state.ApprovalApproved, true, plugin.Dir, nil
+			return plugin.Manifest, state.SourceBuiltin, state.ApprovalApproved, true, plugin.Dir, time.Time{}, nil
 		}
 	}
 
-	return nil, "", "", false, "", httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name)
+	return nil, "", "", false, "", time.Time{}, httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name)
 }
 
 func declaresCapability(m *manifest.Manifest, capability string) bool {

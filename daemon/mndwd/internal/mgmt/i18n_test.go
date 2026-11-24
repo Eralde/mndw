@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"mndwd/internal/manifest"
 	"mndwd/internal/state"
@@ -185,7 +186,7 @@ func TestListEntryI18nJSONShape(t *testing.T) {
 		t.Fatalf("valid fixture rejected: %v", err)
 	}
 
-	entry := h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true, t.TempDir())
+	entry := h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true, t.TempDir(), time.Time{})
 	encoded, err := json.Marshal(entry)
 	if err != nil {
 		t.Fatalf("marshal list entry: %v", err)

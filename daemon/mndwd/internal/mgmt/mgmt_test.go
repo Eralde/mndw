@@ -17,6 +17,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"mndwd/internal/backend"
 	"mndwd/internal/manifest"
@@ -98,7 +99,7 @@ func TestListEntryOmitsForeignManifestFields(t *testing.T) {
 				t.Fatalf("Validate() error = %v", err)
 			}
 
-			entry := (&pluginsAPI{}).entryFrom(m, state.SourceBuiltin, state.ApprovalApproved, true, t.TempDir())
+			entry := (&pluginsAPI{}).entryFrom(m, state.SourceBuiltin, state.ApprovalApproved, true, t.TempDir(), time.Time{})
 			encoded, err := json.Marshal(entry)
 			if err != nil {
 				t.Fatalf("marshal ListEntry: %v", err)
@@ -120,6 +121,50 @@ func TestListEntryOmitsForeignManifestFields(t *testing.T) {
 				t.Errorf("ListEntry omits required field %q: %s", test.presentKey, encoded)
 			}
 		})
+	}
+}
+
+func TestListEntryInstalledAt(t *testing.T) {
+	m, err := manifest.Validate([]byte(noBackendManifest))
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+
+	installedAt := time.Date(2026, 10, 2, 3, 4, 5, 678900000, time.FixedZone("UTC+02", 2*60*60))
+	api := &pluginsAPI{}
+	encode := func(entry ListEntry) map[string]json.RawMessage {
+		t.Helper()
+
+		encoded, marshalErr := json.Marshal(entry)
+
+		if marshalErr != nil {
+			t.Fatalf("marshal ListEntry: %v", marshalErr)
+		}
+
+		var fields map[string]json.RawMessage
+
+		if unmarshalErr := json.Unmarshal(encoded, &fields); unmarshalErr != nil {
+			t.Fatalf("unmarshal ListEntry: %v", unmarshalErr)
+		}
+
+		return fields
+	}
+
+	withTime := encode(api.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true, t.TempDir(), installedAt))
+	var got string
+
+	if err := json.Unmarshal(withTime["installedAt"], &got); err != nil {
+		t.Fatalf("decode installedAt: %v", err)
+	}
+
+	if want := installedAt.UTC().Format(time.RFC3339Nano); got != want {
+		t.Errorf("installedAt = %q, want %q", got, want)
+	}
+
+	withoutTime := encode(api.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true, t.TempDir(), time.Time{}))
+
+	if _, exists := withoutTime["installedAt"]; exists {
+		t.Errorf("zero InstalledAt emitted installedAt: %v", withoutTime)
 	}
 }
 
@@ -1140,7 +1185,7 @@ func TestSymlinkedBuiltinAppearsInList(t *testing.T) {
 }
 
 func TestMutationResponsesCarryDepsStatus(t *testing.T) {
-	srv, _ := newTestServer(t)
+	srv, cfg := newTestServer(t)
 
 	zipBytes := makeZip(t, map[string]string{
 		"manifest.json": `{"manifestVersion":1,"name":"up-widget","version":"0.1.0","type":"widget","label":"up-widget","entry":"index.js","size":{"w":4,"h":3}}`,
@@ -1158,6 +1203,16 @@ func TestMutationResponsesCarryDepsStatus(t *testing.T) {
 
 	if entry.DepsStatus != "ready" {
 		t.Errorf("upload response depsStatus = %q, want ready", entry.DepsStatus)
+	}
+
+	record, ok := cfg.Store.Get("up-widget")
+
+	if !ok {
+		t.Fatal("uploaded plugin missing from state")
+	}
+
+	if want := record.InstalledAt.UTC().Format(time.RFC3339Nano); entry.InstalledAt != want {
+		t.Errorf("upload response installedAt = %q, want %q", entry.InstalledAt, want)
 	}
 }
 

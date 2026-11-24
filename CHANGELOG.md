@@ -22,6 +22,9 @@ A part with nothing in it is left out.
 
 ### For plugin authors
 
+- Reinstalling a plugin without changing its version now loads the new files: the browser no longer keeps the old
+  `index.js`, styles or translations, and Settings asks to reload the page if the plugin was already loaded. The
+  plugin list reports `installedAt` for each installed plugin.
 - `<mndw-line-chart>` and `<mndw-bar-chart>` work on touch screens: a tap or a horizontal drag shows the tooltip,
   it stays until a tap outside the chart, and a vertical swipe still scrolls the page.
 

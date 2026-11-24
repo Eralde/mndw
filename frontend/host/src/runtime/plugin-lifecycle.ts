@@ -2,7 +2,7 @@ import type {PluginContext, PluginInstance} from '@mndw/sdk';
 import {clearInstanceStorage} from '../services/storage.service.js';
 import type {OverlayDispose, PluginContextHandle} from './plugin-context.js';
 import type {LoadedPlugin} from './plugin-registry.js';
-import {type PluginStylesheetLease, type PluginStylesheets} from './plugin-stylesheets.js';
+import {type PluginStylesheetLease, type PluginStylesheets, assetRevision} from './plugin-stylesheets.js';
 
 export type OverlayTeardownReason = 'plugin-unmount' | 'host-navigation';
 
@@ -53,7 +53,7 @@ export function mountPlugin(
   options?: PluginMountOptions,
 ): Promise<MountedPlugin | null> | MountedPlugin | null {
   const name = plugin.entry.name;
-  const stylesheetLease = options?.pluginStylesheets?.retain(name, plugin.entry.version);
+  const stylesheetLease = options?.pluginStylesheets?.retain(name, assetRevision(plugin.entry));
 
   try {
     const result = plugin.module.createInstance(container, context);

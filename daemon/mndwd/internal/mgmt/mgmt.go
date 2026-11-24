@@ -280,6 +280,7 @@ type ListEntry struct {
 	Source           state.Source    `json:"source"`
 	Approval         state.Approval  `json:"approval"`
 	Enabled          bool            `json:"enabled"`
+	InstalledAt      string          `json:"installedAt,omitempty"`
 	Capabilities     []string        `json:"capabilities,omitempty"`
 	CapabilityGrants map[string]bool `json:"capabilityGrants,omitempty"`
 	Size             *manifest.Size  `json:"size,omitempty"`
@@ -350,7 +351,7 @@ func (h *pluginsAPI) buildList() ([]ListEntry, *httpx.APIError) {
 				continue
 			}
 
-			entries = append(entries, h.entryFrom(plugin.Manifest, state.SourceBuiltin, state.ApprovalApproved, plugin.Enabled, plugin.Dir))
+			entries = append(entries, h.entryFrom(plugin.Manifest, state.SourceBuiltin, state.ApprovalApproved, plugin.Enabled, plugin.Dir, p.InstalledAt))
 
 			continue
 		}
@@ -370,7 +371,7 @@ func (h *pluginsAPI) buildList() ([]ListEntry, *httpx.APIError) {
 			dir = filepath.Join(h.stagingDir, p.Name)
 		}
 
-		entries = append(entries, h.entryFrom(m, p.Source, p.Approval, p.Enabled, dir))
+		entries = append(entries, h.entryFrom(m, p.Source, p.Approval, p.Enabled, dir, p.InstalledAt))
 	}
 
 	for _, plugin := range builtinPlugins {
@@ -378,7 +379,7 @@ func (h *pluginsAPI) buildList() ([]ListEntry, *httpx.APIError) {
 			continue
 		}
 
-		entries = append(entries, h.entryFrom(plugin.Manifest, state.SourceBuiltin, state.ApprovalApproved, true, plugin.Dir))
+		entries = append(entries, h.entryFrom(plugin.Manifest, state.SourceBuiltin, state.ApprovalApproved, true, plugin.Dir, time.Time{}))
 	}
 
 	slices.SortFunc(entries, func(left, right ListEntry) int { return cmp.Compare(left.Name, right.Name) })
@@ -388,7 +389,7 @@ func (h *pluginsAPI) buildList() ([]ListEntry, *httpx.APIError) {
 
 // entryFrom projects a validated manifest plus runtime state into a ListEntry,
 // including its always-present depsStatus.
-func (h *pluginsAPI) entryFrom(m *manifest.Manifest, source state.Source, approval state.Approval, enabled bool, dir string) ListEntry {
+func (h *pluginsAPI) entryFrom(m *manifest.Manifest, source state.Source, approval state.Approval, enabled bool, dir string, installedAt time.Time) ListEntry {
 	e := ListEntry{
 		Name:        m.Name,
 		Type:        string(m.Type),
@@ -413,6 +414,10 @@ func (h *pluginsAPI) entryFrom(m *manifest.Manifest, source state.Source, approv
 	if m.I18n.DefaultLocale != "" {
 		i18n := m.I18n
 		e.I18n = &i18n
+	}
+
+	if !installedAt.IsZero() {
+		e.InstalledAt = installedAt.UTC().Format(time.RFC3339Nano)
 	}
 
 	e.DepsStatus = "ready"

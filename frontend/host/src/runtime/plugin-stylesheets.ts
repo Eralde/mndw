@@ -4,18 +4,32 @@ export interface PluginStylesheetLease {
 }
 
 interface PluginStylesheet {
-  version: string;
+  revision: string;
   link: HTMLLinkElement;
   loaded: Promise<void>;
   resolveLoaded: () => void;
   leases: number;
 }
 
-/** Owns stylesheet links for each loaded plugin version. */
+export interface PluginAssetIdentity {
+  version: string;
+  installedAt?: string;
+}
+
+// URL callers encode this revision with encodeURIComponent so timestamps stay in one query value.
+export function assetRevision(entry: PluginAssetIdentity): string {
+  if (entry.installedAt === undefined) {
+    return entry.version;
+  }
+
+  return `${entry.version}@${entry.installedAt}`;
+}
+
+/** Owns stylesheet links for each loaded plugin asset revision. */
 export class PluginStylesheets {
   private readonly stylesheets = new Map<string, Map<string, PluginStylesheet>>();
 
-  public acquire(name: string, version: string, href: string): PluginStylesheetLease {
+  public acquire(name: string, revision: string, href: string): PluginStylesheetLease {
     let versions = this.stylesheets.get(name);
 
     if (versions === undefined) {
@@ -23,7 +37,7 @@ export class PluginStylesheets {
       this.stylesheets.set(name, versions);
     }
 
-    const existing = versions.get(version);
+    const existing = versions.get(revision);
 
     if (existing !== undefined) {
       existing.leases += 1;
@@ -36,7 +50,7 @@ export class PluginStylesheets {
     const loaded = new Promise<void>((resolve) => {
       resolveLoaded = resolve;
     });
-    const stylesheet: PluginStylesheet = {version, link, loaded, resolveLoaded, leases: 1};
+    const stylesheet: PluginStylesheet = {revision, link, loaded, resolveLoaded, leases: 1};
 
     link.rel = 'stylesheet';
     link.href = href;
@@ -47,16 +61,16 @@ export class PluginStylesheets {
       stylesheet.resolveLoaded();
     };
 
-    versions.set(version, stylesheet);
+    versions.set(revision, stylesheet);
     document.head.appendChild(link);
 
     return this.createLease(name, versions, stylesheet);
   }
 
   /** Retains an existing stylesheet, or returns a no-op lease when no CSS was loaded. */
-  public retain(name: string, version: string): PluginStylesheetLease {
+  public retain(name: string, revision: string): PluginStylesheetLease {
     const versions = this.stylesheets.get(name);
-    const stylesheet = versions?.get(version);
+    const stylesheet = versions?.get(revision);
 
     if (versions === undefined || stylesheet === undefined) {
       return {loaded: Promise.resolve(), release: () => {}};
@@ -84,11 +98,11 @@ export class PluginStylesheets {
         released = true;
         stylesheet.leases -= 1;
 
-        if (stylesheet.leases !== 0 || versions.get(stylesheet.version) !== stylesheet) {
+        if (stylesheet.leases !== 0 || versions.get(stylesheet.revision) !== stylesheet) {
           return;
         }
 
-        versions.delete(stylesheet.version);
+        versions.delete(stylesheet.revision);
 
         if (versions.size === 0 && this.stylesheets.get(name) === versions) {
           this.stylesheets.delete(name);

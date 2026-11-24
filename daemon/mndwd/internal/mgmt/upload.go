@@ -95,6 +95,8 @@ func (h *pluginsAPI) handleUpload(w http.ResponseWriter, r *http.Request) {
 		auditAction = "upload"
 	}
 
+	var installedAt time.Time
+
 	err = h.runtime.ExecuteLifecycle(name, backend.OpInstalling, intent,
 		func(ctx context.Context, ctrl backend.LifecycleControl) error {
 			if err := stillCurrent(ctx, ctrl); err != nil {
@@ -139,6 +141,7 @@ func (h *pluginsAPI) handleUpload(w http.ResponseWriter, r *http.Request) {
 			}
 
 			record := newRecord(m, manifestBytes, approval, enabled)
+			installedAt = record.InstalledAt
 			record.RemovalPending = false
 
 			if installed {
@@ -197,7 +200,7 @@ func (h *pluginsAPI) handleUpload(w http.ResponseWriter, r *http.Request) {
 		pluginDir = stagingPath
 	}
 
-	httpx.WriteJSON(w, h.logger, status, h.entryFrom(m, state.SourceUpload, approval, enabled, pluginDir))
+	httpx.WriteJSON(w, h.logger, status, h.entryFrom(m, state.SourceUpload, approval, enabled, pluginDir, installedAt))
 }
 
 // readUploadBody reads the request body under the configured size cap, translating

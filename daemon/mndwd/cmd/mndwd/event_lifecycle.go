@@ -38,6 +38,9 @@ type eventLifecycle struct {
 
 	cancel  context.CancelFunc
 	started bool
+
+	logPollerDone   chan struct{}
+	logPollerWaited bool
 }
 
 func publishActivePluginEvents(reg *registry.Registry, store *state.Store, publisher *events.InternalPublisher, logger *slog.Logger) {
@@ -108,25 +111,21 @@ func (l *eventLifecycle) Start(ctx context.Context) error {
 		l.logger.Warn("self-update completion record unavailable", "error", completionErr)
 	}
 
-	if l.rciClient == nil {
-		l.logger.Warn("event log poller disabled: no RCI client available")
+	if l.session == nil {
+		l.logger.Warn("event log poller disabled: no background RCI session available")
 	} else {
 		parser := events.NewLogParser(l.normalizer, time.UTC, nil, l.logger)
-		pollTicker := time.NewTicker(events.LogPollInterval)
+		pollTicker := time.NewTicker(events.LogReadInterval)
 		wake := make(chan struct{}, 1)
-		unsubscribe := func() {}
-
-		if l.session != nil {
-			unsubscribe = l.session.SubscribeMutations(func() {
-				select {
-				case wake <- struct{}{}:
-				default:
-				}
-			})
-		}
+		unsubscribe := l.session.SubscribeMutations(func() {
+			select {
+			case wake <- struct{}{}:
+			default:
+			}
+		})
 
 		poller := events.NewLogPoller(events.LogPollerConfig{
-			Source:         events.NewRCILogSource(l.rciClient),
+			Source:         events.NewRCILogProcess(l.session.Do),
 			Parser:         parser,
 			Publisher:      l.ingest,
 			Ticker:         pollTicker.C,
@@ -139,7 +138,11 @@ func (l *eventLifecycle) Start(ctx context.Context) error {
 			Logger: l.logger,
 		})
 
+		l.logPollerDone = make(chan struct{})
+
 		go func() {
+			defer close(l.logPollerDone)
+
 			defer unsubscribe()
 
 			poller.Run(eventCtx)
@@ -192,4 +195,22 @@ func (l *eventLifecycle) Close() {
 		l.cancel = nil
 	}
 
+	l.waitForLogPoller()
+}
+
+func (l *eventLifecycle) waitForLogPoller() {
+	if l.logPollerDone == nil || l.logPollerWaited {
+		return
+	}
+
+	l.logPollerWaited = true
+	timer := time.NewTimer(events.LogStopTimeout)
+
+	defer timer.Stop()
+
+	select {
+	case <-l.logPollerDone:
+	case <-timer.C:
+		l.logger.Warn("event log poller shutdown timed out")
+	}
 }

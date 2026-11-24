@@ -15,9 +15,10 @@ import (
 )
 
 type RawLogMessage struct {
-	Level   string `json:"level"`
-	Label   string `json:"label"`
-	Message string `json:"message"`
+	Level    string `json:"level"`
+	Label    string `json:"label"`
+	Message  string `json:"message"`
+	Repeated int    `json:"repeated"`
 }
 
 type RawLogRecord struct {
@@ -41,15 +42,23 @@ type ExtractedEvent struct {
 
 type Extractor func(record ParsedLogRecord) *ExtractedEvent
 
-type LogSource interface {
-	ShowLog(context.Context) (map[string]RawLogRecord, error)
+type LogProcess interface {
+	Start(context.Context) (map[string]RawLogRecord, error)
+	Next(context.Context) (map[string]RawLogRecord, error)
+	Tail(context.Context) (map[string]RawLogRecord, error)
+	Stop(context.Context) error
 }
 
-const LogPollInterval = 10 * time.Second
-const LogPollFallbackInterval = 5 * time.Minute
+const (
+	LogReadInterval         = 3 * time.Second
+	LogStartMaxLines        = 100
+	LogTailMaxLines         = 500
+	LogPollFallbackInterval = 5 * time.Minute
+	LogStopTimeout          = 2 * time.Second
+)
 
 type LogPollerConfig struct {
-	Source             LogSource
+	Source             LogProcess
 	Parser             *LogParser
 	Publisher          Publisher
 	Ticker             <-chan time.Time
@@ -63,7 +72,7 @@ type LogPollerConfig struct {
 }
 
 type LogPoller struct {
-	source             LogSource
+	source             LogProcess
 	parser             *LogParser
 	publisher          Publisher
 	ticker             <-chan time.Time
@@ -74,6 +83,7 @@ type LogPoller struct {
 	sessionPresent     func() bool
 	onSessionAvailable func(context.Context)
 	logger             *slog.Logger
+	processLive        bool
 }
 
 func NewLogPoller(cfg LogPollerConfig) *LogPoller {
@@ -97,14 +107,105 @@ func NewLogPoller(cfg LogPollerConfig) *LogPoller {
 }
 
 func (p *LogPoller) Poll(ctx context.Context, observedAt time.Time) error {
-	records, err := p.source.ShowLog(ctx)
+	if p.source == nil {
+		return errors.New("device log process unavailable")
+	}
+
+	if !p.processLive {
+		return p.startAndParse(ctx, observedAt)
+	}
+
+	records, err := p.source.Next(ctx)
 	if err != nil {
+		if ctx.Err() == nil {
+			p.processLive = false
+		}
+
+		if errors.Is(err, ErrLogProcessGone) && ctx.Err() == nil {
+			return p.startAndParse(ctx, observedAt)
+		}
+
 		return err
 	}
 
-	events, err := p.parser.Parse(records, observedAt)
+	if len(records) == 0 {
+		return nil
+	}
+
+	highID, seeded := p.parser.HighID()
+
+	if seeded {
+		highestID, hasIDs := highestLogID(records)
+
+		if hasIDs && highestID < highID {
+			p.processLive = false
+
+			return p.startAndParse(ctx, observedAt)
+		}
+	}
+
+	records, pendingGap, err := p.backfillGap(ctx, records)
+
 	if err != nil {
+		if ctx.Err() == nil {
+			p.processLive = false
+		}
+
 		return err
+	}
+
+	return p.parseAndPublish(records, observedAt, pendingGap)
+}
+
+func (p *LogPoller) startAndParse(ctx context.Context, observedAt time.Time) error {
+	records, err := p.source.Start(ctx)
+	if err != nil {
+		p.processLive = ctx.Err() != nil
+
+		return err
+	}
+
+	p.processLive = true
+
+	if len(records) == 0 {
+		p.processLive = false
+
+		return nil
+	}
+
+	highID, seeded := p.parser.HighID()
+	var pendingGap *logGap
+
+	if seeded {
+		if highestID, hasIDs := highestLogID(records); hasIDs && highestID >= highID {
+			var gap *logGap
+			records, gap, err = p.backfillGap(ctx, records)
+
+			if err != nil {
+				if ctx.Err() == nil {
+					p.processLive = false
+				}
+
+				return err
+			}
+
+			pendingGap = gap
+		}
+	}
+
+	return p.parseAndPublish(records, observedAt, pendingGap)
+}
+
+func (p *LogPoller) parseAndPublish(records map[string]RawLogRecord, observedAt time.Time, pendingGap *logGap) error {
+	events, reset, err := p.parser.parseWithReset(records, observedAt)
+	if err != nil {
+		p.processLive = false
+
+		return err
+	}
+
+	if pendingGap != nil && !reset {
+		p.logger.Warn("device log gap remains", "from", pendingGap.from, "to", pendingGap.to)
 	}
 
 	for _, event := range events {
@@ -114,16 +215,113 @@ func (p *LogPoller) Poll(ctx context.Context, observedAt time.Time) error {
 	return nil
 }
 
+func highestLogID(records map[string]RawLogRecord) (int, bool) {
+	maximum := 0
+	found := false
+
+	for rawID := range records {
+		id, err := strconv.Atoi(rawID)
+		if err != nil || id < 0 {
+			continue
+		}
+
+		if !found || id > maximum {
+			maximum = id
+		}
+
+		found = true
+	}
+
+	return maximum, found
+}
+
+func lowestIDAbove(records map[string]RawLogRecord, highID int) (int, bool) {
+	lowest := 0
+	found := false
+
+	for rawID := range records {
+		id, err := strconv.Atoi(rawID)
+		if err != nil || id <= highID {
+			continue
+		}
+
+		if !found || id < lowest {
+			lowest = id
+		}
+
+		found = true
+	}
+
+	return lowest, found
+}
+
+type logGap struct {
+	from int
+	to   int
+}
+
+func (p *LogPoller) backfillGap(ctx context.Context, records map[string]RawLogRecord) (map[string]RawLogRecord, *logGap, error) {
+	highID, seeded := p.parser.HighID()
+
+	if !seeded {
+		return records, nil, nil
+	}
+
+	highestID, hasIDs := highestLogID(records)
+
+	if !hasIDs || highestID < highID {
+		return records, nil, nil
+	}
+
+	lowestNewID, hasNewID := lowestIDAbove(records, highID)
+
+	if !hasNewID || lowestNewID <= highID+1 {
+		return records, nil, nil
+	}
+
+	missingFrom := highID + 1
+	missingTo := lowestNewID - 1
+	tail, err := p.source.Tail(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if tailLowestNewID, tailHasNewID := lowestIDAbove(tail, highID); tailHasNewID {
+		missingTo = min(missingTo, tailLowestNewID-1)
+	}
+
+	var gap *logGap
+
+	if missingFrom <= missingTo {
+		gap = &logGap{from: missingFrom, to: missingTo}
+	}
+
+	return tail, gap, nil
+}
+
 func (p *LogPoller) Run(ctx context.Context) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
+	defer func() {
+		if !p.processLive || p.source == nil {
+			return
+		}
+
+		p.processLive = false
+		stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), LogStopTimeout)
+
+		defer cancel()
+
+		_ = p.source.Stop(stopCtx)
+	}()
+
 	ticker := p.ticker
 	stopTicker := p.stopTicker
 
 	if ticker == nil {
-		timer := time.NewTicker(LogPollInterval)
+		timer := time.NewTicker(LogReadInterval)
 		ticker = timer.C
 		stopTicker = timer.Stop
 	}
@@ -150,6 +348,7 @@ func (p *LogPoller) Run(ctx context.Context) {
 	warned := false
 	setWaiting := func() {
 		active = false
+		p.processLive = false
 
 		if !waiting {
 			p.logger.Info("event log poller waiting for background router access")
@@ -300,7 +499,17 @@ func (p *LogParser) SetLocation(location *time.Location) {
 	}
 }
 
+func (p *LogParser) HighID() (int, bool) {
+	return p.cursor.highID, p.seeded
+}
+
 func (p *LogParser) Parse(records map[string]RawLogRecord, observedAt time.Time) ([]Event, error) {
+	events, _, err := p.parseWithReset(records, observedAt)
+
+	return events, err
+}
+
+func (p *LogParser) parseWithReset(records map[string]RawLogRecord, observedAt time.Time) ([]Event, bool, error) {
 	type idRecord struct {
 		id     int
 		record RawLogRecord
@@ -320,7 +529,7 @@ func (p *LogParser) Parse(records map[string]RawLogRecord, observedAt time.Time)
 	}
 
 	if len(sorted) == 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 
 	slices.SortFunc(sorted, func(left, right idRecord) int { return cmp.Compare(left.id, right.id) })
@@ -351,7 +560,7 @@ func (p *LogParser) Parse(records map[string]RawLogRecord, observedAt time.Time)
 		p.seeded = true
 		p.cursor = logCursor{highID: maxID, sentinelID: sentinelID, sentinelSum: sentinelSum}
 
-		return nil, nil
+		return nil, false, nil
 	}
 
 	previousHighID := p.cursor.highID
@@ -391,7 +600,7 @@ func (p *LogParser) Parse(records map[string]RawLogRecord, observedAt time.Time)
 
 		event, err := p.normalizer.NormalizeLog(extracted.Topic, extracted.Payload, parsed.Timestamp)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 
 		events = append(events, event)
@@ -404,7 +613,7 @@ func (p *LogParser) Parse(records map[string]RawLogRecord, observedAt time.Time)
 		p.logger.Warn("device log cursor reset", "reason", "generation changed")
 	}
 
-	return events, nil
+	return events, reset, nil
 }
 
 func hashLogRecord(record RawLogRecord) uint64 {

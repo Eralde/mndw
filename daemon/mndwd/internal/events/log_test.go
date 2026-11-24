@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	contractEvents "mndw.local/contracts/events"
-	rci "mndw.local/rci"
 	"mndwd/internal/rcisession/proxy"
 )
 
@@ -23,7 +23,7 @@ func TestLogPollerConfigConstructor(t *testing.T) {
 	tick := make(chan time.Time, 1)
 
 	poller := NewLogPoller(LogPollerConfig{
-		Source:    &fakeLogSource{calls: []map[string]RawLogRecord{{}}},
+		Source:    newFakeLogProcess(),
 		Parser:    parser,
 		Publisher: publisher,
 		Ticker:    tick,
@@ -35,32 +35,450 @@ func TestLogPollerConfigConstructor(t *testing.T) {
 	}
 }
 
-type fakeLogSource struct {
-	calls []map[string]RawLogRecord
-	errs  []error
-	index int
+type fakeLogProcessResult struct {
+	records            map[string]RawLogRecord
+	err                error
+	blockUntilCanceled bool
 }
 
-func (s *fakeLogSource) ShowLog(ctx context.Context) (map[string]RawLogRecord, error) {
+type fakeLogProcess struct {
+	mu           sync.Mutex
+	results      map[string][]fakeLogProcessResult
+	indexes      map[string]int
+	calls        []string
+	called       chan string
+	stopCount    int
+	stopErr      error
+	stopCtxErr   error
+	stopDeadline time.Time
+}
+
+func newFakeLogProcess() *fakeLogProcess {
+	return &fakeLogProcess{results: map[string][]fakeLogProcessResult{}, indexes: map[string]int{}}
+}
+
+func (p *fakeLogProcess) queue(method string, results ...fakeLogProcessResult) {
+	p.results[method] = results
+}
+
+func (p *fakeLogProcess) take(ctx context.Context, method string) (map[string]RawLogRecord, error) {
+	p.mu.Lock()
+
+	p.calls = append(p.calls, method)
+	index := p.indexes[method]
+	p.indexes[method] = index + 1
+	var result fakeLogProcessResult
+
+	if index < len(p.results[method]) {
+		result = p.results[method][index]
+	}
+
+	called := p.called
+
+	p.mu.Unlock()
+
 	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-
-	if s.index < len(s.errs) && s.errs[s.index] != nil {
-		err := s.errs[s.index]
-		s.index++
+		if called != nil {
+			called <- method
+		}
 
 		return nil, err
 	}
 
-	if s.index >= len(s.calls) {
+	if result.err != nil {
+		if called != nil {
+			called <- method
+		}
+
+		return nil, result.err
+	}
+
+	if result.blockUntilCanceled {
+		if called != nil {
+			called <- method
+		}
+
+		<-ctx.Done()
+
+		return nil, ctx.Err()
+	}
+
+	if result.records == nil {
+		if called != nil {
+			called <- method
+		}
+
 		return map[string]RawLogRecord{}, nil
 	}
 
-	result := s.calls[s.index]
-	s.index++
+	if called != nil {
+		called <- method
+	}
 
-	return result, nil
+	return result.records, nil
+}
+
+func (p *fakeLogProcess) Start(ctx context.Context) (map[string]RawLogRecord, error) {
+	return p.take(ctx, "start")
+}
+
+func (p *fakeLogProcess) Next(ctx context.Context) (map[string]RawLogRecord, error) {
+	return p.take(ctx, "next")
+}
+
+func (p *fakeLogProcess) Tail(ctx context.Context) (map[string]RawLogRecord, error) {
+	return p.take(ctx, "tail")
+}
+
+func (p *fakeLogProcess) Stop(ctx context.Context) error {
+	p.mu.Lock()
+
+	p.stopCount++
+	p.stopCtxErr = ctx.Err()
+	p.stopDeadline, _ = ctx.Deadline()
+	err := p.stopErr
+	called := p.called
+	p.calls = append(p.calls, "stop")
+
+	p.mu.Unlock()
+
+	if called != nil {
+		called <- "stop"
+	}
+
+	return err
+}
+
+func (p *fakeLogProcess) callList() []string {
+	p.mu.Lock()
+
+	defer p.mu.Unlock()
+
+	return append([]string(nil), p.calls...)
+}
+
+func processResult(records map[string]RawLogRecord) fakeLogProcessResult {
+	return fakeLogProcessResult{records: records}
+}
+
+func readerRecord(id int) map[string]RawLogRecord {
+	return map[string]RawLogRecord{strconv.Itoa(id): {Ident: "ndm", Message: RawLogMessage{Message: strconv.Itoa(id)}}}
+}
+
+func readerRecords(ids ...int) map[string]RawLogRecord {
+	result := make(map[string]RawLogRecord, len(ids))
+
+	for _, id := range ids {
+		result[strconv.Itoa(id)] = RawLogRecord{Ident: "ndm", Message: RawLogMessage{Message: strconv.Itoa(id)}}
+	}
+
+	return result
+}
+
+func readerParser() *LogParser {
+	return NewLogParser(fixedNormalizer(), time.UTC, []Extractor{
+		func(record ParsedLogRecord) *ExtractedEvent {
+			return &ExtractedEvent{
+				Topic:   contractEvents.TopicAuthLogin,
+				Payload: contractEvents.AuthLoginPayload{User: record.Message, IP: "192.0.2.10", Success: true},
+			}
+		},
+	}, eventsTestLogger())
+}
+
+func newTestLogReader(process *fakeLogProcess, publisher Publisher, ticker <-chan time.Time, logger *slog.Logger) *LogPoller {
+	return NewLogPoller(LogPollerConfig{
+		Source:    process,
+		Parser:    readerParser(),
+		Publisher: publisher,
+		Ticker:    ticker,
+		Logger:    logger,
+	})
+}
+
+func TestLogReaderSeedsThenPublishesNewRecords(t *testing.T) {
+	process := newFakeLogProcess()
+
+	process.queue("start", processResult(readerRecords(10, 11)))
+	process.queue("next", processResult(readerRecords(12, 13)))
+
+	publisher := &hookEventPublisher{}
+	ticker := make(chan time.Time, 1)
+	parser := readerParser()
+	reader := NewLogPoller(LogPollerConfig{
+		Source:    process,
+		Parser:    parser,
+		Publisher: publisher,
+		Ticker:    ticker,
+		Logger:    eventsTestLogger(),
+	})
+	observedAt := time.Date(2026, time.November, 24, 12, 0, 0, 0, time.UTC)
+
+	if highID, seeded := parser.HighID(); seeded || highID != 0 {
+		t.Fatalf("unseeded cursor = (%d, %t), want (0, false)", highID, seeded)
+	}
+
+	if err := reader.Poll(context.Background(), observedAt); err != nil {
+		t.Fatal(err)
+	}
+
+	if highID, seeded := parser.HighID(); !seeded || highID != 11 {
+		t.Fatalf("seed cursor = (%d, %t), want (11, true)", highID, seeded)
+	}
+
+	if len(publisher.events) != 0 {
+		t.Fatalf("seed published %d events, want none", len(publisher.events))
+	}
+
+	if err := reader.Poll(context.Background(), observedAt.Add(3*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(publisher.events) != 2 {
+		t.Fatalf("published %d events, want 2", len(publisher.events))
+	}
+
+	if got := strings.Join(process.callList(), ","); got != "start,next" {
+		t.Fatalf("process calls = %s, want start,next", got)
+	}
+}
+
+func TestLogReaderRestartsAfterGonePublishesOnce(t *testing.T) {
+	process := newFakeLogProcess()
+
+	process.queue("start", processResult(readerRecords(1, 2)), processResult(readerRecords(1, 2, 3)))
+	process.queue("next", fakeLogProcessResult{err: ErrLogProcessGone})
+
+	publisher := &hookEventPublisher{}
+	reader := newTestLogReader(process, publisher, make(chan time.Time), eventsTestLogger())
+
+	if err := reader.Poll(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := reader.Poll(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(publisher.events) != 1 {
+		t.Fatalf("restart published %d events, want 1", len(publisher.events))
+	}
+
+	if got := strings.Join(process.callList(), ","); got != "start,next,start" {
+		t.Fatalf("process calls = %s, want start,next,start", got)
+	}
+}
+
+func TestLogReaderBackfillsGap(t *testing.T) {
+	process := newFakeLogProcess()
+
+	process.queue("start", processResult(readerRecord(1)))
+	process.queue("next", processResult(readerRecord(4)))
+	process.queue("tail", processResult(readerRecords(2, 3, 4)))
+
+	publisher := &hookEventPublisher{}
+	reader := newTestLogReader(process, publisher, make(chan time.Time), eventsTestLogger())
+
+	if err := reader.Poll(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := reader.Poll(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(publisher.events) != 3 {
+		t.Fatalf("backfill published %d events, want 3", len(publisher.events))
+	}
+
+	if got := strings.Join(process.callList(), ","); got != "start,next,tail" {
+		t.Fatalf("process calls = %s, want start,next,tail", got)
+	}
+}
+
+func TestLogReaderBackfillsRestartSnapshotGap(t *testing.T) {
+	process := newFakeLogProcess()
+
+	process.queue("start", processResult(readerRecord(1)), processResult(readerRecord(5)))
+	process.queue("next", fakeLogProcessResult{err: ErrLogProcessGone})
+	process.queue("tail", processResult(readerRecords(2, 3, 4, 5)))
+
+	publisher := &hookEventPublisher{}
+	reader := newTestLogReader(process, publisher, make(chan time.Time), eventsTestLogger())
+
+	if err := reader.Poll(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := reader.Poll(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(publisher.events) != 4 {
+		t.Fatalf("restart backfill published %d events, want 4", len(publisher.events))
+	}
+
+	if got := strings.Join(process.callList(), ","); got != "start,next,start,tail" {
+		t.Fatalf("process calls = %s, want start,next,start,tail", got)
+	}
+}
+
+func TestLogReaderRetriesEmptyStartBeforeNextDelta(t *testing.T) {
+	process := newFakeLogProcess()
+
+	process.queue("start", processResult(map[string]RawLogRecord{}), processResult(readerRecord(1)))
+	process.queue("next", processResult(readerRecord(2)))
+
+	publisher := &hookEventPublisher{}
+	parser := readerParser()
+	reader := NewLogPoller(LogPollerConfig{
+		Source:    process,
+		Parser:    parser,
+		Publisher: publisher,
+		Ticker:    make(chan time.Time),
+		Logger:    eventsTestLogger(),
+	})
+
+	for range 2 {
+		if err := reader.Poll(context.Background(), time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if got := strings.Join(process.callList(), ","); got != "start,start" {
+		t.Fatalf("process calls = %s, want start,start", got)
+	}
+
+	if len(publisher.events) != 0 {
+		t.Fatalf("empty-start retry published %d events, want none", len(publisher.events))
+	}
+
+	if highID, seeded := parser.HighID(); !seeded || highID != 1 {
+		t.Fatalf("retry cursor = (%d, %t), want (1, true)", highID, seeded)
+	}
+}
+
+func TestLogReaderWarnsWhenGapRemains(t *testing.T) {
+	output := &lockedLogBuffer{}
+	logger := slog.New(slog.NewTextHandler(output, nil))
+	process := newFakeLogProcess()
+
+	process.queue("start", processResult(readerRecord(1)))
+	process.queue("next", processResult(readerRecord(8)))
+	process.queue("tail", processResult(readerRecords(5, 8)))
+
+	reader := newTestLogReader(process, &hookEventPublisher{}, make(chan time.Time), logger)
+
+	if err := reader.Poll(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := reader.Poll(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	logText := output.String()
+
+	if strings.Count(logText, "device log gap remains") != 1 || !strings.Contains(logText, "from=2") || !strings.Contains(logText, "to=4") {
+		t.Fatalf("gap warning = %q, want one warning for ids 2 through 4", logText)
+	}
+}
+
+func TestLogReaderDoesNotWarnGapAfterSentinelReset(t *testing.T) {
+	output := &lockedLogBuffer{}
+	logger := slog.New(slog.NewTextHandler(output, nil))
+	process := newFakeLogProcess()
+	changedSentinel := RawLogRecord{Ident: "ndm", Message: RawLogMessage{Message: "new generation"}}
+	restartSnapshot := map[string]RawLogRecord{
+		"10": changedSentinel,
+		"20": {Ident: "ndm", Message: RawLogMessage{Message: "20"}},
+	}
+
+	process.queue("start", processResult(readerRecord(10)), processResult(restartSnapshot))
+	process.queue("next", fakeLogProcessResult{err: ErrLogProcessGone})
+	process.queue("tail", processResult(restartSnapshot))
+
+	reader := NewLogPoller(LogPollerConfig{
+		Source:    process,
+		Parser:    NewLogParser(fixedNormalizer(), time.UTC, nil, logger),
+		Publisher: &hookEventPublisher{},
+		Ticker:    make(chan time.Time),
+		Logger:    logger,
+	})
+
+	if err := reader.Poll(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := reader.Poll(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	logText := output.String()
+
+	if !strings.Contains(logText, "device log cursor reset") {
+		t.Fatalf("log output = %q, want cursor reset warning", logText)
+	}
+
+	if strings.Contains(logText, "device log gap remains") {
+		t.Fatalf("log output = %q, want no gap warning after cursor reset", logText)
+	}
+}
+
+func TestLogReaderResyncsWhenDeltaGoesBackwards(t *testing.T) {
+	process := newFakeLogProcess()
+
+	process.queue("start", processResult(readerRecord(10)), processResult(readerRecords(1, 2)))
+	process.queue("next", processResult(readerRecord(9)))
+
+	publisher := &hookEventPublisher{}
+	reader := newTestLogReader(process, publisher, make(chan time.Time), eventsTestLogger())
+
+	if err := reader.Poll(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := reader.Poll(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(publisher.events) != 2 {
+		t.Fatalf("resync published %d events, want 2 snapshot events", len(publisher.events))
+	}
+
+	if got := strings.Join(process.callList(), ","); got != "start,next,start" {
+		t.Fatalf("process calls = %s, want start,next,start", got)
+	}
+}
+
+func TestLogReaderIgnoresRepeatedUpdate(t *testing.T) {
+	process := newFakeLogProcess()
+
+	process.queue("start", processResult(map[string]RawLogRecord{
+		"1": {Ident: "ndm", Message: RawLogMessage{Message: "1", Repeated: 1}},
+	}))
+	process.queue("next", processResult(map[string]RawLogRecord{
+		"1": {Ident: "ndm", Message: RawLogMessage{Message: "1", Repeated: 2}},
+	}))
+
+	publisher := &hookEventPublisher{}
+	reader := newTestLogReader(process, publisher, make(chan time.Time), eventsTestLogger())
+
+	if err := reader.Poll(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := reader.Poll(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(publisher.events) != 0 {
+		t.Fatalf("repeated update published %d events, want none", len(publisher.events))
+	}
+
+	if got := strings.Join(process.callList(), ","); got != "start,next" {
+		t.Fatalf("process calls = %s, want start,next", got)
+	}
 }
 
 func TestLogParserSeedsFirstPollWithoutEmittingEvents(t *testing.T) {
@@ -309,22 +727,18 @@ func TestLogPollerEndToEndDecodesAndPublishes(t *testing.T) {
 	busEvents := subscription.Events()
 
 	now := time.Date(2026, time.September, 5, 10, 0, 0, 0, time.UTC)
-	transport := &fakeRciTransport{responses: []json.RawMessage{
-		wireLogResponse(t, map[string]RawLogRecord{
-			"100": {Timestamp: "Sep  5 10:00:00", Ident: "ndm", ID: 100, Message: RawLogMessage{Level: "Info", Label: "I", Message: `Core::Security::Authority: authentication failed for user "admin" from 192.0.2.10`}},
-		}),
-		wireLogResponse(t, map[string]RawLogRecord{
-			"100": {Timestamp: "Sep  5 10:00:00", Ident: "ndm", ID: 100, Message: RawLogMessage{Level: "Info", Label: "I", Message: `Core::Security::Authority: authentication failed for user "admin" from 192.0.2.10`}},
-			"101": {Timestamp: "Sep  5 10:00:10", Ident: "ndm", ID: 101, Message: RawLogMessage{Level: "Info", Label: "I", Message: `Dhcp::Pool: added host 192.0.2.42 (AA:BB:CC:DD:EE:FF) "phone" to pool "Home"`}},
-		}),
-	}}
-	client, err := rci.New(transport)
-	if err != nil {
-		t.Fatal(err)
-	}
+	process := newFakeLogProcess()
+
+	process.queue("start", processResult(map[string]RawLogRecord{
+		"100": {Timestamp: "Sep  5 10:00:00", Ident: "ndm", ID: 100, Message: RawLogMessage{Level: "Info", Label: "I", Message: `Core::Security::Authority: authentication failed for user "admin" from 192.0.2.10`}},
+	}))
+	process.queue("next", processResult(map[string]RawLogRecord{
+		"100": {Timestamp: "Sep  5 10:00:00", Ident: "ndm", ID: 100, Message: RawLogMessage{Level: "Info", Label: "I", Message: `Core::Security::Authority: authentication failed for user "admin" from 192.0.2.10`}},
+		"101": {Timestamp: "Sep  5 10:00:10", Ident: "ndm", ID: 101, Message: RawLogMessage{Level: "Info", Label: "I", Message: `Dhcp::Pool: added host 192.0.2.42 (AA:BB:CC:DD:EE:FF) "phone" to pool "Home"`}},
+	}))
 
 	poller := NewLogPoller(LogPollerConfig{
-		Source:    NewRCILogSource(client),
+		Source:    process,
 		Parser:    NewLogParser(fixedNormalizer(), time.UTC, nil, eventsTestLogger()),
 		Publisher: bus,
 		Logger:    eventsTestLogger(),
@@ -351,17 +765,22 @@ func TestLogPollerEndToEndDecodesAndPublishes(t *testing.T) {
 		t.Fatalf("incremental event = %#v", event)
 	}
 
-	for index, request := range transport.requests {
-		if string(request) != `[{"show":{"log":{}}}]` {
-			t.Fatalf("RCI request %d = %s", index, request)
-		}
+	if got := strings.Join(process.callList(), ","); got != "start,next" {
+		t.Fatalf("process calls = %s, want start,next", got)
 	}
 }
 
-func TestLogPollerRunStopsOnCancellation(t *testing.T) {
-	ticks := make(chan time.Time)
+func TestLogReaderDeletesProcessOnStop(t *testing.T) {
+	ticks := make(chan time.Time, 1)
+	process := newFakeLogProcess()
+	process.called = make(chan string, 4)
+	process.stopErr = errors.New("DELETE failed")
+
+	process.queue("start", processResult(readerRecord(1)))
+	process.queue("next", processResult(map[string]RawLogRecord{}))
+
 	poller := NewLogPoller(LogPollerConfig{
-		Source: &fakeLogSource{},
+		Source: process,
 		Parser: NewLogParser(fixedNormalizer(), time.UTC, nil, eventsTestLogger()),
 		Ticker: ticks,
 		Logger: eventsTestLogger(),
@@ -370,6 +789,147 @@ func TestLogPollerRunStopsOnCancellation(t *testing.T) {
 	done := make(chan struct{})
 
 	go func() { poller.Run(ctx); close(done) }()
+
+	waitProcessCall(t, process.called, "start")
+
+	ticks <- time.Now()
+
+	waitProcessCall(t, process.called, "next")
+
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Run did not stop after cancellation")
+	}
+
+	process.mu.Lock()
+
+	stopCount := process.stopCount
+	stopCtxErr := process.stopCtxErr
+	stopDeadline := process.stopDeadline
+
+	process.mu.Unlock()
+
+	remaining := time.Until(stopDeadline)
+
+	if stopCount != 1 || stopCtxErr != nil || remaining <= 0 || remaining > 2*time.Second {
+		t.Fatalf("stop count=%d context error=%v deadline=%v; want one live bounded cleanup", stopCount, stopCtxErr, stopDeadline)
+	}
+}
+
+func TestLogReaderDeletesProcessWhenGetIsCanceled(t *testing.T) {
+	ticks := make(chan time.Time, 1)
+	process := newFakeLogProcess()
+	process.called = make(chan string, 4)
+
+	process.queue("start", processResult(readerRecord(1)))
+	process.queue("next", fakeLogProcessResult{blockUntilCanceled: true})
+
+	poller := NewLogPoller(LogPollerConfig{
+		Source: process,
+		Parser: readerParser(),
+		Ticker: ticks,
+		Logger: eventsTestLogger(),
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+
+	go func() { poller.Run(ctx); close(done) }()
+
+	waitProcessCall(t, process.called, "start")
+
+	ticks <- time.Now()
+
+	waitProcessCall(t, process.called, "next")
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Run did not stop after canceling in-flight GET")
+	}
+
+	process.mu.Lock()
+
+	stopCount := process.stopCount
+
+	process.mu.Unlock()
+
+	if stopCount != 1 {
+		t.Fatalf("stop count = %d, want 1 after canceling in-flight GET", stopCount)
+	}
+}
+
+func TestLogReaderDeletesProcessWhenStartIsCanceled(t *testing.T) {
+	process := newFakeLogProcess()
+	process.called = make(chan string, 3)
+
+	process.queue("start", fakeLogProcessResult{blockUntilCanceled: true})
+
+	poller := NewLogPoller(LogPollerConfig{
+		Source: process,
+		Parser: readerParser(),
+		Ticker: make(chan time.Time),
+		Logger: eventsTestLogger(),
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+
+	go func() { poller.Run(ctx); close(done) }()
+
+	waitProcessCall(t, process.called, "start")
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Run did not stop after canceling in-flight start")
+	}
+
+	process.mu.Lock()
+
+	stopCount := process.stopCount
+
+	process.mu.Unlock()
+
+	if stopCount != 1 {
+		t.Fatalf("stop count = %d, want 1 after canceling in-flight start", stopCount)
+	}
+}
+
+func TestLogReaderNoRequestsWithoutSession(t *testing.T) {
+	process := newFakeLogProcess()
+	ticks := make(chan time.Time, 1)
+	fallback := make(chan time.Time, 1)
+	checks := make(chan struct{}, 4)
+	poller := NewLogPoller(LogPollerConfig{
+		Source:         process,
+		Parser:         NewLogParser(fixedNormalizer(), time.UTC, nil, eventsTestLogger()),
+		Ticker:         ticks,
+		FallbackTicker: fallback,
+		SessionPresent: func() bool {
+			checks <- struct{}{}
+
+			return false
+		},
+		Logger: eventsTestLogger(),
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+
+	go func() { poller.Run(ctx); close(done) }()
+
+	waitSessionCheck(t, checks)
+
+	fallback <- time.Now()
+
+	waitSessionCheck(t, checks)
+
+	if calls := process.callList(); len(calls) != 0 {
+		t.Fatalf("process calls without session = %v, want none", calls)
+	}
 
 	cancel()
 
@@ -382,25 +942,19 @@ func TestLogPollerRunStopsOnCancellation(t *testing.T) {
 
 func TestLogPollerRunContinuesAfterPollError(t *testing.T) {
 	ticks := make(chan time.Time, 3)
-	seedRecord := RawLogRecord{Timestamp: "Sep  5 10:00:00", Ident: "ndm", ID: 100, Message: RawLogMessage{Level: "Info", Label: "I", Message: "Firmware::Manager: new firmware version 4.3.1 is available"}}
-	// Run calls Poll once immediately (seed/error), then once per tick.
-	transport := &fakeRciTransport{
-		errs: []error{errors.New("temporary RCI failure"), nil, nil, nil},
-		responses: []json.RawMessage{
-			nil,
-			wireLogResponse(t, map[string]RawLogRecord{"100": seedRecord}),
-			wireLogResponse(t, map[string]RawLogRecord{"100": seedRecord}),
-			wireLogResponse(t, map[string]RawLogRecord{
-				"100": seedRecord,
-				"101": {Timestamp: "Sep  5 10:00:10", Ident: "ndm", ID: 101, Message: RawLogMessage{Level: "Info", Label: "I", Message: `Dhcp::Pool: added host 192.0.2.42 (AA:BB:CC:DD:EE:FF) "phone" to pool "Home"`}},
-			}),
+	process := newFakeLogProcess()
+	process.called = make(chan string, 8)
+
+	process.queue("start", fakeLogProcessResult{err: errors.New("temporary RCI failure")}, processResult(readerRecord(100)))
+	process.queue("next", processResult(map[string]RawLogRecord{}), processResult(map[string]RawLogRecord{
+		"100": readerRecords(100)["100"],
+		"101": {
+			Timestamp: "Sep  5 10:00:10",
+			Ident:     "ndm",
+			ID:        101,
+			Message:   RawLogMessage{Message: `Dhcp::Pool: added host 192.0.2.42 (AA:BB:CC:DD:EE:FF) "phone" to pool "Home"`},
 		},
-		calls: make(chan int, 4),
-	}
-	client, err := rci.New(transport)
-	if err != nil {
-		t.Fatal(err)
-	}
+	}))
 
 	bus := NewBus()
 	filter, _ := ParseTopicFilter([]string{"*"})
@@ -414,7 +968,7 @@ func TestLogPollerRunContinuesAfterPollError(t *testing.T) {
 	busEvents := subscription.Events()
 
 	poller := NewLogPoller(LogPollerConfig{
-		Source:    NewRCILogSource(client),
+		Source:    process,
 		Parser:    NewLogParser(fixedNormalizer(), time.UTC, nil, eventsTestLogger()),
 		Publisher: bus,
 		Ticker:    ticks,
@@ -425,20 +979,19 @@ func TestLogPollerRunContinuesAfterPollError(t *testing.T) {
 
 	go func() { poller.Run(ctx); close(done) }()
 
-	// Wait for the initial poll (error) from Run.
-	<-transport.calls
+	waitProcessCall(t, process.called, "start")
 
 	ticks <- time.Date(2026, time.September, 5, 10, 0, 0, 0, time.UTC)
 
-	<-transport.calls
+	waitProcessCall(t, process.called, "start")
 
 	ticks <- time.Date(2026, time.September, 5, 10, 0, 10, 0, time.UTC)
 
-	<-transport.calls
+	waitProcessCall(t, process.called, "next")
 
 	ticks <- time.Date(2026, time.September, 5, 10, 0, 20, 0, time.UTC)
 
-	<-transport.calls
+	waitProcessCall(t, process.called, "next")
 
 	if event := <-busEvents; event.Topic != contractEvents.TopicNetDhcpLease {
 		t.Fatalf("recovery event = %#v", event)
@@ -451,12 +1004,6 @@ func TestLogPollerRunContinuesAfterPollError(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Run did not stop after recovery test cancellation")
 	}
-}
-
-type countingLogSource struct {
-	calls  atomic.Int32
-	errs   []error
-	called chan struct{}
 }
 
 type lockedLogBuffer struct {
@@ -490,27 +1037,18 @@ func (b *lockedLogBuffer) String() string {
 	return b.content.String()
 }
 
-func (s *countingLogSource) ShowLog(context.Context) (map[string]RawLogRecord, error) {
-	index := int(s.calls.Add(1)) - 1
-
-	if s.called != nil {
-		select {
-		case s.called <- struct{}{}:
-		default:
-		}
-	}
-
-	if index < len(s.errs) {
-		return nil, s.errs[index]
-	}
-
-	return map[string]RawLogRecord{}, nil
-}
-
 func TestLogPollerWaitsForSessionMutationAndFallback(t *testing.T) {
 	output := &lockedLogBuffer{writes: make(chan string, 8)}
 	logger := slog.New(slog.NewTextHandler(output, nil))
-	source := &countingLogSource{errs: []error{proxy.ErrNoSession}, called: make(chan struct{}, 8)}
+	process := newFakeLogProcess()
+	process.called = make(chan string, 8)
+
+	process.queue("start",
+		fakeLogProcessResult{err: proxy.ErrNoSession},
+		processResult(readerRecord(1)),
+		processResult(readerRecord(2)),
+	)
+
 	present := atomic.Bool{}
 
 	present.Store(true)
@@ -520,7 +1058,7 @@ func TestLogPollerWaitsForSessionMutationAndFallback(t *testing.T) {
 	fallback := make(chan time.Time, 1)
 	timezoneQueries := atomic.Int32{}
 	poller := NewLogPoller(LogPollerConfig{
-		Source:         source,
+		Source:         process,
 		Parser:         NewLogParser(fixedNormalizer(), time.UTC, nil, eventsTestLogger()),
 		Ticker:         ticks,
 		FallbackTicker: fallback,
@@ -537,9 +1075,9 @@ func TestLogPollerWaitsForSessionMutationAndFallback(t *testing.T) {
 	go func() { poller.Run(ctx); close(done) }()
 
 	waitLogContaining(t, output.writes, "event log poller waiting for background router access")
-	waitSourceCall(t, source.called)
+	waitProcessCall(t, process.called, "start")
 
-	if got := source.calls.Load(); got != 1 {
+	if got := len(process.callList()); got != 1 {
 		t.Fatalf("poll calls after no-session response = %d, want 1", got)
 	}
 
@@ -548,7 +1086,7 @@ func TestLogPollerWaitsForSessionMutationAndFallback(t *testing.T) {
 		ticks <- time.Now()
 	}
 
-	if got := source.calls.Load(); got != 1 {
+	if got := len(process.callList()); got != 1 {
 		t.Fatalf("poll calls while idle = %d, want 1", got)
 	}
 
@@ -558,7 +1096,7 @@ func TestLogPollerWaitsForSessionMutationAndFallback(t *testing.T) {
 
 	wake <- struct{}{}
 
-	waitSourceCall(t, source.called)
+	waitProcessCall(t, process.called, "start")
 
 	if got := timezoneQueries.Load(); got != 2 {
 		t.Fatalf("timezone queries after session mutation = %d, want 2", got)
@@ -574,7 +1112,7 @@ func TestLogPollerWaitsForSessionMutationAndFallback(t *testing.T) {
 
 	fallback <- time.Now()
 
-	waitSourceCall(t, source.called)
+	waitProcessCall(t, process.called, "start")
 
 	if got := timezoneQueries.Load(); got != 3 {
 		t.Fatalf("timezone queries after fallback session check = %d, want 3", got)
@@ -601,9 +1139,17 @@ func TestLogPollerLogsOneWarningAndOneRecovery(t *testing.T) {
 	output := &lockedLogBuffer{}
 	logger := slog.New(slog.NewTextHandler(output, nil))
 	ticks := make(chan time.Time, 4)
-	source := &countingLogSource{errs: []error{errors.New("temporary"), errors.New("still temporary")}, called: make(chan struct{}, 4)}
+	process := newFakeLogProcess()
+	process.called = make(chan string, 8)
+
+	process.queue("start",
+		fakeLogProcessResult{err: errors.New("temporary")},
+		fakeLogProcessResult{err: errors.New("still temporary")},
+		processResult(readerRecord(1)),
+	)
+
 	poller := NewLogPoller(LogPollerConfig{
-		Source: source,
+		Source: process,
 		Parser: NewLogParser(fixedNormalizer(), time.UTC, nil, eventsTestLogger()),
 		Ticker: ticks,
 		Logger: logger,
@@ -613,15 +1159,15 @@ func TestLogPollerLogsOneWarningAndOneRecovery(t *testing.T) {
 
 	go func() { poller.Run(ctx); close(done) }()
 
-	waitSourceCall(t, source.called)
+	waitProcessCall(t, process.called, "start")
 
 	ticks <- time.Now()
 
-	waitSourceCall(t, source.called)
+	waitProcessCall(t, process.called, "start")
 
 	ticks <- time.Now()
 
-	waitSourceCall(t, source.called)
+	waitProcessCall(t, process.called, "start")
 	cancel()
 
 	select {
@@ -641,7 +1187,7 @@ func TestLogPollerLogsOneWarningAndOneRecovery(t *testing.T) {
 	}
 }
 
-func waitSourceCall(t *testing.T, calls <-chan struct{}) {
+func waitProcessCall(t *testing.T, calls <-chan string, expected string) {
 	t.Helper()
 
 	timer := time.NewTimer(time.Second)
@@ -649,9 +1195,26 @@ func waitSourceCall(t *testing.T, calls <-chan struct{}) {
 	defer timer.Stop()
 
 	select {
-	case <-calls:
+	case call := <-calls:
+		if call != expected {
+			t.Fatalf("process call = %q, want %q", call, expected)
+		}
 	case <-timer.C:
-		t.Fatal("source call was not observed before timeout")
+		t.Fatalf("process call %q was not observed before timeout", expected)
+	}
+}
+
+func waitSessionCheck(t *testing.T, checks <-chan struct{}) {
+	t.Helper()
+
+	timer := time.NewTimer(time.Second)
+
+	defer timer.Stop()
+
+	select {
+	case <-checks:
+	case <-timer.C:
+		t.Fatal("session check was not observed before timeout")
 	}
 }
 
@@ -672,48 +1235,4 @@ func waitLogContaining(t *testing.T, messages <-chan string, expected string) {
 			t.Fatalf("log message %q was not observed before timeout", expected)
 		}
 	}
-}
-
-type fakeRciTransport struct {
-	responses []json.RawMessage
-	errs      []error
-	requests  [][]byte
-	calls     chan int
-	index     int
-}
-
-func wireLogResponse(t *testing.T, records map[string]RawLogRecord) json.RawMessage {
-	t.Helper()
-
-	result, err := json.Marshal(map[string]any{"show": map[string]any{"log": records}})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	wire, err := json.Marshal([]json.RawMessage{result})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return wire
-}
-
-func (t *fakeRciTransport) Send(_ context.Context, body []byte) (rci.Response, error) {
-	t.requests = append(t.requests, append([]byte(nil), body...))
-	index := t.index
-	t.index++
-
-	if t.calls != nil {
-		t.calls <- index
-	}
-
-	if index < len(t.errs) && t.errs[index] != nil {
-		return rci.Response{}, t.errs[index]
-	}
-
-	if index >= len(t.responses) || t.responses[index] == nil {
-		return rci.Response{}, errors.New("fake RCI response exhausted")
-	}
-
-	return rci.Response{Status: 200, Body: t.responses[index]}, nil
 }

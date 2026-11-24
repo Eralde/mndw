@@ -21,6 +21,8 @@ A part with nothing in it is left out.
   The RSSI thresholds that color wireless links are set with the new dBm button on the map toolbar.
 - Event log: IP address changes on the router now appear. They were never delivered before, because the router
   hook sent malformed data. Each entry names the interface.
+- The router's CPU is no longer loaded every 10 seconds: mndw reads new device log entries through one background
+  log reader instead of downloading the whole log each time.
 
 ### For plugin authors
 

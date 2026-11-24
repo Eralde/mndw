@@ -108,3 +108,30 @@ func TestEventLifecycleCloseIsSafeWithoutStartAndTwice(t *testing.T) {
 	lifecycle.Close()
 	lifecycle.Close()
 }
+
+func TestEventLifecycleCloseWaitsForLogPoller(t *testing.T) {
+	lifecycle, _ := newTestEventLifecycle(t)
+	pollerDone := make(chan struct{})
+	lifecycle.logPollerDone = pollerDone
+	lifecycle.cancel = func() {}
+	closeDone := make(chan struct{})
+
+	go func() {
+		lifecycle.Close()
+		close(closeDone)
+	}()
+
+	select {
+	case <-closeDone:
+		t.Fatal("Close returned before the log poller stopped")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(pollerDone)
+
+	select {
+	case <-closeDone:
+	case <-time.After(time.Second):
+		t.Fatal("Close did not return after the log poller stopped")
+	}
+}

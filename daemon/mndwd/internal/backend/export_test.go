@@ -11,6 +11,66 @@ import (
 	"mndwd/internal/httpx"
 )
 
+func init() {
+	invariantChecksEnabled = true
+}
+
+func markInvariantFixtureForTest(s *Supervisor, pluginID string, ids ...invariantID) {
+	record := s.plugins[pluginID]
+
+	if record == nil {
+		return
+	}
+
+	for _, violation := range s.checkInvariantsLocked() {
+		if violation.PluginID != pluginID {
+			continue
+		}
+
+		if len(ids) > 0 {
+			selected := false
+
+			for _, id := range ids {
+				if violation.ID == id {
+					selected = true
+
+					break
+				}
+			}
+
+			if !selected {
+				continue
+			}
+		}
+
+		if s.invariantFixtureExempt == nil {
+			s.invariantFixtureExempt = make(map[*pluginRecord]map[invariantID]struct{})
+		}
+
+		if s.invariantFixtureExempt[record] == nil {
+			s.invariantFixtureExempt[record] = make(map[invariantID]struct{})
+		}
+
+		s.invariantFixtureExempt[record][violation.ID] = struct{}{}
+	}
+}
+
+func declareInvariantFixtureForTest(s *Supervisor, pluginID string, id invariantID, reason string) {
+	s.mu.Lock()
+
+	if s.invariantDeclaredFixtureExempt == nil {
+		s.invariantDeclaredFixtureExempt = make(map[string]map[invariantID]string)
+	}
+
+	if s.invariantDeclaredFixtureExempt[pluginID] == nil {
+		s.invariantDeclaredFixtureExempt[pluginID] = make(map[invariantID]string)
+	}
+
+	s.invariantDeclaredFixtureExempt[pluginID][id] = reason
+
+	s.unlock()
+}
+
 type startPlanSnapshot struct {
 	action startAction
 	err    error
@@ -113,9 +173,11 @@ func (s *Supervisor) intentOf(name string) Intent {
 func (s *Supervisor) planStart(spec ServiceSpec, paths RuntimePaths) startPlanSnapshot {
 	s.mu.Lock()
 
-	defer s.mu.Unlock()
+	defer s.unlock()
 
 	plan := s.planStartLocked(spec, paths)
+
+	markInvariantFixtureForTest(s, spec.PluginID, invI14)
 
 	return startPlanSnapshot{action: plan.action, err: plan.err}
 }
@@ -123,7 +185,7 @@ func (s *Supervisor) planStart(spec ServiceSpec, paths RuntimePaths) startPlanSn
 func (s *Supervisor) pluginSnapshot(name string) pluginSnapshot {
 	s.mu.Lock()
 
-	defer s.mu.Unlock()
+	defer s.unlock()
 
 	return s.pluginSnapshotLocked(name)
 }
@@ -211,7 +273,7 @@ func seedSupervisorStateForTest(
 ) {
 	s.mu.Lock()
 
-	defer s.mu.Unlock()
+	defer s.unlock()
 
 	if desired != nil {
 		s.setDesiredLocked(pluginID, desired)
@@ -269,13 +331,15 @@ func setSupervisorServiceRecordLockedForTest(s *Supervisor, pluginID string, fix
 	record.startupQueued = fixture.startupQueued
 	record.startupSeq = fixture.startupSeq
 
+	markInvariantFixtureForTest(s, pluginID)
+
 	return record
 }
 
 func setSupervisorServiceRecordForTest(s *Supervisor, pluginID string, fixture *serviceRecord) *pluginRecord {
 	s.mu.Lock()
 
-	defer s.mu.Unlock()
+	defer s.unlock()
 
 	return setSupervisorServiceRecordLockedForTest(s, pluginID, fixture)
 }
@@ -283,12 +347,14 @@ func setSupervisorServiceRecordForTest(s *Supervisor, pluginID string, fixture *
 func setSupervisorServiceStateForTest(s *Supervisor, pluginID string, state ServiceState) *pluginRecord {
 	s.mu.Lock()
 
-	defer s.mu.Unlock()
+	defer s.unlock()
 
 	record := s.serviceRecordLocked(pluginID)
 
 	if record != nil {
 		record.status.State = state
+
+		markInvariantFixtureForTest(s, pluginID)
 	}
 
 	return record
@@ -297,7 +363,7 @@ func setSupervisorServiceStateForTest(s *Supervisor, pluginID string, state Serv
 func supervisorServiceForTest(s *Supervisor, pluginID string) *pluginRecord {
 	s.mu.Lock()
 
-	defer s.mu.Unlock()
+	defer s.unlock()
 
 	return s.serviceRecordLocked(pluginID)
 }
@@ -314,7 +380,7 @@ func waitForSupervisorStopForTest(t *testing.T, s *Supervisor, pluginID string) 
 		stopDone = record.stopDone
 	}
 
-	s.mu.Unlock()
+	s.unlock()
 
 	if stopDone == nil {
 		return
@@ -330,7 +396,7 @@ func waitForSupervisorStopForTest(t *testing.T, s *Supervisor, pluginID string) 
 func supervisorPluginRecordPresentForTest(s *Supervisor, pluginID string) bool {
 	s.mu.Lock()
 
-	defer s.mu.Unlock()
+	defer s.unlock()
 
 	return s.plugins[pluginID] != nil
 }
@@ -338,7 +404,7 @@ func supervisorPluginRecordPresentForTest(s *Supervisor, pluginID string) bool {
 func resetSupervisorServicesForTest(s *Supervisor) {
 	s.mu.Lock()
 
-	defer s.mu.Unlock()
+	defer s.unlock()
 
 	for pluginID, record := range s.plugins {
 		record.launch = nil
@@ -364,6 +430,10 @@ func resetSupervisorServicesForTest(s *Supervisor) {
 		record.startupSeq = 0
 
 		s.prunePluginRecordLocked(pluginID)
+
+		if s.plugins[pluginID] != nil {
+			markInvariantFixtureForTest(s, pluginID)
+		}
 	}
 }
 
@@ -372,7 +442,7 @@ func assertSupervisorServiceSlotsInvariantForTest(t *testing.T, s *Supervisor) {
 
 	s.mu.Lock()
 
-	defer s.mu.Unlock()
+	defer s.unlock()
 
 	held := 0
 
@@ -399,6 +469,10 @@ func setSupervisorTransitionLockedForTest(s *Supervisor, pluginID string, fixtur
 			record.run = nil
 
 			s.prunePluginRecordLocked(pluginID)
+
+			if s.plugins[pluginID] != nil {
+				markInvariantFixtureForTest(s, pluginID)
+			}
 		}
 
 		return
@@ -410,12 +484,14 @@ func setSupervisorTransitionLockedForTest(s *Supervisor, pluginID string, fixtur
 	record.operation = fixture.operation
 	record.priorIntent = fixture.priorIntent
 	record.run = fixture.run
+
+	markInvariantFixtureForTest(s, pluginID)
 }
 
 func setSupervisorTransitionForTest(s *Supervisor, pluginID string, record *transition) {
 	s.mu.Lock()
 
-	defer s.mu.Unlock()
+	defer s.unlock()
 
 	setSupervisorTransitionLockedForTest(s, pluginID, record)
 }
@@ -423,7 +499,7 @@ func setSupervisorTransitionForTest(s *Supervisor, pluginID string, record *tran
 func scheduleSupervisorRetryForTest(s *Supervisor, pluginID string, delay time.Duration) {
 	s.mu.Lock()
 
-	defer s.mu.Unlock()
+	defer s.unlock()
 
 	s.scheduleRetry(pluginID, delay)
 }
@@ -431,7 +507,7 @@ func scheduleSupervisorRetryForTest(s *Supervisor, pluginID string, delay time.D
 func seedSupervisorRetryForTest(s *Supervisor, spec ServiceSpec, delay time.Duration) {
 	s.mu.Lock()
 
-	defer s.mu.Unlock()
+	defer s.unlock()
 
 	s.setDesiredLocked(spec.PluginID, &spec)
 	setSupervisorServiceRecordLockedForTest(s, spec.PluginID, &serviceRecord{

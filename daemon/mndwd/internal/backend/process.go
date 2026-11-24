@@ -142,7 +142,7 @@ func (s *Supervisor) reapUnregisteredProcess(pluginID string, process *registere
 	record := s.serviceRecordLocked(pluginID)
 	owned := record != nil && record.process == process && !record.processRegistered
 
-	s.mu.Unlock()
+	s.unlock()
 
 	if !owned {
 		return

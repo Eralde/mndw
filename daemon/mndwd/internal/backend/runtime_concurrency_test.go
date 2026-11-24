@@ -499,6 +499,10 @@ func TestPromotedServiceQueuedBehindStartupProjectsAsStarting(t *testing.T) {
 	secondStartupFinished := make(chan struct{})
 	promotedDone := make(chan struct{})
 	queuedStartPlan := make(chan startPlanSnapshot, 1)
+
+	declareInvariantFixtureForTest(runtime.supervisor, "service-d", invI14,
+		"fake startDesired reserves without beginDesiredStartup; finishDesiredStartup clears startupQueued")
+
 	runtime.supervisor.startDesired = func(spec ServiceSpec) {
 		if spec.PluginID == "service-c" {
 			close(firstStartupEntered)
@@ -1197,6 +1201,9 @@ func TestDisableDoesNotWaitForPromotedServiceReadiness(t *testing.T) {
 		}
 	}()
 
+	declareInvariantFixtureForTest(runtime.supervisor, "service-b", invI10,
+		"fake lifecycle work sets Ready without registering a process")
+
 	runtime.supervisor.startDesired = func(spec ServiceSpec) {
 		outcome := runtime.supervisor.beginDesiredStartup(spec)
 
@@ -1324,6 +1331,8 @@ func TestReconcileChangedSpecRestartsExistingService(t *testing.T) {
 		spec:   oldSpec,
 		status: RuntimeStatus{State: StateReady},
 	}, &transition{intent: IntentRun, operation: OpNone})
+	declareInvariantFixtureForTest(runtime.supervisor, plugin.Name, invI14,
+		"Ready seed has no process; Reconcile acquires slot without reservationPending")
 
 	runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
 	waitForLifecycleAttempt(t, runtime, plugin.Name)

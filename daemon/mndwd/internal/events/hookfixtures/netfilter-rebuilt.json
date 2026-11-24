@@ -1,0 +1,16 @@
+{
+  "name": "netfilter-rebuilt",
+  "envSource": "assumed",
+  "hook": "netfilter.d",
+  "args": [],
+  "env": {"type": "filter\nmode", "table": "inet\"prod\\table"},
+  "body": {
+    "hook": "netfilter.d",
+    "action": "",
+    "payload": {"type": "filtermode", "table": "inet\"prod\\table"}
+  },
+  "event": {
+    "topic": "firewall.rebuilt",
+    "payload": {"table_type": "filtermode", "table": "inet\"prod\\table"}
+  }
+}

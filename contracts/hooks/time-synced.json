@@ -1,0 +1,9 @@
+{
+  "name": "time-synced",
+  "envSource": "assumed",
+  "hook": "time.d",
+  "args": [],
+  "env": {},
+  "body": {"hook": "time.d", "action": "", "payload": {}},
+  "event": {"topic": "clock.synced", "payload": {}}
+}

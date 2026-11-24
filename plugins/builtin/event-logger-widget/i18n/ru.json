@@ -25,7 +25,7 @@
       "disconnected": "WAN отключён: {interface}"
     },
     "net": {
-      "ip_changed": "IP-адрес изменён: {address}/{mask} на {link}",
+      "ip_changed": "IP-адрес изменён: {address}/{mask} на {interface}",
       "dhcp_lease": "Аренда DHCP {action}: {hostname} ({ip})",
       "dns_changed": "DNS-серверы изменены: {resolvers}",
       "dns_changed_empty": "DNS-серверы изменены"

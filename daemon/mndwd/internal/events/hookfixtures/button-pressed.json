@@ -1,0 +1,9 @@
+{
+  "name": "button-pressed",
+  "envSource": "assumed",
+  "hook": "button.d",
+  "args": [],
+  "env": {"button": "reset", "action": "short"},
+  "body": {"hook": "button.d", "action": "", "payload": {"button": "reset", "action": "short"}},
+  "event": {"topic": "button.pressed", "payload": {"button": "reset", "gesture": "short"}}
+}

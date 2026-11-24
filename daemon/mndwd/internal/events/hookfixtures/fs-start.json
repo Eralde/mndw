@@ -1,0 +1,16 @@
+{
+  "name": "fs-start",
+  "envSource": "assumed",
+  "hook": "fs.d",
+  "args": ["start"],
+  "env": {"type": "ext4", "label": "DATA", "directory": "/opt/data"},
+  "body": {
+    "hook": "fs.d",
+    "action": "start",
+    "payload": {"type": "ext4", "label": "DATA", "directory": "/opt/data"}
+  },
+  "event": {
+    "topic": "fs.mounted",
+    "payload": {"fs_type": "ext4", "label": "DATA", "directory": "/opt/data"}
+  }
+}

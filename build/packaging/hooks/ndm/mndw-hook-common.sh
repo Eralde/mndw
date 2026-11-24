@@ -1,7 +1,7 @@
 #!/bin/sh
 MNDW_ROOT=${MNDW_ROOT:-/opt}
 MNDW_PORT_FILE=${MNDW_PORT_FILE:-$MNDW_ROOT/var/lib/mndw/frontend-port}
-escape() { printf '%s' "$1" | sed 's/[\\"]/\\&/g'; }
+escape() { printf '%s' "$1" | tr -d '\000-\037' | sed 's/[\\"]/\\&/g'; }
 post() {
 	[ -r "$MNDW_PORT_FILE" ] || exit 0
 	port=$(cat "$MNDW_PORT_FILE" 2>/dev/null) || exit 0

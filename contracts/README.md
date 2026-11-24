@@ -49,6 +49,18 @@ frontend/sdk/src/capabilities.ts + frontend/sdk/src/event-schema.ts (EVENT_CAPAB
 reached by build tooling through `frontend/sdk-internal/src/sdk-source.ts`
   → daemon/contracts-go/manifest/capabilities_generated.go
 
+frontend/sdk/src/event-schema.ts
+  → contracts/events/events.schema.json
+  → daemon/contracts-go/events/events.go
+
+contracts/events/fixtures
+  → frontend/sdk/fixtures/events
+  → daemon/contracts-go/fixtures/events
+  → daemon/mndwd/internal/events/fixtures
+
+contracts/hooks
+  → daemon/mndwd/internal/events/fixtures/hooks
+
 contracts/mgmt/fixtures
   → daemon/mndwd/internal/mgmt/fixtures/mgmt
   → frontend/host/src/runtime/fixtures/mgmt

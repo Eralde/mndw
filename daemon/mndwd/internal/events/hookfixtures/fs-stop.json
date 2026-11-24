@@ -1,0 +1,13 @@
+{
+  "name": "fs-stop",
+  "envSource": "assumed",
+  "hook": "fs.d",
+  "args": ["stop"],
+  "env": {"label": "DATA", "directory": "/opt/data"},
+  "body": {
+    "hook": "fs.d",
+    "action": "stop",
+    "payload": {"label": "DATA", "directory": "/opt/data"}
+  },
+  "event": {"topic": "fs.unmounted", "payload": {"label": "DATA", "directory": "/opt/data"}}
+}

@@ -68,6 +68,10 @@ const fixtureMappings: readonly FixtureMapping[] = [
     ],
   },
   {
+    source: 'contracts/hooks',
+    destinations: ['daemon/mndwd/internal/events/hookfixtures'],
+  },
+  {
     source: 'contracts/mgmt/fixtures',
     destinations: ['daemon/mndwd/internal/mgmt/fixtures/mgmt', 'frontend/host/src/runtime/fixtures/mgmt'],
   },

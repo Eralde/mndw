@@ -1,0 +1,16 @@
+{
+  "name": "usb-start",
+  "envSource": "assumed",
+  "hook": "usb.d",
+  "args": ["start"],
+  "env": {"usb_device": "/dev/sda1", "usb_port": "usb1", "usb_model": "Disk", "usb_vendor": "ACME"},
+  "body": {
+    "hook": "usb.d",
+    "action": "start",
+    "payload": {"usb_device": "/dev/sda1", "port": "usb1", "model": "Disk", "vendor": "ACME"}
+  },
+  "event": {
+    "topic": "usb.attached",
+    "payload": {"device": "/dev/sda1", "model": "Disk", "vendor": "ACME", "port": "usb1"}
+  }
+}

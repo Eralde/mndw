@@ -1,0 +1,40 @@
+{
+  "name": "ifipchanged-connected",
+  "envSource": "device-capture-2026-11-24",
+  "hook": "ifipchanged.d",
+  "args": ["hook"],
+  "env": {
+    "id": "WifiMaster0/WifiStation0",
+    "system_name": "apcli0",
+    "address": "192.0.2.18",
+    "mask": "255.255.255.0",
+    "link": "up",
+    "connected": "yes",
+    "up": "up",
+    "static": "no",
+    "global": "33117"
+  },
+  "body": {
+    "hook": "ifipchanged.d",
+    "action": "",
+    "payload": {
+      "interface": "WifiMaster0/WifiStation0",
+      "systemName": "apcli0",
+      "address": "192.0.2.18",
+      "mask": "255.255.255.0",
+      "link": "up",
+      "connected": true
+    }
+  },
+  "event": {
+    "topic": "net.ip_changed",
+    "payload": {
+      "interface": "WifiMaster0/WifiStation0",
+      "systemName": "apcli0",
+      "address": "192.0.2.18",
+      "mask": "255.255.255.0",
+      "link": "up",
+      "connected": true
+    }
+  }
+}

@@ -39,7 +39,7 @@ export function summarizeEvent(event: MndwEvent, translator: Translator): string
     case 'net.ip_changed':
       return translator.t('summary.net.ip_changed', {
         address: event.payload.address,
-        link: event.payload.link,
+        interface: event.payload.interface,
         mask: event.payload.mask,
       });
     case 'net.dhcp_lease':

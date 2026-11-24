@@ -38,7 +38,14 @@ describe('event contract', () => {
       validEvent('wan.connected', 'hook', {interface: 'ppp0', address: '192.0.2.1', mask: '255.255.255.0',
         gateway: '192.0.2.254'}),
       validEvent('wan.disconnected', 'hook', {interface: 'ppp0'}),
-      validEvent('net.ip_changed', 'hook', {address: '192.0.2.1', mask: '255.255.255.0', link: 'wan', connected: true}),
+      validEvent('net.ip_changed', 'hook', {
+        interface: 'WifiMaster0/WifiStation0',
+        systemName: 'apcli0',
+        address: '192.0.2.1',
+        mask: '255.255.255.0',
+        link: 'up',
+        connected: true,
+      }),
       validEvent('net.dhcp_lease', 'log', {mac: '00:11:22:33:44:55', ip: '192.0.2.10', hostname: 'router',
         action: 'bound'}),
       validEvent('net.dns_changed', 'log', {resolvers: ['192.0.2.53']}),
@@ -79,6 +86,42 @@ describe('event contract', () => {
     expect(eventSchema.parse(validEvent('clock.synced', 'hook', {}))).toEqual(
       validEvent('clock.synced', 'hook', {}),
     );
+  });
+
+  it('requires interface identifiers for IP change events', () => {
+    const payload = {
+      interface: 'WifiMaster0/WifiStation0',
+      systemName: 'apcli0',
+      address: '192.0.2.18',
+      mask: '255.255.255.0',
+      link: 'up',
+      connected: true,
+    };
+
+    expect(eventSchema.parse(validEvent('net.ip_changed', 'hook', payload))).toMatchObject({payload});
+
+    const invalidPayloads: Record<string, unknown>[] = [
+      {...payload, interface: ''},
+      {...payload, systemName: ''},
+      {
+        systemName: payload.systemName,
+        address: payload.address,
+        mask: payload.mask,
+        link: payload.link,
+        connected: payload.connected,
+      },
+      {
+        interface: payload.interface,
+        address: payload.address,
+        mask: payload.mask,
+        link: payload.link,
+        connected: payload.connected,
+      },
+    ];
+
+    for (const invalidPayload of invalidPayloads) {
+      expect(() => eventSchema.parse(validEvent('net.ip_changed', 'hook', invalidPayload))).toThrow();
+    }
   });
 
   it('accepts telemetry gathering changes and rejects invalid sources or payloads', () => {

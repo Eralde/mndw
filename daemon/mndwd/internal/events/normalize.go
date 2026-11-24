@@ -380,6 +380,16 @@ func normalizeHookPayload(request HookRequest) (any, contractEvents.Topic, error
 			return nil, "", ErrUnsupportedHook
 		}
 
+		interfaceName, err := get("interface")
+		if err != nil {
+			return nil, "", err
+		}
+
+		systemName, err := get("systemName")
+		if err != nil {
+			return nil, "", err
+		}
+
 		address, err := get("address")
 		if err != nil {
 			return nil, "", err
@@ -401,7 +411,14 @@ func normalizeHookPayload(request HookRequest) (any, contractEvents.Topic, error
 			return nil, "", fmt.Errorf("hook %s payload connected must be boolean", request.Hook)
 		}
 
-		return contractEvents.NetIPChangedPayload{Address: address, Mask: mask, Link: link, Connected: connected}, contractEvents.TopicNetIPChanged, nil
+		return contractEvents.NetIPChangedPayload{
+			Interface:  interfaceName,
+			SystemName: systemName,
+			Address:    address,
+			Mask:       mask,
+			Link:       link,
+			Connected:  connected,
+		}, contractEvents.TopicNetIPChanged, nil
 	default:
 		return nil, "", ErrUnsupportedHook
 	}

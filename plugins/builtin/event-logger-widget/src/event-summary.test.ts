@@ -26,9 +26,16 @@ const CASES: ReadonlyArray<{event: MndwEvent; en: string}> = [
       ...BASE,
       topic: 'net.ip_changed',
       source: 'hook',
-      payload: {address: '192.168.1.10', mask: '255.255.255.0', link: 'eth3', connected: true},
+      payload: {
+        interface: 'WifiMaster0/WifiStation0',
+        systemName: 'apcli0',
+        address: '192.168.1.10',
+        mask: '255.255.255.0',
+        link: 'up',
+        connected: true,
+      },
     },
-    en: 'IP address changed: 192.168.1.10/255.255.255.0 on eth3',
+    en: 'IP address changed: 192.168.1.10/255.255.255.0 on WifiMaster0/WifiStation0',
   },
   {
     event: {

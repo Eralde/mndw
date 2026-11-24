@@ -1,0 +1,9 @@
+{
+  "name": "usb-stop",
+  "envSource": "assumed",
+  "hook": "usb.d",
+  "args": ["stop"],
+  "env": {"usb_device": "/dev/sda1", "usb_port": "usb1"},
+  "body": {"hook": "usb.d", "action": "stop", "payload": {"usb_device": "/dev/sda1", "port": "usb1"}},
+  "event": {"topic": "usb.detached", "payload": {"device": "/dev/sda1", "port": "usb1"}}
+}

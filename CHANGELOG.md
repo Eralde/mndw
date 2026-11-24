@@ -19,6 +19,8 @@ A part with nothing in it is left out.
   RSSI now shows «—» instead of 0.
 - MWS map: each node shows its link speed above its card, as in the Nodes tab (hidden when zoomed far out).
   The RSSI thresholds that color wireless links are set with the new dBm button on the map toolbar.
+- Event log: IP address changes on the router now appear. They were never delivered before, because the router
+  hook sent malformed data. Each entry names the interface.
 
 ### For plugin authors
 
@@ -27,6 +29,9 @@ A part with nothing in it is left out.
   plugin list reports `installedAt` for each installed plugin.
 - `<mndw-line-chart>` and `<mndw-bar-chart>` work on touch screens: a tap or a horizontal drag shows the tooltip,
   it stays until a tap outside the chart, and a vertical swipe still scrolls the page.
+- `net.ip_changed` events now reach plugins on a router; before, the hook's malformed data was rejected. The
+  payload gains `interface` (the router's interface name, such as `WifiMaster0/WifiStation0`) and `systemName`
+  (such as `apcli0`), and `link` is the link state (`up` or `down`), not an interface name.
 
 ## 0.4.1 — 2026-11-23
 

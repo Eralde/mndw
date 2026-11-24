@@ -55,6 +55,8 @@ export const eventSchema = z.union([
     'net.ip_changed',
     z.union([z.literal('hook'), z.literal('log')]),
     z.object({
+      interface: nonEmptyString,
+      systemName: nonEmptyString,
       address: nonEmptyString,
       mask: nonEmptyString,
       link: nonEmptyString,

@@ -1,0 +1,9 @@
+{
+  "name": "schedule-start-empty-elapsed",
+  "envSource": "assumed",
+  "hook": "schedule.d",
+  "args": ["start"],
+  "env": {"schedule": "nightly", "elapsed": ""},
+  "body": {"hook": "schedule.d", "action": "start", "payload": {"schedule": "nightly", "elapsed": 0}},
+  "event": {"topic": "schedule.fired", "payload": {"name": "nightly", "action": "start", "elapsed": 0}}
+}

@@ -1,0 +1,32 @@
+{
+  "name": "wan-start",
+  "envSource": "assumed",
+  "hook": "wan.d",
+  "args": ["start"],
+  "env": {
+    "interface": "ppp0",
+    "address": "192.0.2.10",
+    "mask": "255.255.255.0",
+    "gateway": "192.0.2.1"
+  },
+  "expectedFiles": {"var/lib/mndw/wan-interface": "ppp0\n"},
+  "body": {
+    "hook": "wan.d",
+    "action": "start",
+    "payload": {
+      "interface": "ppp0",
+      "address": "192.0.2.10",
+      "mask": "255.255.255.0",
+      "gateway": "192.0.2.1"
+    }
+  },
+  "event": {
+    "topic": "wan.connected",
+    "payload": {
+      "interface": "ppp0",
+      "address": "192.0.2.10",
+      "mask": "255.255.255.0",
+      "gateway": "192.0.2.1"
+    }
+  }
+}

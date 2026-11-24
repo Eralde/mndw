@@ -25,7 +25,7 @@
       "disconnected": "WAN disconnected: {interface}"
     },
     "net": {
-      "ip_changed": "IP address changed: {address}/{mask} on {link}",
+      "ip_changed": "IP address changed: {address}/{mask} on {interface}",
       "dhcp_lease": "DHCP lease {action}: {hostname} ({ip})",
       "dns_changed": "DNS resolvers changed: {resolvers}",
       "dns_changed_empty": "DNS resolvers changed"

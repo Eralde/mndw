@@ -1,0 +1,9 @@
+{
+  "name": "schedule-stop-invalid-elapsed",
+  "envSource": "assumed",
+  "hook": "schedule.d",
+  "args": ["stop"],
+  "env": {"schedule": "nightly", "elapsed": "unknown"},
+  "body": {"hook": "schedule.d", "action": "stop", "payload": {"schedule": "nightly", "elapsed": 0}},
+  "event": {"topic": "schedule.fired", "payload": {"name": "nightly", "action": "stop", "elapsed": 0}}
+}

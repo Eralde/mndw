@@ -152,6 +152,14 @@
         "payload": {
           "type": "object",
           "properties": {
+            "interface": {
+              "type": "string",
+              "minLength": 1
+            },
+            "systemName": {
+              "type": "string",
+              "minLength": 1
+            },
             "address": {
               "type": "string",
               "minLength": 1
@@ -169,6 +177,8 @@
             }
           },
           "required": [
+            "interface",
+            "systemName",
             "address",
             "mask",
             "link",

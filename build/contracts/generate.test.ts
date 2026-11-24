@@ -75,7 +75,16 @@ const generatedPaths = [
   ...generatedDirectories.flatMap((directory) =>
     listFiles(join(repoRoot, directory)).map((file) => join(directory, file))
   ),
-];
+].map((relativePath) => {
+  return {outputPath: relativePath, sourcePath: relativePath};
+}).concat(
+  listFiles(join(repoRoot, 'contracts/hooks')).map((file) => {
+    return {
+      outputPath: join('daemon/mndwd/internal/events/hookfixtures', file),
+      sourcePath: join('contracts/hooks', file),
+    };
+  }),
+);
 
 const testUnsupportedGoSchemas = (): void => {
   const goType = getGoType();
@@ -106,11 +115,11 @@ const run = (): void => {
 
   assert.equal(existsSync(legacyGeneratedPath), false, 'legacy generated capability file must be removed');
 
-  for (const relativePath of generatedPaths) {
-    const expected = readFileSync(join(repoRoot, relativePath));
-    const actual = readFileSync(join(outputRoot, relativePath));
+  for (const {outputPath, sourcePath} of generatedPaths) {
+    const expected = readFileSync(join(repoRoot, sourcePath));
+    const actual = readFileSync(join(outputRoot, outputPath));
 
-    assert.deepEqual(actual, expected, relativePath);
+    assert.deepEqual(actual, expected, outputPath);
   }
 };
 

@@ -1,5 +1,9 @@
 #!/bin/sh
 HOOK_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd) || exit 0
 . "$HOOK_ROOT/mndw-hook-common.sh"
-connected=${connected:-${up:-false}}
-post "{\"hook\":\"ifipchanged.d\",\"action\":\"\",\"payload\":{\"address\":\"$(escape "${address:-}")\",\"mask\":\"$(escape "${mask:-}")\",\"link\":\"$(escape "${link:-}")\",\"connected\":$connected}}"
+if [ "${connected:-}" = yes ]; then
+	connected_json=true
+else
+	connected_json=false
+fi
+post "{\"hook\":\"ifipchanged.d\",\"action\":\"\",\"payload\":{\"interface\":\"$(escape "${id:-}")\",\"systemName\":\"$(escape "${system_name:-}")\",\"address\":\"$(escape "${address:-}")\",\"mask\":\"$(escape "${mask:-}")\",\"link\":\"$(escape "${link:-}")\",\"connected\":$connected_json}}"

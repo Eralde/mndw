@@ -1,0 +1,11 @@
+{
+  "name": "wan-stop-no-interface",
+  "envSource": "assumed",
+  "hook": "wan.d",
+  "args": ["stop"],
+  "env": {},
+  "files": {"var/lib/mndw/wan-interface": "ppp0\n"},
+  "expectedFiles": {"var/lib/mndw/wan-interface": null},
+  "body": {"hook": "wan.d", "action": "stop", "payload": {"interface": "ppp0"}},
+  "event": {"topic": "wan.disconnected", "payload": {"interface": "ppp0"}}
+}

@@ -63,10 +63,12 @@ type WanDisconnectedPayload struct {
 }
 
 type NetIPChangedPayload struct {
-	Address   string `json:"address"`
-	Mask      string `json:"mask"`
-	Link      string `json:"link"`
-	Connected bool   `json:"connected"`
+	Interface  string `json:"interface"`
+	SystemName string `json:"systemName"`
+	Address    string `json:"address"`
+	Mask       string `json:"mask"`
+	Link       string `json:"link"`
+	Connected  bool   `json:"connected"`
 }
 
 type NetDhcpLeasePayload struct {

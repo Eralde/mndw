@@ -117,7 +117,8 @@ func TestNormalizerHookPayloadsMatchContractFixtures(t *testing.T) {
 		}}},
 		{fixture: "wan-disconnected.json", request: HookRequest{Hook: "wan.d", Action: "stop", Payload: map[string]any{"interface": "ppp0"}}},
 		{fixture: "net-ip-changed.json", request: HookRequest{Hook: "ifipchanged.d", Payload: map[string]any{
-			"address": "192.0.2.1", "mask": "255.255.255.0", "link": "wan", "connected": true,
+			"interface": "WifiMaster0/WifiStation0", "systemName": "apcli0", "address": "192.0.2.1",
+			"mask": "255.255.255.0", "link": "up", "connected": true,
 		}}},
 		{fixture: "firewall-rebuilt.json", request: HookRequest{Hook: "netfilter.d", Payload: map[string]any{"type": "filter", "table": "inet"}}},
 		{fixture: "usb-attached.json", request: HookRequest{Hook: "usb.d", Action: "start", Payload: map[string]any{
@@ -164,7 +165,7 @@ func TestNormalizerRejectsMalformedTypedHookAndLogPayloads(t *testing.T) {
 	for _, request := range []HookRequest{
 		{Hook: "wan.d", Action: "start", Payload: map[string]any{"interface": "ppp0"}},
 		{Hook: "time.d", Payload: map[string]any{"offset_ms": "now"}},
-		{Hook: "ifipchanged.d", Payload: map[string]any{"address": "192.0.2.1", "mask": "255.255.255.0", "link": "wan", "connected": "yes"}},
+		{Hook: "ifipchanged.d", Payload: map[string]any{"interface": "WifiMaster0/WifiStation0", "systemName": "apcli0", "address": "192.0.2.1", "mask": "255.255.255.0", "link": "up", "connected": "yes"}},
 	} {
 		if _, err := normalizer.NormalizeHook(request); err == nil {
 			t.Errorf("malformed hook accepted: %#v", request)

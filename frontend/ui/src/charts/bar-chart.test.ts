@@ -30,38 +30,56 @@ const tooltipText = (element: MndwBarChart): string | undefined => {
   return element.shadowRoot?.querySelector('[part="tooltip"]')?.textContent?.replace(/\s+/g, ' ').trim();
 };
 
-function dispatchMouseMove(overlay: SVGRectElement, clientX: number, clientY: number): void {
+type ChartPointerEvent = 'pointerdown' | 'pointermove' | 'pointerup' | 'pointerleave' | 'pointercancel';
+
+function dispatchPointer(target: Element, type: ChartPointerEvent, init: PointerEventInit = {}): void {
   // happy-dom's SVGPoint lacks matrixTransform. Keep local coordinates here;
   // Chromium e2e covers real SVG coordinate transforms.
-  const svg = overlay.ownerSVGElement;
-  const group = overlay.parentElement;
+  if (target instanceof SVGElement) {
+    const svg = target.ownerSVGElement;
+    const group = target.parentElement;
 
-  if (svg !== null) {
-    Object.defineProperty(svg, 'createSVGPoint', {
-      configurable: true,
-      value: () => {
-        const point = {
-          ['x']: 0,
-          ['y']: 0,
-          matrixTransform() {
-            return {['x']: Reflect.get(this, 'x'), ['y']: Reflect.get(this, 'y')};
-          },
-        };
+    if (svg !== null) {
+      Object.defineProperty(svg, 'createSVGPoint', {
+        configurable: true,
+        value: () => {
+          const point = {
+            ['x']: 0,
+            ['y']: 0,
+            matrixTransform() {
+              return {['x']: Reflect.get(this, 'x'), ['y']: Reflect.get(this, 'y')};
+            },
+          };
 
-        return point;
-      },
-    });
+          return point;
+        },
+      });
+    }
+
+    if (group !== null) {
+      Object.defineProperty(group, 'getScreenCTM', {
+        configurable: true,
+        value: () => ({inverse: () => ({})}),
+      });
+    }
   }
 
-  if (group !== null) {
-    Object.defineProperty(group, 'getScreenCTM', {
-      configurable: true,
-      value: () => ({inverse: () => ({})}),
-    });
-  }
-
-  overlay.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, clientX, clientY}));
+  target.dispatchEvent(new PointerEvent(type, {bubbles: true, composed: true, pointerType: 'mouse', ...init}));
 }
+
+const chartOverlay = (element: MndwBarChart): SVGRectElement => {
+  const overlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
+
+  if (overlay === null || overlay === undefined) {
+    throw new Error('missing chart pointer overlay');
+  }
+
+  return overlay;
+};
+
+const tooltipIsVisible = (element: MndwBarChart): boolean => {
+  return element.shadowRoot?.querySelector('[part="tooltip"]')?.hasAttribute('data-visible') ?? false;
+};
 
 const points = [
   {time: 1000, value: 100},
@@ -159,7 +177,7 @@ describe('<mndw-bar-chart>', () => {
       throw new Error('missing chart pointer overlay');
     }
 
-    dispatchMouseMove(overlay, 40, 30);
+    dispatchPointer(overlay, 'pointermove', {clientX: 40, clientY: 30});
     await element.updateComplete;
 
     const band = element.shadowRoot?.querySelector<SVGRectElement>('[part="hover-band"]');
@@ -168,7 +186,7 @@ describe('<mndw-bar-chart>', () => {
     expect(band?.hasAttribute('data-active')).toBe(true);
     expect(String(MndwBarChart.styles)).toContain('color-mix(in srgb, var(--mndw-text) 12%, transparent)');
 
-    overlay.dispatchEvent(new MouseEvent('mouseleave', {bubbles: true}));
+    dispatchPointer(overlay, 'pointerleave');
     await element.updateComplete;
 
     expect(band?.hasAttribute('data-active')).toBe(false);
@@ -197,7 +215,7 @@ describe('<mndw-bar-chart>', () => {
       throw new Error('missing chart pointer overlay');
     }
 
-    dispatchMouseMove(overlay, 300, 100);
+    dispatchPointer(overlay, 'pointermove', {clientX: 300, clientY: 100});
     await element.updateComplete;
 
     expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.textContent).toContain('T2000');
@@ -219,7 +237,7 @@ describe('<mndw-bar-chart>', () => {
       throw new Error('missing chart pointer overlay');
     }
 
-    dispatchMouseMove(overlay, 300, 100);
+    dispatchPointer(overlay, 'pointermove', {clientX: 300, clientY: 100});
     await element.updateComplete;
 
     expect(element.tooltipFormatter).toBeUndefined();
@@ -248,7 +266,7 @@ describe('<mndw-bar-chart>', () => {
       throw new Error('missing chart pointer overlay');
     }
 
-    dispatchMouseMove(overlay, 300, 100);
+    dispatchPointer(overlay, 'pointermove', {clientX: 300, clientY: 100});
     await element.updateComplete;
 
     expect(received).toEqual({
@@ -271,7 +289,7 @@ describe('<mndw-bar-chart>', () => {
       throw new Error('missing chart pointer overlay');
     }
 
-    dispatchMouseMove(overlay, 300, 100);
+    dispatchPointer(overlay, 'pointermove', {clientX: 300, clientY: 100});
     await element.updateComplete;
 
     expect(tooltipText(element)).toBe('Traffic sample Rate: fast');
@@ -290,7 +308,7 @@ describe('<mndw-bar-chart>', () => {
       throw new Error('missing chart pointer overlay');
     }
 
-    dispatchMouseMove(overlay, 300, 100);
+    dispatchPointer(overlay, 'pointermove', {clientX: 300, clientY: 100});
     await element.updateComplete;
 
     const tooltip = element.shadowRoot?.querySelector('[part="tooltip"]');
@@ -312,7 +330,7 @@ describe('<mndw-bar-chart>', () => {
       throw new Error('missing chart pointer overlay');
     }
 
-    dispatchMouseMove(overlay, 300, 100);
+    dispatchPointer(overlay, 'pointermove', {clientX: 300, clientY: 100});
     await element.updateComplete;
 
     expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.hasAttribute('data-visible')).toBe(false);
@@ -337,19 +355,19 @@ describe('<mndw-bar-chart>', () => {
       throw new Error('missing chart pointer overlay');
     }
 
-    dispatchMouseMove(overlay, 300, 100);
+    dispatchPointer(overlay, 'pointermove', {clientX: 300, clientY: 100});
     await element.updateComplete;
 
     expect(consoleError).toHaveBeenCalledOnce();
     expect(consoleError).toHaveBeenCalledWith('Chart tooltip formatter failed', error);
     expect(tooltipText(element)).toBe('T2000 Values: 200');
 
-    dispatchMouseMove(overlay, 300, 100);
+    dispatchPointer(overlay, 'pointermove', {clientX: 300, clientY: 100});
     await element.updateComplete;
     expect(consoleError).toHaveBeenCalledOnce();
 
-    overlay.dispatchEvent(new MouseEvent('mouseleave', {bubbles: true}));
-    dispatchMouseMove(overlay, 300, 100);
+    dispatchPointer(overlay, 'pointerleave');
+    dispatchPointer(overlay, 'pointermove', {clientX: 300, clientY: 100});
     await element.updateComplete;
     expect(consoleError).toHaveBeenCalledTimes(2);
   });
@@ -387,7 +405,7 @@ describe('<mndw-bar-chart>', () => {
       throw new Error('missing chart pointer overlay');
     }
 
-    dispatchMouseMove(overlay, 300, 140);
+    dispatchPointer(overlay, 'pointermove', {clientX: 300, clientY: 140});
     await element.updateComplete;
 
     const left = Number.parseFloat(tooltip.style.left);
@@ -462,15 +480,141 @@ describe('<mndw-bar-chart>', () => {
       throw new Error('missing chart pointer overlay');
     }
 
-    dispatchMouseMove(overlay, 100, 100);
+    dispatchPointer(overlay, 'pointermove', {clientX: 100, clientY: 100});
     await element.updateComplete;
 
     expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.hasAttribute('data-visible')).toBe(true);
 
-    overlay.dispatchEvent(new MouseEvent('mouseleave', {bubbles: true}));
+    dispatchPointer(overlay, 'pointerleave');
     await element.updateComplete;
 
     expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.hasAttribute('data-visible')).toBe(false);
+  });
+
+  it('reserves vertical page scrolling for touch gestures over the plot', () => {
+    expect(String(MndwBarChart.styles)).toContain('touch-action: pan-y');
+  });
+
+  it.each(['touch', 'pen'] as const)(
+    'shows a %s tooltip on tap and keeps it after the finger lifts',
+    async (pointerType) => {
+      const element = await mount();
+
+      element.timeFormatter = (time) => `T${time}`;
+      element.points = points;
+      await element.updateComplete;
+
+      const overlay = chartOverlay(element);
+
+      dispatchPointer(overlay, 'pointerdown', {pointerType, buttons: 1, clientX: 300, clientY: 100});
+      await element.updateComplete;
+
+      expect(tooltipText(element)).toBe('T2000 Values: 200');
+
+      dispatchPointer(overlay, 'pointerup', {pointerType, clientX: 300, clientY: 100});
+      dispatchPointer(overlay, 'pointerleave', {pointerType});
+      await element.updateComplete;
+
+      expect(tooltipText(element)).toBe('T2000 Values: 200');
+    },
+  );
+
+  it('moves a touch tooltip only while the finger is down', async () => {
+    const element = await mount();
+
+    element.timeFormatter = (time) => `T${time}`;
+    element.points = points;
+    await element.updateComplete;
+
+    const overlay = chartOverlay(element);
+
+    dispatchPointer(overlay, 'pointerdown', {pointerType: 'touch', buttons: 1, clientX: 300, clientY: 100});
+    await element.updateComplete;
+    dispatchPointer(overlay, 'pointermove', {pointerType: 'touch', buttons: 1, clientX: 40, clientY: 30});
+    await element.updateComplete;
+
+    expect(tooltipText(element)).toBe('T1000 Values: 100');
+
+    dispatchPointer(overlay, 'pointerup', {pointerType: 'touch'});
+    dispatchPointer(overlay, 'pointermove', {pointerType: 'touch', buttons: 0, clientX: 300, clientY: 100});
+    await element.updateComplete;
+
+    expect(tooltipText(element)).toBe('T1000 Values: 100');
+  });
+
+  it('hides a touch tooltip on an outside tap and drops the outside listener on hide and disconnect', async () => {
+    const addEventListener = vi.spyOn(document, 'addEventListener');
+    const removeEventListener = vi.spyOn(document, 'removeEventListener');
+    const element = await mount();
+
+    element.points = points;
+    await element.updateComplete;
+
+    const overlay = chartOverlay(element);
+    const outside = document.createElement('button');
+
+    document.body.append(outside);
+
+    dispatchPointer(overlay, 'pointerdown', {pointerType: 'touch', buttons: 1, clientX: 100, clientY: 100});
+    await element.updateComplete;
+
+    const outsideListener = addEventListener.mock.calls.filter(([type]) => type === 'pointerdown').at(-1)?.[1];
+
+    expect(outsideListener).toBeTypeOf('function');
+    expect(tooltipIsVisible(element)).toBe(true);
+
+    dispatchPointer(outside, 'pointerdown', {pointerType: 'touch'});
+    await element.updateComplete;
+
+    expect(tooltipIsVisible(element)).toBe(false);
+    expect(removeEventListener).toHaveBeenCalledWith('pointerdown', outsideListener, true);
+
+    dispatchPointer(overlay, 'pointerdown', {pointerType: 'touch', buttons: 1, clientX: 100, clientY: 100});
+    await element.updateComplete;
+
+    const reconnectedListener = addEventListener.mock.calls.filter(([type]) => type === 'pointerdown').at(-1)?.[1];
+
+    element.remove();
+    expect(removeEventListener).toHaveBeenCalledWith('pointerdown', reconnectedListener, true);
+  });
+
+  it('hides a touch tooltip when the browser cancels the gesture', async () => {
+    const element = await mount();
+
+    element.points = points;
+    await element.updateComplete;
+
+    const overlay = chartOverlay(element);
+
+    dispatchPointer(overlay, 'pointerdown', {pointerType: 'touch', buttons: 1, clientX: 100, clientY: 100});
+    await element.updateComplete;
+    dispatchPointer(overlay, 'pointercancel', {pointerType: 'touch'});
+    await element.updateComplete;
+
+    expect(tooltipIsVisible(element)).toBe(false);
+  });
+
+  it('clears a pinned touch tooltip when data changes and drops the outside listener', async () => {
+    const addEventListener = vi.spyOn(document, 'addEventListener');
+    const removeEventListener = vi.spyOn(document, 'removeEventListener');
+    const element = await mount();
+
+    element.points = points;
+    await element.updateComplete;
+
+    const overlay = chartOverlay(element);
+
+    dispatchPointer(overlay, 'pointerdown', {pointerType: 'touch', buttons: 1, clientX: 300, clientY: 100});
+    await element.updateComplete;
+
+    const outsideListener = addEventListener.mock.calls.filter(([type]) => type === 'pointerdown').at(-1)?.[1];
+
+    element.points = [...points, {time: 3000, value: 300}];
+    await element.updateComplete;
+    await element.updateComplete;
+
+    expect(tooltipIsVisible(element)).toBe(false);
+    expect(removeEventListener).toHaveBeenCalledWith('pointerdown', outsideListener, true);
   });
 
   it('detaches the overlay pointer handler on disconnect (no requestUpdate after removal)', async () => {
@@ -489,7 +633,7 @@ describe('<mndw-bar-chart>', () => {
 
     const requestUpdate = vi.spyOn(element, 'requestUpdate');
 
-    dispatchMouseMove(overlay, 100, 100);
+    dispatchPointer(overlay, 'pointermove', {clientX: 100, clientY: 100});
 
     expect(requestUpdate).not.toHaveBeenCalled();
   });
@@ -596,14 +740,14 @@ describe('<mndw-bar-chart>', () => {
       throw new Error('missing chart pointer overlay');
     }
 
-    dispatchMouseMove(overlay, 100, 100);
+    dispatchPointer(overlay, 'pointermove', {clientX: 100, clientY: 100});
     await element.updateComplete;
     callback?.([{contentRect: {width: 299, height: 180}} as ResizeObserverEntry]);
 
     const refreshedOverlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
 
     if (refreshedOverlay !== null && refreshedOverlay !== undefined) {
-      dispatchMouseMove(refreshedOverlay, 100, 100);
+      dispatchPointer(refreshedOverlay, 'pointermove', {clientX: 100, clientY: 100});
     }
 
     await element.updateComplete;

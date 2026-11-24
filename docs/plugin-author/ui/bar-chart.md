@@ -26,8 +26,9 @@ control the minimum and maximum; set `valueFormatter(value)` to customize values
 the existing 5000 minimum. `timeFormatter(epochMs)` customizes time labels. The host has
 `role="img"`; an authored `aria-label` wins, otherwise the name uses `value-label` or neutral `Values`. The
 `container`, `plot`, `grid`, `axis`, `tooltip`, and `empty` parts are available for styling. Tooltips stay local to
-the plot; data redraw clears stale tooltip state until the pointer moves again. Import `formatSpeed` and
-`getSpeedUpperLimit` from `@mndw/ui` for speed charts.
+the plot; data redraw clears stale tooltip state until the pointer moves again. On touch screens a tap or a
+horizontal drag shows the tooltip, it stays until you tap outside the chart, and a vertical swipe scrolls the page.
+Import `formatSpeed` and `getSpeedUpperLimit` from `@mndw/ui` for speed charts.
 
 `tooltipFormatter(context)` is a property-only callback with the bar's `time` and one raw sample (`seriesId: 'value'`).
 Return `{title?, rows}` to replace the tooltip, or `null` to hide it while keeping the hover band. An omitted title

@@ -33,8 +33,10 @@ marks; horizontal grid lines stay dashed. The demo above sets both properties.
 
 The chart has `role="img"`; an authored `aria-label` wins, otherwise its accessible name uses each series' `label` or
 `id`. The `container`, `plot`, `grid`, `axis`, `tooltip`, and `empty` parts are available for styling. Tooltips stay
-local to the plot; redrawing data clears stale tooltip state without replaying it until the pointer moves again.
-Import `formatSpeed` and `getSpeedUpperLimit` from `@mndw/ui` for speed axes.
+local to the plot; a data redraw replays the visible tooltip at the last pointer position with the new data, both for
+a tooltip following the mouse and for one pinned by touch. On touch screens a tap or a horizontal drag shows the
+tooltip, it stays until you tap outside the chart, and a vertical swipe scrolls the page. Import `formatSpeed` and
+`getSpeedUpperLimit` from `@mndw/ui` for speed axes.
 
 `tooltipFormatter(context)` is a property-only callback. It receives hovered `time` and raw `samples` for each series
 with finite points; return `{title?, rows}` to replace the body, or `null` to hide the tooltip while keeping the cursor.

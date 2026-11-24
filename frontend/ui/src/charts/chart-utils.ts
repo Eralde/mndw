@@ -198,3 +198,103 @@ export const buildBarAriaLabel = (
 ): string => {
   return formatChartRange(points, valueLabel, formatter) ?? emptyLabel;
 };
+
+const isDirectPointer = (event: PointerEvent): boolean => {
+  return event.pointerType === 'touch' || event.pointerType === 'pen';
+};
+
+export interface ChartTouchTooltipOptions {
+  /** The chart host; pointerdowns inside its subtree count as inside the chart. */
+  readonly host: HTMLElement;
+  /** True while the chart tooltip is rendered. */
+  readonly hasTooltip: () => boolean;
+  /** Shows or moves the tooltip, using the same path as a mouse move. */
+  readonly showAt: (event: PointerEvent) => void;
+  /** Hides the tooltip and clears the replay position. */
+  readonly hide: () => void;
+}
+
+/**
+ * Touch and pen tooltip lifecycle shared by the charts: a tap or drag within the plot shows and
+ * moves the tooltip, it stays after the finger lifts, an outside tap or a canceled gesture hides
+ * it. Mouse pointers keep hovering: move shows, leave hides.
+ */
+export class ChartTouchTooltip {
+  private outsideListener: ((event: PointerEvent) => void) | null = null;
+
+  constructor(private readonly options: ChartTouchTooltipOptions) {}
+
+  public readonly pointerDown = (event: PointerEvent): void => {
+    if (!isDirectPointer(event)) {
+      return;
+    }
+
+    this.options.showAt(event);
+    this.syncOutsideListener();
+  };
+
+  public readonly pointerMove = (event: PointerEvent): void => {
+    // Direct pointers only move the cursor while the finger or pen is down; touch emits no
+    // hover moves, and pen hover must not move a pinned tooltip.
+    if (isDirectPointer(event) && event.buttons === 0) {
+      return;
+    }
+
+    this.options.showAt(event);
+
+    if (isDirectPointer(event)) {
+      this.syncOutsideListener();
+    }
+  };
+
+  public readonly pointerLeave = (event: PointerEvent): void => {
+    // Touch and pen emit pointerleave after pointerup; keep the tooltip until a tap elsewhere.
+    if (isDirectPointer(event)) {
+      return;
+    }
+
+    this.hide();
+  };
+
+  public readonly pointerCancel = (event: PointerEvent): void => {
+    if (isDirectPointer(event)) {
+      this.hide();
+    }
+  };
+
+  public detach(): void {
+    if (this.outsideListener === null) {
+      return;
+    }
+
+    this.options.host.ownerDocument.removeEventListener('pointerdown', this.outsideListener, true);
+    this.outsideListener = null;
+  }
+
+  private hide(): void {
+    this.detach();
+    this.options.hide();
+  }
+
+  private syncOutsideListener(): void {
+    if (!this.options.hasTooltip()) {
+      this.detach();
+
+      return;
+    }
+
+    if (this.outsideListener !== null) {
+      return;
+    }
+
+    this.outsideListener = (event: PointerEvent): void => {
+      if (event.composedPath().includes(this.options.host)) {
+        return;
+      }
+
+      this.hide();
+    };
+    // Capture phase so a tooltip pinned by touch also clears when the tap outside stops bubbling.
+    this.options.host.ownerDocument.addEventListener('pointerdown', this.outsideListener, true);
+  }
+}

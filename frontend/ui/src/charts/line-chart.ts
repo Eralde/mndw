@@ -2,6 +2,7 @@ import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} f
 import * as d3 from 'd3';
 import type {NumberValue} from 'd3';
 import {
+  ChartTouchTooltip,
   buildLineAriaLabel,
   filterFinitePoints,
   formatClockTime,
@@ -66,7 +67,7 @@ const colorVariable = (color: MndwChartColor): string => {
   return `var(--mndw-${color})`;
 };
 
-const pointerPosition = (event: MouseEvent, element: SVGSVGElement): [number, number] => {
+const pointerPosition = (event: PointerEvent, element: SVGSVGElement): [number, number] => {
   const rect = element.getBoundingClientRect();
 
   return [event.clientX - rect.left, event.clientY - rect.top];
@@ -99,6 +100,10 @@ export class MndwLineChart extends LitElement {
       .tooltip {
         min-width: 7.5rem;
       }
+
+      svg {
+        touch-action: pan-y;
+      }
     `,
   ];
 
@@ -117,6 +122,18 @@ export class MndwLineChart extends LitElement {
   private tooltipState: TooltipState | null = null;
   private lastPointerPosition: [number, number] | null = null;
   private formatterErrorLogged = false;
+  private cursorLine: d3.Selection<SVGLineElement, unknown, null, undefined> | null = null;
+  private showTooltipAtPointer: ((event: PointerEvent) => void) | null = null;
+  private readonly touchTooltip = new ChartTouchTooltip({
+    host: this,
+    hasTooltip: (): boolean => this.tooltipState !== null,
+    showAt: (event): void => {
+      this.showTooltipAtPointer?.(event);
+    },
+    hide: (): void => {
+      this.hideTooltip();
+    },
+  });
   private readonly emptyLabelState: LocalizedPropertyState<string | undefined>;
   private readonly valueLabelState: LocalizedPropertyState<string | undefined>;
   private readonly ariaLabelState: GeneratedAttributeState;
@@ -190,6 +207,7 @@ export class MndwLineChart extends LitElement {
 
       if (!hasValidSeries) {
         this.lastPointerPosition = null;
+        this.touchTooltip.detach();
       }
     }
   }
@@ -219,6 +237,7 @@ export class MndwLineChart extends LitElement {
   public override disconnectedCallback(): void {
     this.lastPointerPosition = null;
     this.formatterErrorLogged = false;
+    this.touchTooltip.detach();
     super.disconnectedCallback();
   }
 
@@ -391,25 +410,23 @@ export class MndwLineChart extends LitElement {
       .attr('y2', height - padding.bottom)
       .style('display', 'none');
 
-    const updateTooltipAtPosition = (mouseX: number, mouseY: number): void => {
+    this.cursorLine = cursorLine;
+
+    const updateTooltipAtPosition = (pointerX: number, pointerY: number): void => {
       if (
-        mouseX < padding.left
-        || mouseX > width - padding.right
-        || mouseY < padding.top
-        || mouseY > height - padding.bottom
+        pointerX < padding.left
+        || pointerX > width - padding.right
+        || pointerY < padding.top
+        || pointerY > height - padding.bottom
       ) {
-        this.lastPointerPosition = null;
-        this.formatterErrorLogged = false;
-        cursorLine.style('display', 'none');
-        this.tooltipState = null;
-        this.requestUpdate();
+        this.hideTooltip();
 
         return;
       }
 
-      this.lastPointerPosition = [mouseX, mouseY];
+      this.lastPointerPosition = [pointerX, pointerY];
 
-      const hoverTime = xScale.invert(mouseX);
+      const hoverTime = xScale.invert(pointerX);
       const samples: MndwChartTooltipSample[] = validSeries.map((item) => {
         const points = filterFinitePoints(item.data);
         const closest = points.reduce((current, point) => {
@@ -432,24 +449,25 @@ export class MndwLineChart extends LitElement {
 
       cursorLine
         .style('display', null)
-        .attr('x1', mouseX)
-        .attr('x2', mouseX);
+        .attr('x1', pointerX)
+        .attr('x2', pointerX);
 
       const context: MndwChartTooltipContext = {time: hoverTime.getTime(), samples};
       const content = this.formatTooltip(context);
 
       if (content === null) {
         this.tooltipState = null;
+        this.touchTooltip.detach();
         this.requestUpdate();
 
         return;
       }
 
       this.tooltipState = {
-        left: mouseX + 12,
-        top: mouseY - 30,
-        anchorX: mouseX,
-        anchorY: mouseY,
+        left: pointerX + 12,
+        top: pointerY - 30,
+        anchorX: pointerX,
+        anchorY: pointerY,
         chartWidth: width,
         topMin: padding.top,
         bottomLimit: height - padding.bottom,
@@ -461,28 +479,37 @@ export class MndwLineChart extends LitElement {
       this.requestUpdate();
     };
 
-    const updateTooltip = (event: MouseEvent): void => {
-      const [mouseX, mouseY] = pointerPosition(event, svgElement);
+    const updateTooltip = (event: PointerEvent): void => {
+      const [pointerX, pointerY] = pointerPosition(event, svgElement);
 
-      updateTooltipAtPosition(mouseX, mouseY);
+      updateTooltipAtPosition(pointerX, pointerY);
     };
 
-    overlay.on('mousemove.chart', updateTooltip);
-    overlay.on('mouseleave.chart', () => {
-      this.lastPointerPosition = null;
-      this.formatterErrorLogged = false;
-      cursorLine.style('display', 'none');
-      this.tooltipState = null;
-      this.requestUpdate();
-    });
+    this.showTooltipAtPointer = updateTooltip;
+
+    overlay.on('pointerdown.chart', this.touchTooltip.pointerDown);
+    overlay.on('pointermove.chart', this.touchTooltip.pointerMove);
+    overlay.on('pointerleave.chart', this.touchTooltip.pointerLeave);
+    overlay.on('pointercancel.chart', this.touchTooltip.pointerCancel);
 
     this.frame.setPlot(svgElement, (): void => {
       overlay.on('.chart', null);
+      this.showTooltipAtPointer = null;
+      this.cursorLine = null;
     });
 
     if (this.lastPointerPosition !== null) {
       updateTooltipAtPosition(...this.lastPointerPosition);
     }
+  }
+
+  private hideTooltip(): void {
+    this.lastPointerPosition = null;
+    this.formatterErrorLogged = false;
+    this.cursorLine?.style('display', 'none');
+    this.tooltipState = null;
+    this.touchTooltip.detach();
+    this.requestUpdate();
   }
 
   private updateTooltipPosition(): void {

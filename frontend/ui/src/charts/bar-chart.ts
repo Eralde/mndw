@@ -2,6 +2,7 @@ import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} f
 import * as d3 from 'd3';
 import type {NumberValue} from 'd3';
 import {
+  ChartTouchTooltip,
   buildBarAriaLabel,
   filterFinitePoints,
   formatClockTime,
@@ -80,6 +81,10 @@ export class MndwBarChart extends LitElement {
       .tooltip {
         min-width: 6.25rem;
       }
+
+      svg {
+        touch-action: pan-y;
+      }
     `,
   ];
 
@@ -94,6 +99,18 @@ export class MndwBarChart extends LitElement {
 
   private tooltipState: TooltipState | null = null;
   private formatterErrorLogged = false;
+  private hoverBand: d3.Selection<SVGRectElement, unknown, null, undefined> | null = null;
+  private showTooltipAtPointer: ((event: PointerEvent) => void) | null = null;
+  private readonly touchTooltip = new ChartTouchTooltip({
+    host: this,
+    hasTooltip: (): boolean => this.tooltipState !== null,
+    showAt: (event): void => {
+      this.showTooltipAtPointer?.(event);
+    },
+    hide: (): void => {
+      this.hideTooltip();
+    },
+  });
   private readonly emptyLabelState: LocalizedPropertyState<string | undefined>;
   private readonly valueLabelState: LocalizedPropertyState<string | undefined>;
   private readonly ariaLabelState: GeneratedAttributeState;
@@ -153,6 +170,7 @@ export class MndwBarChart extends LitElement {
       || changedProperties.has('color')
     ) {
       this.tooltipState = null;
+      this.touchTooltip.detach();
     }
   }
 
@@ -177,6 +195,7 @@ export class MndwBarChart extends LitElement {
 
   public override disconnectedCallback(): void {
     this.formatterErrorLogged = false;
+    this.touchTooltip.detach();
     super.disconnectedCallback();
   }
 
@@ -208,6 +227,7 @@ export class MndwBarChart extends LitElement {
     const hadTooltip = this.tooltipState !== null;
 
     this.tooltipState = null;
+    this.touchTooltip.detach();
 
     if (hadTooltip) {
       this.requestUpdate();
@@ -277,6 +297,8 @@ export class MndwBarChart extends LitElement {
       .attr('y', 0)
       .attr('height', innerHeight);
 
+    this.hoverBand = hoverBand;
+
     for (const [index, point] of validPoints.entries()) {
       const barX = xScale(String(index)) ?? 0;
 
@@ -329,20 +351,17 @@ export class MndwBarChart extends LitElement {
       .attr('fill', 'transparent')
       .style('cursor', 'crosshair');
 
-    const updateTooltip = (event: MouseEvent): void => {
+    const updateTooltip = (event: PointerEvent): void => {
       const groupNode = group.node();
 
       if (groupNode === null) {
         return;
       }
 
-      const [mouseX, mouseY] = d3.pointer(event, groupNode);
+      const [pointerX, pointerY] = d3.pointer(event, groupNode);
 
-      if (mouseX < 0 || mouseX > innerWidth || mouseY < 0 || mouseY > innerHeight) {
-        hoverBand.attr('data-active', null);
-        this.formatterErrorLogged = false;
-        this.tooltipState = null;
-        this.requestUpdate();
+      if (pointerX < 0 || pointerX > innerWidth || pointerY < 0 || pointerY > innerHeight) {
+        this.hideTooltip();
 
         return;
       }
@@ -350,7 +369,10 @@ export class MndwBarChart extends LitElement {
       const step = xScale.step();
       const firstBarX = xScale(String(0)) ?? 0;
       const bandOffset = (step - xScale.bandwidth()) / 2;
-      const index = Math.min(Math.max(Math.floor((mouseX - firstBarX + bandOffset) / step), 0), validPoints.length - 1);
+      const index = Math.min(
+        Math.max(Math.floor((pointerX - firstBarX + bandOffset) / step), 0),
+        validPoints.length - 1,
+      );
       const point = validPoints[index];
 
       if (point === undefined) {
@@ -375,16 +397,17 @@ export class MndwBarChart extends LitElement {
 
       if (content === null) {
         this.tooltipState = null;
+        this.touchTooltip.detach();
         this.requestUpdate();
 
         return;
       }
 
       this.tooltipState = {
-        left: mouseX + margin.left + 8,
-        top: mouseY - 30,
-        anchorX: mouseX + margin.left,
-        anchorY: mouseY,
+        left: pointerX + margin.left + 8,
+        top: pointerY - 30,
+        anchorX: pointerX + margin.left,
+        anchorY: pointerY,
         chartWidth: width,
         bottomLimit: height,
         horizontalOffset: 8,
@@ -395,17 +418,26 @@ export class MndwBarChart extends LitElement {
       this.requestUpdate();
     };
 
-    overlay.on('mousemove.chart', updateTooltip);
-    overlay.on('mouseleave.chart', () => {
-      hoverBand.attr('data-active', null);
-      this.formatterErrorLogged = false;
-      this.tooltipState = null;
-      this.requestUpdate();
-    });
+    this.showTooltipAtPointer = updateTooltip;
+
+    overlay.on('pointerdown.chart', this.touchTooltip.pointerDown);
+    overlay.on('pointermove.chart', this.touchTooltip.pointerMove);
+    overlay.on('pointerleave.chart', this.touchTooltip.pointerLeave);
+    overlay.on('pointercancel.chart', this.touchTooltip.pointerCancel);
 
     this.frame.setPlot(svgElement, (): void => {
       overlay.on('.chart', null);
+      this.showTooltipAtPointer = null;
+      this.hoverBand = null;
     });
+  }
+
+  private hideTooltip(): void {
+    this.hoverBand?.attr('data-active', null);
+    this.formatterErrorLogged = false;
+    this.tooltipState = null;
+    this.touchTooltip.detach();
+    this.requestUpdate();
   }
 
   private updateTooltipPosition(): void {

@@ -126,6 +126,57 @@ type serviceState struct {
 	pending *startRequest
 	// proc is the launch or child process phase; nil means neither exists.
 	proc procPhase
+	// slot says whether the plugin owns one of the MaxSupervisedServices slots, and who claimed it.
+	slot slotState
+}
+
+// slotState says whether this plugin owns one of the MaxSupervisedServices slots, and who claimed it.
+//
+// slotReservedByReconcile and slotHeld must stay distinct: Reconcile reserves a slot in admission order before any
+// Start; only an unclaimed reservation may be given back by takeUnstartedReservationLocked. The reverted first
+// TASK-48 attempt released a slot that an admitted launch had already claimed.
+type slotState uint8
+
+const (
+	// slotNone means no slot.
+	slotNone slotState = iota
+	// slotReservedByReconcile means Reconcile took the slot and Start has not claimed it; proc is nil.
+	slotReservedByReconcile
+	// slotHeld means Start claimed the slot; proc may be nil, launching, started or registered.
+	slotHeld
+)
+
+func (s slotState) String() string {
+	switch s {
+	case slotNone:
+		return "none"
+	case slotReservedByReconcile:
+		return "reserved"
+	case slotHeld:
+		return "held"
+	default:
+		return fmt.Sprintf("slotState(%d)", uint8(s))
+	}
+}
+
+// claimSlot turns a reservation into a held slot. A record without a slot stays without one: claiming never
+// takes a slot, only acquireServiceSlotLocked does.
+func (s *serviceState) claimSlot() {
+	if s.slot == slotReservedByReconcile {
+		s.slot = slotHeld
+	}
+}
+
+// setReservation marks a held slot as reserved by Reconcile, or as claimed by Start. It requires a slot: on
+// slotNone it would create one without counting it in Supervisor.reservedServices.
+func (s *serviceState) setReservation(reserved bool) {
+	if reserved {
+		s.slot = slotReservedByReconcile
+
+		return
+	}
+
+	s.slot = slotHeld
 }
 
 // procPhase is a sealed sum type: nil means no launch and no process, otherwise exactly one phase.
@@ -201,13 +252,11 @@ type pluginRecord struct {
 	service    *serviceState
 	transition *transitionState
 
-	serviceHeld        bool
-	reservationPending bool
-	startupQueued      bool
-	startupSeq         uint64
-	retryTimer         *time.Timer
-	retryGen           uint64
-	sockets            map[socketCloser]struct{}
+	startupQueued bool
+	startupSeq    uint64
+	retryTimer    *time.Timer
+	retryGen      uint64
+	sockets       map[socketCloser]struct{}
 }
 
 // pendingRequest reads through a possibly absent service: a record without one has no pending start.
@@ -226,6 +275,15 @@ func (r *pluginRecord) phase() procPhase {
 	}
 
 	return r.service.proc
+}
+
+// slot reads through a possibly absent service: a record without one has no slot.
+func (r *pluginRecord) slot() slotState {
+	if r.service == nil {
+		return slotNone
+	}
+
+	return r.service.slot
 }
 
 func (cfg SupervisorConfig) withDefaults() SupervisorConfig {
@@ -346,8 +404,9 @@ func (s *Supervisor) ensureServiceRecordLocked(pluginID string) *pluginRecord {
 	return record
 }
 
+// acquireServiceSlotLocked requires record.service.
 func (s *Supervisor) acquireServiceSlotLocked(record *pluginRecord) bool {
-	if record.serviceHeld {
+	if record.service.slot != slotNone {
 		return true
 	}
 
@@ -355,18 +414,19 @@ func (s *Supervisor) acquireServiceSlotLocked(record *pluginRecord) bool {
 		return false
 	}
 
-	record.serviceHeld = true
+	record.service.slot = slotHeld
 	s.reservedServices++
 
 	return true
 }
 
+// releaseServiceSlotLocked requires record.service.
 func (s *Supervisor) releaseServiceSlotLocked(record *pluginRecord) bool {
-	if !record.serviceHeld || record.phase() != nil {
+	if record.service.slot == slotNone || record.service.proc != nil {
 		return false
 	}
 
-	record.serviceHeld = false
+	record.service.slot = slotNone
 	s.reservedServices--
 
 	return true
@@ -505,7 +565,6 @@ func (s *Supervisor) prunePluginRecordLocked(pluginID string) {
 	record := s.plugins[pluginID]
 
 	if record == nil || record.desired != nil || record.service != nil || record.transition != nil ||
-		record.serviceHeld || record.reservationPending ||
 		record.startupQueued || record.pendingRequest() != nil || record.retryTimer != nil || len(record.sockets) > 0 {
 		return
 	}
@@ -1238,7 +1297,7 @@ func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) reconci
 		}
 
 		if transitionRecord.transition.intent == IntentStop {
-			if service != nil && (service.service.status.State != StateStopped || service.serviceHeld) {
+			if service != nil && (service.service.status.State != StateStopped || service.service.slot != slotNone) {
 				plan.stopIDs = append(plan.stopIDs, spec.PluginID)
 			}
 
@@ -1317,9 +1376,9 @@ func (s *Supervisor) reserveForReconcileLocked(spec ServiceSpec) bool {
 		return true
 	}
 
-	if record.serviceHeld {
+	if record.service.slot != slotNone {
 		if record.service.status.State == StateCapacityBlocked {
-			record.reservationPending = record.service.process() == nil
+			record.service.setReservation(record.service.process() == nil)
 		}
 
 		return true
@@ -1335,7 +1394,7 @@ func (s *Supervisor) reserveForReconcileLocked(spec ServiceSpec) bool {
 		return false
 	}
 
-	record.reservationPending = record.service.status.State == StateStopped || record.service.status.State == StateCapacityBlocked
+	record.service.setReservation(record.service.status.State == StateStopped || record.service.status.State == StateCapacityBlocked)
 
 	return true
 }
@@ -1411,7 +1470,7 @@ func (s *Supervisor) planStartLocked(spec ServiceSpec, paths RuntimePaths) start
 	if !compatible {
 		unsupported := fmt.Errorf("unsupported service protocol %d", spec.ProtocolVersion)
 
-		if record.service.proc != nil || record.serviceHeld {
+		if record.service.proc != nil || record.service.slot != slotNone {
 			return startPlan{record: record, action: startStopIncompatible, err: unsupported}
 		}
 
@@ -1444,10 +1503,9 @@ func (s *Supervisor) planStartLocked(spec ServiceSpec, paths RuntimePaths) start
 		return startPlan{action: startNoop}
 	}
 
-	if !previousSpec.Equal(spec) && record.serviceHeld {
+	if !previousSpec.Equal(spec) && record.service.slot != slotNone {
 		s.releaseServiceSlotLocked(record)
 
-		record.reservationPending = false
 		record.service.status.State = StateStopped
 		record.service.status.NextAttemptAt = nil
 	}
@@ -1466,7 +1524,7 @@ func (s *Supervisor) planStartLocked(spec ServiceSpec, paths RuntimePaths) start
 		return startPlan{action: startNoop, err: fmt.Errorf("service is in backoff until %s", record.service.status.NextAttemptAt.Format(time.RFC3339))}
 	}
 
-	record.reservationPending = false
+	record.service.claimSlot()
 
 	s.clearPendingStartLocked(record)
 
@@ -1653,7 +1711,7 @@ func (s *Supervisor) beginServiceLaunch(run *operationRun, record *pluginRecord)
 	defer s.unlock()
 
 	if !s.isCurrentLocked(run) || run.ctx.Err() != nil || s.shuttingDown || s.lifetimeCtx.Err() != nil ||
-		s.plugins[run.name] != record || record.service == nil || record.service.proc != nil || !record.serviceHeld ||
+		s.plugins[run.name] != record || record.service == nil || record.service.proc != nil || record.service.slot == slotNone ||
 		record.service.stop != nil {
 		return nil, false
 	}
@@ -1915,9 +1973,8 @@ func (s *Supervisor) observeProcessExit(pluginID string, process *registeredProc
 
 		record.service.status.State = StateStopped
 		record.service.status.NextAttemptAt = nil
-		record.reservationPending = false
 
-		if record.serviceHeld {
+		if record.service.slot != slotNone {
 			s.releaseServiceSlotLocked(record)
 
 			shouldPromote = true
@@ -2158,10 +2215,9 @@ func (s *Supervisor) settleLocked(pluginID string) func() {
 		return nil
 	}
 
-	if !record.service.spec.Equal(spec) && record.serviceHeld {
+	if !record.service.spec.Equal(spec) && record.service.slot != slotNone {
 		s.releaseServiceSlotLocked(record)
 
-		record.reservationPending = false
 		record.service.status.State = StateStopped
 		record.service.status.NextAttemptAt = nil
 	}
@@ -2198,13 +2254,11 @@ func (s *Supervisor) takeUnstartedReservationLocked(run *operationRun) bool {
 
 	record := s.serviceRecordLocked(run.name)
 
-	if record == nil || record.service.proc != nil || !record.reservationPending || !record.serviceHeld {
+	if record == nil || record.service.proc != nil || record.service.slot != slotReservedByReconcile {
 		return false
 	}
 
 	s.releaseServiceSlotLocked(record)
-
-	record.reservationPending = false
 
 	if record.service.status.State == StateCapacityBlocked {
 		record.service.status.State = StateStopped
@@ -2238,7 +2292,8 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseRe
 
 			if releaseReservation {
 				record.service.status = RuntimeStatus{State: StateStopped, RestartCount: restartCount}
-				record.reservationPending = false
+
+				record.service.claimSlot()
 			}
 
 			s.unlock()
@@ -2258,7 +2313,8 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseRe
 				stop.releaseSlot = true
 				restartCount := record.service.status.RestartCount
 				record.service.status = RuntimeStatus{State: StateStopped, RestartCount: restartCount}
-				record.reservationPending = false
+
+				record.service.claimSlot()
 			}
 
 			s.unlock()
@@ -2280,7 +2336,8 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseRe
 
 		if releaseReservation {
 			record.service.status = RuntimeStatus{State: StateStopped, RestartCount: restartCount}
-			record.reservationPending = false
+
+			record.service.claimSlot()
 		}
 
 		s.unlock()
@@ -2385,7 +2442,7 @@ func (s *Supervisor) finishStop(
 	if releaseSlot {
 		s.releaseServiceSlotLocked(record)
 
-		record.reservationPending = false
+		record.service.claimSlot()
 	}
 
 	stop.err = stopErr
@@ -2446,7 +2503,7 @@ func (s *Supervisor) promoteBlocked() {
 		record := s.serviceRecordLocked(spec.PluginID)
 		transitionRecord := s.transitionRecordLocked(spec.PluginID)
 
-		if plugin == nil || plugin.desired == nil || !plugin.desired.Equal(spec) || record == nil || record.serviceHeld ||
+		if plugin == nil || plugin.desired == nil || !plugin.desired.Equal(spec) || record == nil || record.service.slot != slotNone ||
 			record.service.status.State != StateCapacityBlocked || transitionRecord == nil ||
 			transitionRecord.transition.operation != OpNone || transitionRecord.transition.intent != IntentRun {
 			continue

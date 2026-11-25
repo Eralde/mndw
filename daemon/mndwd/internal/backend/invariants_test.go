@@ -218,20 +218,11 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			},
 		},
 		{
-			name:       "I3 pending reservation requires a held slot without a process",
-			wantID:     "I3",
-			wantPlugin: "demo",
-			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.reservationPending = true
-			},
-		},
-		{
 			name:       "I3 pending reservation has a launch",
 			wantID:     "I3",
 			wantPlugin: "demo",
 			configure: func(s *Supervisor, record *pluginRecord) {
-				record.reservationPending = true
-				record.serviceHeld = true
+				record.service.slot = slotReservedByReconcile
 				record.service.proc = procLaunching{launch: &launchIdentity{}}
 				s.reservedServices = 1
 			},
@@ -241,8 +232,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantID:     "I3",
 			wantPlugin: "demo",
 			configure: func(s *Supervisor, record *pluginRecord) {
-				record.reservationPending = true
-				record.serviceHeld = true
+				record.service.slot = slotReservedByReconcile
 				record.service.proc = procStarted{process: &registeredProcess{}}
 				s.reservedServices = 1
 			},
@@ -277,17 +267,6 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 				desired := ServiceSpec{PluginID: "demo", Enabled: true}
 				record.desired = &desired
 				record.retryTimer = time.NewTimer(time.Hour)
-			},
-		},
-		{
-			name:       "I8 absent service has no held slot",
-			wantID:     "I8",
-			wantPlugin: "demo",
-			configure: func(s *Supervisor, record *pluginRecord) {
-				record.service = nil
-				record.serviceHeld = true
-				record.reservationPending = true
-				s.reservedServices = 1
 			},
 		},
 		{
@@ -342,7 +321,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			configure: func(s *Supervisor, record *pluginRecord) {
 				record.service.status.State = StateReady
 				record.service.proc = procStarted{process: &registeredProcess{}}
-				record.serviceHeld = true
+				record.service.slot = slotHeld
 				s.reservedServices = 1
 			},
 		},
@@ -371,7 +350,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			configure: func(s *Supervisor, record *pluginRecord) {
 				record.service.stop = &stopState{done: make(chan struct{})}
 				record.service.proc = procLaunching{launch: &launchIdentity{}}
-				record.serviceHeld = true
+				record.service.slot = slotHeld
 				s.reservedServices = 1
 			},
 		},
@@ -425,7 +404,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 				record.desired = &spec
 				record.transition = &transitionState{}
 				record.transition.intent = IntentRun
-				record.serviceHeld = true
+				record.service.slot = slotHeld
 				record.service.pending = &startRequest{}
 				record.service.status.State = StateCapacityBlocked
 				s.reservedServices = 1
@@ -444,8 +423,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 				for index := 0; index < s.reservedServices; index++ {
 					pluginID := fmt.Sprintf("slot-%d", index)
 					s.plugins[pluginID] = &pluginRecord{
-						service:     &serviceState{pending: &startRequest{}},
-						serviceHeld: true,
+						service: &serviceState{pending: &startRequest{}, slot: slotHeld},
 					}
 				}
 			},
@@ -510,14 +488,14 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantID:     "I14",
 			wantPlugin: "demo",
 			configure: func(s *Supervisor, record *pluginRecord) {
-				record.serviceHeld = true
+				record.service.slot = slotHeld
 				s.reservedServices = 1
 			},
 		},
 		{
 			name: "I14 held slot can be stopping",
 			configure: func(s *Supervisor, record *pluginRecord) {
-				record.serviceHeld = true
+				record.service.slot = slotHeld
 				record.service.stop = &stopState{done: make(chan struct{})}
 				s.reservedServices = 1
 			},
@@ -525,7 +503,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 		{
 			name: "I14 held slot can have a pending start",
 			configure: func(s *Supervisor, record *pluginRecord) {
-				record.serviceHeld = true
+				record.service.slot = slotHeld
 				record.service.pending = &startRequest{}
 				s.reservedServices = 1
 			},
@@ -533,7 +511,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 		{
 			name: "I14 held slot can have a queued startup",
 			configure: func(s *Supervisor, record *pluginRecord) {
-				record.serviceHeld = true
+				record.service.slot = slotHeld
 				record.startupQueued = true
 				s.reservedServices = 1
 			},
@@ -541,7 +519,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 		{
 			name: "I14 held slot can be in backoff",
 			configure: func(s *Supervisor, record *pluginRecord) {
-				record.serviceHeld = true
+				record.service.slot = slotHeld
 				record.service.status.State = StateBackoff
 				s.reservedServices = 1
 			},
@@ -549,7 +527,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 		{
 			name: "I14 held slot can be failed",
 			configure: func(s *Supervisor, record *pluginRecord) {
-				record.serviceHeld = true
+				record.service.slot = slotHeld
 				record.service.status.State = StateFailed
 				s.reservedServices = 1
 			},
@@ -557,7 +535,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 		{
 			name: "I14 held slot can belong to an active run",
 			configure: func(s *Supervisor, record *pluginRecord) {
-				record.serviceHeld = true
+				record.service.slot = slotHeld
 				record.transition = &transitionState{}
 				record.transition.operation = OpStarting
 				record.transition.run = &operationRun{}
@@ -925,7 +903,7 @@ func TestInvariantViolationRecordsSites(t *testing.T) {
 
 	fixture.mu.Lock()
 
-	fixture.plugins["demo"].reservationPending = true
+	reserveStartedProcessLockedForTest(fixture, fixture.plugins["demo"])
 
 	fixture.unlock()
 
@@ -973,7 +951,8 @@ func TestInvariantViolationRecordsSites(t *testing.T) {
 	declared.mu.Lock()
 
 	declared.plugins["demo"].service.status.State = StateReady
-	declared.plugins["demo"].reservationPending = true
+
+	reserveStartedProcessLockedForTest(declared, declared.plugins["demo"])
 
 	declared.unlock()
 
@@ -1032,7 +1011,7 @@ func TestMarkInvariantFixtureForTestFiltersIDs(t *testing.T) {
 
 			s.ensureServiceRecordLocked("demo")
 
-			record.serviceHeld = true
+			record.service.slot = slotHeld
 			record.service.status.State = StateReady
 			s.reservedServices = 1
 
@@ -1066,9 +1045,17 @@ func TestMarkInvariantFixtureForTestFiltersIDs(t *testing.T) {
 func breakReservationForTest(s *Supervisor) {
 	s.mu.Lock()
 
-	s.ensurePluginRecordLocked("demo").reservationPending = true
+	reserveStartedProcessLockedForTest(s, s.ensureServiceRecordLocked("demo"))
 
 	s.unlock()
+}
+
+// reserveStartedProcessLockedForTest writes an I3 violation: a Reconcile reservation that owns a process. The
+// invariant tests that use it check how violations are recorded, not the I3 rule.
+func reserveStartedProcessLockedForTest(s *Supervisor, record *pluginRecord) {
+	record.service.slot = slotReservedByReconcile
+	record.service.proc = procStarted{process: &registeredProcess{}}
+	s.reservedServices = 1
 }
 
 func invariantRecordsForTest(s *Supervisor) []invariantRecord {

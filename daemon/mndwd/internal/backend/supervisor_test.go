@@ -164,6 +164,30 @@ func TestReconcileReleasesReservedSlotWhenStartupIsSupersededOrRemoved(t *testin
 	}
 }
 
+func TestClaimSlotKeepsNoSlot(t *testing.T) {
+	tests := []struct {
+		name string
+		from slotState
+		want slotState
+	}{
+		{name: "none stays none", from: slotNone, want: slotNone},
+		{name: "reservation becomes held", from: slotReservedByReconcile, want: slotHeld},
+		{name: "held stays held", from: slotHeld, want: slotHeld},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			service := &serviceState{slot: test.from}
+
+			service.claimSlot()
+
+			if service.slot != test.want {
+				t.Errorf("slot after claimSlot = %s, want %s", service.slot, test.want)
+			}
+		})
+	}
+}
+
 func TestServiceSpecEqual(t *testing.T) {
 	base := ServiceSpec{
 		PluginID:         "svc",

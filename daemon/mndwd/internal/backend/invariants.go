@@ -309,19 +309,19 @@ func invariantPhaseName(phase procPhase) string {
 }
 
 func checkInvariantI2(pluginID string, record *pluginRecord) (invariantViolation, bool) {
-	if record.phase() == nil || record.serviceHeld {
+	if record.phase() == nil || record.slot() != slotNone {
 		return invariantViolation{}, false
 	}
 
 	return invariantViolation{
 		ID:       invI2,
 		PluginID: pluginID,
-		Detail:   fmt.Sprintf("proc=%s serviceHeld=%t", invariantPhaseName(record.phase()), record.serviceHeld),
+		Detail:   fmt.Sprintf("proc=%s slot=%s", invariantPhaseName(record.phase()), record.slot()),
 	}, true
 }
 
 func checkInvariantI3(pluginID string, record *pluginRecord) (invariantViolation, bool) {
-	if !record.reservationPending || (record.serviceHeld && record.phase() == nil) {
+	if record.slot() != slotReservedByReconcile || record.phase() == nil {
 		return invariantViolation{}, false
 	}
 
@@ -329,9 +329,8 @@ func checkInvariantI3(pluginID string, record *pluginRecord) (invariantViolation
 		ID:       invI3,
 		PluginID: pluginID,
 		Detail: fmt.Sprintf(
-			"reservationPending=%t serviceHeld=%t proc=%s",
-			record.reservationPending,
-			record.serviceHeld,
+			"slot=%s proc=%s",
+			record.slot(),
 			invariantPhaseName(record.phase()),
 		),
 	}, true
@@ -352,26 +351,26 @@ func checkInvariantI4(pluginID string, record *pluginRecord) (invariantViolation
 }
 
 func checkInvariantI7(s *Supervisor) (invariantViolation, bool) {
-	serviceHeld := 0
+	slotRecords := 0
 
 	for _, record := range s.plugins {
-		if record != nil && record.serviceHeld {
-			serviceHeld++
+		if record != nil && record.slot() != slotNone {
+			slotRecords++
 		}
 	}
 
-	if s.reservedServices == serviceHeld {
+	if s.reservedServices == slotRecords {
 		return invariantViolation{}, false
 	}
 
 	return invariantViolation{
 		ID:     invI7,
-		Detail: fmt.Sprintf("reservedServices=%d serviceHeldRecords=%d", s.reservedServices, serviceHeld),
+		Detail: fmt.Sprintf("reservedServices=%d slotRecords=%d", s.reservedServices, slotRecords),
 	}, true
 }
 
 func checkInvariantI8(pluginID string, record *pluginRecord) (invariantViolation, bool) {
-	if record.service != nil || (record.retryTimer == nil && !record.serviceHeld && !record.startupQueued) {
+	if record.service != nil || (record.retryTimer == nil && !record.startupQueued) {
 		return invariantViolation{}, false
 	}
 
@@ -379,10 +378,9 @@ func checkInvariantI8(pluginID string, record *pluginRecord) (invariantViolation
 		ID:       invI8,
 		PluginID: pluginID,
 		Detail: fmt.Sprintf(
-			"service=%t retryTimer=%t serviceHeld=%t startupQueued=%t",
+			"service=%t retryTimer=%t startupQueued=%t",
 			record.service != nil,
 			record.retryTimer != nil,
-			record.serviceHeld,
 			record.startupQueued,
 		),
 	}, true
@@ -466,7 +464,7 @@ func checkInvariantI13(pluginID string, record *pluginRecord, reservedServices i
 	stop := record.service != nil && record.service.stop != nil
 
 	if status.State != StateCapacityBlocked || record.service == nil || record.desired == nil ||
-		!record.desired.Enabled || record.serviceHeld || stop || transition == nil ||
+		!record.desired.Enabled || record.slot() != slotNone || stop || transition == nil ||
 		transition.operation != OpNone || transition.intent != IntentRun {
 		return invariantViolation{}, false
 	}
@@ -475,13 +473,13 @@ func checkInvariantI13(pluginID string, record *pluginRecord, reservedServices i
 		ID:       invI13,
 		PluginID: pluginID,
 		Detail: fmt.Sprintf(
-			"reservedServices=%d maxSupervisedServices=%d status.State=%q service=%t desired.Enabled=%t serviceHeld=%t stop=%t transition=%t operation=%d intent=%d",
+			"reservedServices=%d maxSupervisedServices=%d status.State=%q service=%t desired.Enabled=%t slot=%s stop=%t transition=%t operation=%d intent=%d",
 			reservedServices,
 			maxServices,
 			status.State,
 			record.service != nil,
 			record.desired.Enabled,
-			record.serviceHeld,
+			record.slot(),
 			stop,
 			transition != nil,
 			transition.operation,
@@ -501,7 +499,7 @@ func checkInvariantI14(pluginID string, record *pluginRecord) (invariantViolatio
 	stop := record.service != nil && record.service.stop != nil
 	pending := record.pendingRequest() != nil
 
-	if !record.serviceHeld || record.reservationPending || record.phase() != nil ||
+	if record.slot() != slotHeld || record.phase() != nil ||
 		stop || pending || record.startupQueued || status.State == StateBackoff ||
 		status.State == StateFailed || activeRun {
 		return invariantViolation{}, false
@@ -511,9 +509,8 @@ func checkInvariantI14(pluginID string, record *pluginRecord) (invariantViolatio
 		ID:       invI14,
 		PluginID: pluginID,
 		Detail: fmt.Sprintf(
-			"serviceHeld=%t reservationPending=%t proc=%s stop=%t pending=%t startupQueued=%t status.State=%q activeRun=%t",
-			record.serviceHeld,
-			record.reservationPending,
+			"slot=%s proc=%s stop=%t pending=%t startupQueued=%t status.State=%q activeRun=%t",
+			record.slot(),
 			invariantPhaseName(record.phase()),
 			stop,
 			pending,

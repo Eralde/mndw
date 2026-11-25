@@ -200,8 +200,8 @@ func (s *Supervisor) pluginSnapshotLocked(name string) pluginSnapshot {
 	if record := s.serviceRecordLocked(name); record != nil {
 		snapshot.servicePresent = true
 		snapshot.status = cloneRuntimeStatus(record.service.status)
-		snapshot.serviceSlotHeld = record.serviceHeld
-		snapshot.reservationPending = record.reservationPending
+		snapshot.serviceSlotHeld = record.service.slot != slotNone
+		snapshot.reservationPending = record.service.slot == slotReservedByReconcile
 		snapshot.startupQueued = record.startupQueued
 		snapshot.startupSeq = record.startupSeq
 		snapshot.pendingStart = record.service.pending != nil
@@ -292,17 +292,24 @@ func setSupervisorServiceRecordLockedForTest(s *Supervisor, pluginID string, fix
 	record.service.paths = fixture.paths
 	record.service.status = fixture.status
 
-	if fixture.serviceHeld && !record.serviceHeld {
+	if fixture.serviceHeld && record.service.slot == slotNone {
 		if !s.acquireServiceSlotLocked(record) {
 			panic("test service slot exceeds configured capacity")
 		}
-	} else if !fixture.serviceHeld && record.serviceHeld {
+	} else if !fixture.serviceHeld && record.service.slot != slotNone {
 		record.service.proc = nil
 
 		s.releaseServiceSlotLocked(record)
 	}
 
-	record.reservationPending = fixture.reservationPending
+	if fixture.reservationPending && !fixture.serviceHeld {
+		panic("test fixture sets reservationPending without serviceHeld; slotState cannot hold it")
+	}
+
+	if fixture.serviceHeld {
+		record.service.setReservation(fixture.reservationPending)
+	}
+
 	record.service.proc = nil
 
 	if fixture.done != nil {
@@ -399,12 +406,11 @@ func resetSupervisorServicesForTest(s *Supervisor) {
 	for pluginID, record := range s.plugins {
 		if record.service != nil {
 			record.service.proc = nil
+
+			s.releaseServiceSlotLocked(record)
 		}
 
-		s.releaseServiceSlotLocked(record)
-
 		record.service = nil
-		record.reservationPending = false
 
 		s.clearPendingStartLocked(record)
 
@@ -429,7 +435,7 @@ func assertSupervisorServiceSlotsInvariantForTest(t *testing.T, s *Supervisor) {
 	held := 0
 
 	for _, record := range s.plugins {
-		if record.serviceHeld {
+		if record.slot() != slotNone {
 			held++
 		}
 	}

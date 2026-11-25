@@ -1333,7 +1333,7 @@ func TestReconcileChangedSpecRestartsExistingService(t *testing.T) {
 		status: RuntimeStatus{State: StateReady},
 	}, &transition{intent: IntentRun, operation: OpNone})
 	declareInvariantFixtureForTest(runtime.supervisor, plugin.Name, invI14,
-		"Ready seed has no process; Reconcile acquires slot without reservationPending")
+		"Ready seed has no process; Reconcile acquires a held slot without a reservation")
 
 	runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
 	waitForLifecycleAttempt(t, runtime, plugin.Name)

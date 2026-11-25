@@ -1119,7 +1119,7 @@ func TestOldProcessExitCannotMutateNewRegisteredProcess(t *testing.T) {
 	seedRegisteredServiceForTest(runtime.supervisor, spec, RuntimeStatus{State: StateReady}, oldCommand, oldExit)
 
 	oldRecord := supervisorServiceForTest(runtime.supervisor, spec.PluginID)
-	oldProcess := oldRecord.process
+	oldProcess := oldRecord.service.process()
 	newCommand := &exec.Cmd{}
 	newExit := newProcessExit()
 
@@ -1127,7 +1127,7 @@ func TestOldProcessExitCannotMutateNewRegisteredProcess(t *testing.T) {
 
 	currentBeforeExit := supervisorServiceForTest(runtime.supervisor, spec.PluginID)
 
-	if currentBeforeExit.process == nil || currentBeforeExit.process.id <= oldProcess.id {
+	if currentBeforeExit.service.process() == nil || currentBeforeExit.service.process().id <= oldProcess.id {
 		t.Fatal("new registered process did not receive a newer immutable identity")
 	}
 
@@ -1135,7 +1135,8 @@ func TestOldProcessExitCannotMutateNewRegisteredProcess(t *testing.T) {
 
 	current := supervisorServiceForTest(runtime.supervisor, spec.PluginID)
 
-	if current.process == nil || current.process.command != newCommand || current.process.exit != newExit {
+	if current.service.process() == nil || current.service.process().command != newCommand ||
+		current.service.process().exit != newExit {
 		t.Fatal("old process exit replaced the current process identity")
 	}
 

@@ -11,11 +11,11 @@ import (
 type invariantID string
 
 const (
-	invI1  invariantID = "I1"
+	invI1  invariantID = "I1" // type guarantee since step 5
 	invI2  invariantID = "I2"
 	invI3  invariantID = "I3"
 	invI4  invariantID = "I4"
-	invI5  invariantID = "I5"
+	invI5  invariantID = "I5" // type guarantee since step 5
 	invI6  invariantID = "I6" // type guarantee since step 4
 	invI7  invariantID = "I7"
 	invI8  invariantID = "I8"
@@ -36,11 +36,9 @@ const (
 )
 
 var invariantModes = map[invariantID]invariantMode{
-	invI1:  invariantEnforced,
 	invI2:  invariantEnforced,
 	invI3:  invariantEnforced,
 	invI4:  invariantEnforced,
-	invI5:  invariantEnforced,
 	invI7:  invariantEnforced,
 	invI8:  invariantEnforced,
 	invI9:  invariantEnforced,
@@ -244,10 +242,6 @@ func (s *Supervisor) checkInvariantsLocked() []invariantViolation {
 			continue
 		}
 
-		if violation, ok := checkInvariantI1(pluginID, record); ok {
-			violations = append(violations, violation)
-		}
-
 		if violation, ok := checkInvariantI2(pluginID, record); ok {
 			violations = append(violations, violation)
 		}
@@ -257,10 +251,6 @@ func (s *Supervisor) checkInvariantsLocked() []invariantViolation {
 		}
 
 		if violation, ok := checkInvariantI4(pluginID, record); ok {
-			violations = append(violations, violation)
-		}
-
-		if violation, ok := checkInvariantI5(pluginID, record); ok {
 			violations = append(violations, violation)
 		}
 
@@ -304,28 +294,34 @@ func (s *Supervisor) checkInvariantsLocked() []invariantViolation {
 	return violations
 }
 
-func checkInvariantI1(pluginID string, record *pluginRecord) (invariantViolation, bool) {
-	if record.launch == nil || record.process == nil {
-		return invariantViolation{}, false
+// invariantPhaseName names the process phase for violation details.
+func invariantPhaseName(phase procPhase) string {
+	switch phase.(type) {
+	case procLaunching:
+		return "launching"
+	case procStarted:
+		return "started"
+	case procRegistered:
+		return "registered"
+	default:
+		return "none"
 	}
-
-	return invariantViolation{ID: invI1, PluginID: pluginID, Detail: "launch=true process=true"}, true
 }
 
 func checkInvariantI2(pluginID string, record *pluginRecord) (invariantViolation, bool) {
-	if (record.launch == nil && record.process == nil) || record.serviceHeld {
+	if record.phase() == nil || record.serviceHeld {
 		return invariantViolation{}, false
 	}
 
 	return invariantViolation{
 		ID:       invI2,
 		PluginID: pluginID,
-		Detail:   fmt.Sprintf("launch=%t process=%t serviceHeld=%t", record.launch != nil, record.process != nil, record.serviceHeld),
+		Detail:   fmt.Sprintf("proc=%s serviceHeld=%t", invariantPhaseName(record.phase()), record.serviceHeld),
 	}, true
 }
 
 func checkInvariantI3(pluginID string, record *pluginRecord) (invariantViolation, bool) {
-	if !record.reservationPending || (record.serviceHeld && record.launch == nil && record.process == nil) {
+	if !record.reservationPending || (record.serviceHeld && record.phase() == nil) {
 		return invariantViolation{}, false
 	}
 
@@ -333,11 +329,10 @@ func checkInvariantI3(pluginID string, record *pluginRecord) (invariantViolation
 		ID:       invI3,
 		PluginID: pluginID,
 		Detail: fmt.Sprintf(
-			"reservationPending=%t serviceHeld=%t launch=%t process=%t",
+			"reservationPending=%t serviceHeld=%t proc=%s",
 			record.reservationPending,
 			record.serviceHeld,
-			record.launch != nil,
-			record.process != nil,
+			invariantPhaseName(record.phase()),
 		),
 	}, true
 }
@@ -354,14 +349,6 @@ func checkInvariantI4(pluginID string, record *pluginRecord) (invariantViolation
 		PluginID: pluginID,
 		Detail:   fmt.Sprintf("stop=%t done=%t", stop, record.service.stop.done != nil),
 	}, true
-}
-
-func checkInvariantI5(pluginID string, record *pluginRecord) (invariantViolation, bool) {
-	if !record.processRegistered || record.process != nil {
-		return invariantViolation{}, false
-	}
-
-	return invariantViolation{ID: invI5, PluginID: pluginID, Detail: "processRegistered=true process=false"}, true
 }
 
 func checkInvariantI7(s *Supervisor) (invariantViolation, bool) {
@@ -384,8 +371,7 @@ func checkInvariantI7(s *Supervisor) (invariantViolation, bool) {
 }
 
 func checkInvariantI8(pluginID string, record *pluginRecord) (invariantViolation, bool) {
-	if record.service != nil || (record.launch == nil && record.process == nil && record.retryTimer == nil &&
-		!record.serviceHeld && !record.startupQueued) {
+	if record.service != nil || (record.retryTimer == nil && !record.serviceHeld && !record.startupQueued) {
 		return invariantViolation{}, false
 	}
 
@@ -393,10 +379,8 @@ func checkInvariantI8(pluginID string, record *pluginRecord) (invariantViolation
 		ID:       invI8,
 		PluginID: pluginID,
 		Detail: fmt.Sprintf(
-			"service=%t launch=%t process=%t retryTimer=%t serviceHeld=%t startupQueued=%t",
+			"service=%t retryTimer=%t serviceHeld=%t startupQueued=%t",
 			record.service != nil,
-			record.launch != nil,
-			record.process != nil,
 			record.retryTimer != nil,
 			record.serviceHeld,
 			record.startupQueued,
@@ -432,14 +416,16 @@ func checkInvariantI10(pluginID string, record *pluginRecord) (invariantViolatio
 		status = record.service.status
 	}
 
-	if status.State != StateReady || (record.process != nil && record.processRegistered) {
+	registered := record.service != nil && record.service.process() != nil && record.service.registered()
+
+	if status.State != StateReady || registered {
 		return invariantViolation{}, false
 	}
 
 	return invariantViolation{
 		ID:       invI10,
 		PluginID: pluginID,
-		Detail:   fmt.Sprintf("status.State=%q process=%t processRegistered=%t", status.State, record.process != nil, record.processRegistered),
+		Detail:   fmt.Sprintf("status.State=%q proc=%s", status.State, invariantPhaseName(record.phase())),
 	}, true
 }
 
@@ -460,11 +446,11 @@ func checkInvariantI11(pluginID string, record *pluginRecord) (invariantViolatio
 func checkInvariantI12(pluginID string, record *pluginRecord) (invariantViolation, bool) {
 	stop := record.service != nil && record.service.stop != nil
 
-	if !stop || record.launch == nil {
+	if !stop || record.service.launching() == nil {
 		return invariantViolation{}, false
 	}
 
-	return invariantViolation{ID: invI12, PluginID: pluginID, Detail: "stop=true launch=true"}, true
+	return invariantViolation{ID: invI12, PluginID: pluginID, Detail: "stop=true proc=launching"}, true
 }
 
 func checkInvariantI13(pluginID string, record *pluginRecord, reservedServices int, maxServices int) (invariantViolation, bool) {
@@ -515,7 +501,7 @@ func checkInvariantI14(pluginID string, record *pluginRecord) (invariantViolatio
 	stop := record.service != nil && record.service.stop != nil
 	pending := record.pendingRequest() != nil
 
-	if !record.serviceHeld || record.reservationPending || record.launch != nil || record.process != nil ||
+	if !record.serviceHeld || record.reservationPending || record.phase() != nil ||
 		stop || pending || record.startupQueued || status.State == StateBackoff ||
 		status.State == StateFailed || activeRun {
 		return invariantViolation{}, false
@@ -525,11 +511,10 @@ func checkInvariantI14(pluginID string, record *pluginRecord) (invariantViolatio
 		ID:       invI14,
 		PluginID: pluginID,
 		Detail: fmt.Sprintf(
-			"serviceHeld=%t reservationPending=%t launch=%t process=%t stop=%t pending=%t startupQueued=%t status.State=%q activeRun=%t",
+			"serviceHeld=%t reservationPending=%t proc=%s stop=%t pending=%t startupQueued=%t status.State=%q activeRun=%t",
 			record.serviceHeld,
 			record.reservationPending,
-			record.launch != nil,
-			record.process != nil,
+			invariantPhaseName(record.phase()),
 			stop,
 			pending,
 			record.startupQueued,

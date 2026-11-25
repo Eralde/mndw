@@ -205,10 +205,10 @@ func (s *Supervisor) pluginSnapshotLocked(name string) pluginSnapshot {
 		snapshot.startupQueued = record.startupQueued
 		snapshot.startupSeq = record.startupSeq
 		snapshot.pendingStart = record.service.pending != nil
-		snapshot.processPresent = record.process != nil
+		snapshot.processPresent = record.service.process() != nil
 
-		if record.process != nil {
-			snapshot.processID = record.process.id
+		if process := record.service.process(); process != nil {
+			snapshot.processID = process.id
 		}
 	}
 
@@ -297,27 +297,22 @@ func setSupervisorServiceRecordLockedForTest(s *Supervisor, pluginID string, fix
 			panic("test service slot exceeds configured capacity")
 		}
 	} else if !fixture.serviceHeld && record.serviceHeld {
-		record.launch = nil
-		record.process = nil
-		record.processRegistered = false
+		record.service.proc = nil
 
 		s.releaseServiceSlotLocked(record)
 	}
 
 	record.reservationPending = fixture.reservationPending
-	record.launch = nil
-	record.process = nil
-	record.processRegistered = false
+	record.service.proc = nil
 
 	if fixture.done != nil {
 		s.nextProcessID++
-		record.process = &registeredProcess{
+		record.service.proc = procRegistered{process: &registeredProcess{
 			id:            s.nextProcessID,
 			runGeneration: s.transitionGenerationLocked(pluginID),
 			command:       fixture.command,
 			exit:          fixture.done,
-		}
-		record.processRegistered = true
+		}}
 	}
 
 	record.service.recentStderr = fixture.stderr
@@ -402,9 +397,9 @@ func resetSupervisorServicesForTest(s *Supervisor) {
 	defer s.unlock()
 
 	for pluginID, record := range s.plugins {
-		record.launch = nil
-		record.process = nil
-		record.processRegistered = false
+		if record.service != nil {
+			record.service.proc = nil
+		}
 
 		s.releaseServiceSlotLocked(record)
 

@@ -879,8 +879,7 @@ func TestPendingStartResumesAfterOperationEnds(t *testing.T) {
 	supervisor.mu.Lock()
 
 	record := supervisor.serviceRecordLocked(spec.PluginID)
-	record.process = nil
-	record.processRegistered = false
+	record.service.proc = nil
 	record.service.stop = nil
 
 	supervisor.unlock()
@@ -927,5 +926,34 @@ func TestPendingStartKeepsItsOwnArgs(t *testing.T) {
 
 	if got != "--old" {
 		t.Fatalf("pending start Args[0] after the caller changed its spec = %q, want %q", got, "--old")
+	}
+}
+
+// Guard for a state that is unreachable today: operation exclusivity keeps a stop and a launch apart. TASK-48 lets a
+// stop be requested during a launch, and from then on beginServiceLaunch itself must refuse while a stop is in progress.
+func TestBeginServiceLaunchRefusesWhileStopping(t *testing.T) {
+	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 1}))
+	spec := enabledSpec("launch-while-stopping")
+
+	seedSupervisorStateForTest(supervisor, spec.PluginID, &spec, &serviceRecord{
+		spec:        spec,
+		status:      RuntimeStatus{State: StateStopped},
+		serviceHeld: true,
+		stop:        &stopState{done: make(chan struct{})},
+	}, &transition{intent: IntentRun})
+
+	operation := supervisor.beginLifecycleOperation(spec.PluginID, OpStarting, IntentRun)
+	record := supervisorServiceForTest(supervisor, spec.PluginID)
+
+	if launch, admitted := supervisor.beginServiceLaunch(operation.token.run, record); admitted || launch != nil {
+		t.Fatalf("beginServiceLaunch during a stop = (%v, %t), want (nil, false)", launch, admitted)
+	}
+
+	supervisor.mu.Lock()
+
+	defer supervisor.unlock()
+
+	if record.service.proc != nil {
+		t.Fatalf("process phase after the refused launch = %T, want none", record.service.proc)
 	}
 }

@@ -202,23 +202,11 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			name: "clean",
 		},
 		{
-			name:       "I1 launch and process do not coexist",
-			wantID:     "I1",
-			wantPlugin: "demo",
-			configure: func(s *Supervisor, record *pluginRecord) {
-				record.launch = &launchIdentity{}
-				record.process = &registeredProcess{}
-				record.processRegistered = true
-				record.serviceHeld = true
-				s.reservedServices = 1
-			},
-		},
-		{
 			name:       "I2 process state requires a held slot",
 			wantID:     "I2",
 			wantPlugin: "demo",
 			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.launch = &launchIdentity{}
+				record.service.proc = procLaunching{launch: &launchIdentity{}}
 			},
 		},
 		{
@@ -226,7 +214,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantID:     "I2",
 			wantPlugin: "demo",
 			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.process = &registeredProcess{}
+				record.service.proc = procStarted{process: &registeredProcess{}}
 			},
 		},
 		{
@@ -244,7 +232,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			configure: func(s *Supervisor, record *pluginRecord) {
 				record.reservationPending = true
 				record.serviceHeld = true
-				record.launch = &launchIdentity{}
+				record.service.proc = procLaunching{launch: &launchIdentity{}}
 				s.reservedServices = 1
 			},
 		},
@@ -255,7 +243,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			configure: func(s *Supervisor, record *pluginRecord) {
 				record.reservationPending = true
 				record.serviceHeld = true
-				record.process = &registeredProcess{}
+				record.service.proc = procStarted{process: &registeredProcess{}}
 				s.reservedServices = 1
 			},
 		},
@@ -274,39 +262,9 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			},
 		},
 		{
-			name:       "I5 registered process exists",
-			wantID:     "I5",
-			wantPlugin: "demo",
-			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.processRegistered = true
-			},
-		},
-		{
 			name:   "I7 reserved service count matches records",
 			wantID: "I7",
 			configure: func(s *Supervisor, _ *pluginRecord) {
-				s.reservedServices = 1
-			},
-		},
-		{
-			name:       "I8 absent service has no runtime ownership",
-			wantID:     "I8",
-			wantPlugin: "demo",
-			configure: func(s *Supervisor, record *pluginRecord) {
-				record.service = nil
-				record.launch = &launchIdentity{}
-				record.serviceHeld = true
-				s.reservedServices = 1
-			},
-		},
-		{
-			name:       "I8 absent service has no process",
-			wantID:     "I8",
-			wantPlugin: "demo",
-			configure: func(s *Supervisor, record *pluginRecord) {
-				record.service = nil
-				record.process = &registeredProcess{}
-				record.serviceHeld = true
 				s.reservedServices = 1
 			},
 		},
@@ -383,7 +341,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantPlugin: "demo",
 			configure: func(s *Supervisor, record *pluginRecord) {
 				record.service.status.State = StateReady
-				record.process = &registeredProcess{}
+				record.service.proc = procStarted{process: &registeredProcess{}}
 				record.serviceHeld = true
 				s.reservedServices = 1
 			},
@@ -412,7 +370,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantPlugin: "demo",
 			configure: func(s *Supervisor, record *pluginRecord) {
 				record.service.stop = &stopState{done: make(chan struct{})}
-				record.launch = &launchIdentity{}
+				record.service.proc = procLaunching{launch: &launchIdentity{}}
 				record.serviceHeld = true
 				s.reservedServices = 1
 			},
@@ -678,12 +636,11 @@ func TestCheckInvariantsSortsByPluginAndPreservesInvariantOrder(t *testing.T) {
 	demo := &pluginRecord{
 		service: &serviceState{
 			spec: ServiceSpec{PluginID: "demo", Enabled: true},
+			proc: procStarted{process: &registeredProcess{}},
 		},
-		process: &registeredProcess{},
 	}
 	alpha := &pluginRecord{
-		serviceHeld: true,
-		launch:      &launchIdentity{},
+		startupQueued: true,
 	}
 
 	s.mu.Lock()
@@ -691,7 +648,6 @@ func TestCheckInvariantsSortsByPluginAndPreservesInvariantOrder(t *testing.T) {
 	s.plugins["demo"] = demo
 	s.plugins["alpha"] = alpha
 	demo.service.status.State = StateReady
-	s.reservedServices = 1
 	got := s.checkInvariantsLocked()
 
 	s.mu.Unlock()

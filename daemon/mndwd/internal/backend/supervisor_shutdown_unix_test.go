@@ -406,7 +406,7 @@ func timeoutTermIgnoringService(t *testing.T, runtime *Runtime, pluginID string)
 
 	record := supervisorServiceForTest(runtime.supervisor, pluginID)
 
-	if record.process == nil || record.service.stop == nil || record.service.stop.done == nil {
+	if record.service.process() == nil || record.service.stop == nil || record.service.stop.done == nil {
 		t.Fatal("timed-out stop did not retain process ownership")
 	}
 
@@ -730,7 +730,7 @@ func TestChangedSpecLifecycleStartSurvivesItsReplacementStop(t *testing.T) {
 
 	record := supervisorServiceForTest(runtime.supervisor, plugin.Name)
 
-	if record.process == nil || record.service.stop == nil || record.service.stop.done == nil {
+	if record.service.process() == nil || record.service.stop == nil || record.service.stop.done == nil {
 		t.Fatal("replacement stop timeout did not retain old process ownership")
 	}
 
@@ -887,7 +887,8 @@ func TestStopProcessLogsUnreapedPID(t *testing.T) {
 
 	current := supervisorServiceForTest(runtime.supervisor, pluginID)
 
-	if current.process == nil || current.process.command != command || current.process.exit != done || current.service.stop == nil {
+	if current.service.process() == nil || current.service.process().command != command ||
+		current.service.process().exit != done || current.service.stop == nil {
 		t.Fatal("timed-out stop released process ownership before exact Wait")
 	}
 

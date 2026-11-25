@@ -1402,6 +1402,10 @@ func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) reconci
 
 			plan.effects = append(plan.effects, effects...)
 
+			if !reserved && service != nil && service.service.stop != nil {
+				s.markPendingStartLocked(service, spec, false)
+			}
+
 			if reserved {
 				plan.startIDs = append(plan.startIDs, spec.PluginID)
 			}

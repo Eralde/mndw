@@ -1612,6 +1612,291 @@ func replaceFixtureForTest(t *testing.T) (
 	return supervisor, started, waiter, changed, done, operation
 }
 
+// timedOutDisableFixtureForTest leaves beta's release stop in flight after its timeout. An optional alpha waiter owns
+// no slot and sorts ahead of beta.
+func timedOutDisableFixtureForTest(t *testing.T, waiter *ServiceSpec) (
+	supervisor *Supervisor,
+	started <-chan string,
+	own ServiceSpec,
+	done *processExit,
+) {
+	t.Helper()
+
+	supervisor, started = newAdmissionSupervisorForTest(t)
+	supervisor.cfg.StopTimeout = 5 * time.Millisecond
+	supervisor.cfg.FinalReapTimeout = 15 * time.Millisecond
+	own = enabledSpec("beta")
+	done = newProcessExit()
+
+	seedRegisteredServiceForTest(supervisor, own, RuntimeStatus{State: StateReady}, nil, done)
+
+	specs := []ServiceSpec{own}
+
+	if waiter != nil {
+		specs = append(specs, *waiter)
+	}
+
+	supervisor.Reconcile(context.Background(), specs)
+
+	disabled := own
+	disabled.Enabled = false
+	disabledSpecs := []ServiceSpec{disabled}
+
+	if waiter != nil {
+		disabledSpecs = append(disabledSpecs, *waiter)
+	}
+
+	if plan := supervisor.Reconcile(context.Background(), disabledSpecs); !containsID(plan.stopIDs, own.PluginID) {
+		t.Fatalf("disable reconcile stop IDs = %#v, want %q", plan.stopIDs, own.PluginID)
+	}
+
+	operation := supervisor.beginLifecycleOperation(own.PluginID, OpStopping, IntentStop)
+
+	if operation.token == nil {
+		t.Fatal("disable lifecycle operation did not begin")
+	}
+
+	stopErr := supervisor.stopServiceForLifecycle(operation.token)
+
+	if stopErr == nil {
+		t.Fatal("disable stop = nil, want the timeout error")
+	}
+
+	supervisor.failLifecycle(operation.token, stopErr)
+
+	return supervisor, started, own, done
+}
+
+func TestReenableDuringTimedOutDisableStartsAtCleanup(t *testing.T) {
+	supervisor, started, own, done := timedOutDisableFixtureForTest(t, nil)
+
+	if plan := supervisor.Reconcile(context.Background(), []ServiceSpec{own}); len(plan.startIDs) != 0 {
+		t.Fatalf("reconcile during the disable stop planned starts = %v, want none", plan.startIDs)
+	}
+
+	if !supervisor.pluginSnapshot(own.PluginID).pendingStart {
+		t.Fatal("reenable during the stop did not leave a pending start")
+	}
+
+	requireNothingStartedForTest(t, supervisor, started)
+	close(done.done)
+	waitForSupervisorStopForTest(t, supervisor, own.PluginID)
+	receiveStartedForTest(t, started, own.PluginID)
+	requireNothingStartedForTest(t, supervisor, started)
+	requireSlotsForTest(t, supervisor, 1, "after the pending start was admitted")
+
+	if !supervisor.pluginSnapshot(own.PluginID).serviceSlotHeld {
+		t.Fatal("reenabled plugin did not own the slot after cleanup")
+	}
+}
+
+func TestReenableDuringTimedOutDisableQueuesBehindEarlierWaiter(t *testing.T) {
+	waiter := enabledSpec("alpha")
+	supervisor, started, own, done := timedOutDisableFixtureForTest(t, &waiter)
+
+	if got := supervisor.Status(waiter.PluginID).State; got != StateCapacityBlocked {
+		t.Fatalf("waiter state before cleanup = %q, want %q", got, StateCapacityBlocked)
+	}
+
+	if plan := supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, own}); len(plan.startIDs) != 0 {
+		t.Fatalf("reconcile during the disable stop planned starts = %v, want none", plan.startIDs)
+	}
+
+	if !supervisor.pluginSnapshot(own.PluginID).pendingStart {
+		t.Fatal("reenable during the stop did not leave a pending start")
+	}
+
+	requireNothingStartedForTest(t, supervisor, started)
+	close(done.done)
+	waitForSupervisorStopForTest(t, supervisor, own.PluginID)
+	receiveStartedForTest(t, started, waiter.PluginID)
+	requireNothingStartedForTest(t, supervisor, started)
+	requireSlotsForTest(t, supervisor, 1, "after the earlier waiter was admitted")
+
+	if got := supervisor.Status(own.PluginID).State; got != StateCapacityBlocked {
+		t.Fatalf("reenabled plugin state after cleanup = %q, want %q", got, StateCapacityBlocked)
+	}
+
+	if supervisor.pluginSnapshot(own.PluginID).serviceSlotHeld {
+		t.Fatal("reenabled plugin took a slot from the earlier waiter")
+	}
+
+	if plan := supervisor.Reconcile(context.Background(), []ServiceSpec{own}); !containsID(plan.removeIDs, waiter.PluginID) {
+		t.Fatalf("reconcile after removing the waiter returned remove IDs = %#v, want %q", plan.removeIDs, waiter.PluginID)
+	}
+
+	if err := supervisor.stopProcess(context.Background(), waiter.PluginID, stopRelease); err != nil {
+		t.Fatalf("removed waiter's stop = %v, want nil", err)
+	}
+
+	receiveStartedForTest(t, started, own.PluginID)
+	requireNothingStartedForTest(t, supervisor, started)
+
+	if !supervisor.pluginSnapshot(own.PluginID).serviceSlotHeld {
+		t.Fatal("queued plugin did not get the slot after the earlier waiter was removed")
+	}
+}
+
+func TestNewSpecDuringTimedOutReplaceRestartsWithIt(t *testing.T) {
+	supervisor, _, waiter, changed, done, operation := replaceFixtureForTest(t)
+
+	stopErr := supervisor.stopProcess(context.Background(), changed.PluginID, stopRestart)
+
+	if stopErr == nil {
+		t.Fatal("replace stop = nil, want the timeout error")
+	}
+
+	supervisor.failLifecycle(operation.token, stopErr)
+
+	latest := changed
+	latest.Args = []string{"--latest"}
+
+	if plan := supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, latest}); len(plan.startIDs) != 0 {
+		t.Fatalf("reconcile during the replacement stop planned starts = %v, want none", plan.startIDs)
+	}
+
+	if !supervisor.pluginSnapshot(changed.PluginID).pendingStart {
+		t.Fatal("new spec during the stop did not replace the pending restart")
+	}
+
+	started := make(chan ServiceSpec, 2)
+	supervisor.startDesired = func(spec ServiceSpec) { started <- spec }
+
+	close(done.done)
+	waitForSupervisorStopForTest(t, supervisor, changed.PluginID)
+
+	select {
+	case got := <-started:
+		if !got.Equal(latest) {
+			t.Fatalf("restarted spec = %+v, want %+v", got, latest)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("latest spec was not started after cleanup")
+	}
+
+	waitStartupsIdleForTest(supervisor)
+
+	select {
+	case got := <-started:
+		t.Fatalf("unexpected additional startup of %+v", got)
+	default:
+	}
+
+	if got := supervisor.Status(waiter.PluginID).State; got != StateCapacityBlocked {
+		t.Fatalf("waiter state = %q, want %q", got, StateCapacityBlocked)
+	}
+
+	if !supervisor.pluginSnapshot(changed.PluginID).serviceSlotHeld {
+		t.Fatal("restarting plugin lost its slot")
+	}
+}
+
+func TestIncompatibleSpecDuringStopReleasesSlotAtCleanup(t *testing.T) {
+	supervisor, started, waiter, changed, done, operation := replaceFixtureForTest(t)
+
+	stopErr := supervisor.stopProcess(context.Background(), changed.PluginID, stopRestart)
+
+	if stopErr == nil {
+		t.Fatal("replace stop = nil, want the timeout error")
+	}
+
+	supervisor.failLifecycle(operation.token, stopErr)
+
+	incompatible := changed
+	incompatible.ProtocolVersion = 9
+
+	if plan := supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, incompatible}); len(plan.startIDs) != 0 {
+		t.Fatalf("reconcile during the replacement stop planned starts = %v, want none", plan.startIDs)
+	}
+
+	if !supervisor.pluginSnapshot(changed.PluginID).pendingStart {
+		t.Fatal("incompatible spec during the stop did not leave a pending restart")
+	}
+
+	close(done.done)
+	waitForSupervisorStopForTest(t, supervisor, changed.PluginID)
+	receiveStartedSetForTest(t, started, waiter.PluginID, changed.PluginID)
+	requireNothingStartedForTest(t, supervisor, started)
+	requireSlotsForTest(t, supervisor, 1, "after the incompatible restart released its slot")
+
+	if supervisor.pluginSnapshot(changed.PluginID).serviceSlotHeld {
+		t.Fatal("incompatible restart kept the old slot")
+	}
+
+	if !supervisor.pluginSnapshot(waiter.PluginID).serviceSlotHeld {
+		t.Fatal("earlier waiter did not get the released slot")
+	}
+}
+
+func TestDisableAfterReenableDuringStopStartsNothing(t *testing.T) {
+	waiter := enabledSpec("alpha")
+	supervisor, started, own, done := timedOutDisableFixtureForTest(t, &waiter)
+
+	if plan := supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, own}); len(plan.startIDs) != 0 {
+		t.Fatalf("reenable reconcile during the stop planned starts = %v, want none", plan.startIDs)
+	}
+
+	if !supervisor.pluginSnapshot(own.PluginID).pendingStart {
+		t.Fatal("reenable during the stop did not leave a pending start")
+	}
+
+	disabled := own
+	disabled.Enabled = false
+
+	if plan := supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, disabled}); len(plan.startIDs) != 0 {
+		t.Fatalf("disable reconcile during the stop planned starts = %v, want none", plan.startIDs)
+	}
+
+	if supervisor.pluginSnapshot(own.PluginID).pendingStart {
+		t.Fatal("disable during the stop left a pending restart")
+	}
+
+	requireNothingStartedForTest(t, supervisor, started)
+	close(done.done)
+	waitForSupervisorStopForTest(t, supervisor, own.PluginID)
+	receiveStartedForTest(t, started, waiter.PluginID)
+	requireNothingStartedForTest(t, supervisor, started)
+	requireSlotsForTest(t, supervisor, 1, "after the disabled plugin released its slot")
+
+	if supervisor.pluginSnapshot(own.PluginID).serviceSlotHeld {
+		t.Fatal("disabled plugin kept its slot")
+	}
+
+	if !supervisor.pluginSnapshot(waiter.PluginID).serviceSlotHeld {
+		t.Fatal("earlier waiter did not get the released slot")
+	}
+}
+
+func TestReconcileStartDuringStopIsDroppedAfterLaterRun(t *testing.T) {
+	supervisor, started, own, done := timedOutDisableFixtureForTest(t, nil)
+
+	if plan := supervisor.Reconcile(context.Background(), []ServiceSpec{own}); len(plan.startIDs) != 0 {
+		t.Fatalf("reconcile during the disable stop planned starts = %v, want none", plan.startIDs)
+	}
+
+	if !supervisor.pluginSnapshot(own.PluginID).pendingStart {
+		t.Fatal("reenable during the stop did not leave a pending start")
+	}
+
+	// This pins the generation term in pendingStartEligibleLocked: the later lifecycle run advances it, so cleanup drops
+	// Reconcile's pending start. Leaving the plugin Stopped is today's behavior tracked in TASK-48.
+	run := supervisor.beginLifecycleOperation(own.PluginID, OpStarting, IntentRun)
+
+	if run.token == nil {
+		t.Fatal("later lifecycle run did not begin")
+	}
+
+	supervisor.failLifecycle(run.token, errors.New("startup work failed"))
+
+	close(done.done)
+	waitForSupervisorStopForTest(t, supervisor, own.PluginID)
+	requireNothingStartedForTest(t, supervisor, started)
+
+	if supervisor.pluginSnapshot(own.PluginID).serviceSlotHeld {
+		t.Fatal("plugin whose pending start was superseded kept a slot")
+	}
+}
+
 func requireSlotsForTest(t *testing.T, supervisor *Supervisor, want int, when string) {
 	t.Helper()
 
@@ -1681,9 +1966,10 @@ func TestTimedOutReplaceKeepsSlotFromEarlierWaiter(t *testing.T) {
 	}
 }
 
-// The timed-out replace's pending start is no longer wanted when the stop's cleanup ends (Reconcile brought another
-// spec), so the restart does not continue: the slot is released after the cleanup and the waiter is admitted in the
-// same critical section.
+// A disable during the restart stop clears the pending start; cleanup releases the ownerless slot and admits the
+// waiter in the same critical section.
+// Cleanup lands before the disable's planned stop reaches stopProcess. If the planned stop wins the race, its join
+// upgrades the in-flight stop to stopRelease and releases the slot through finishStop instead.
 func TestReplaceWhoseRestartDoesNotContinueReleasesSlot(t *testing.T) {
 	supervisor, started, waiter, changed, done, operation := replaceFixtureForTest(t)
 
@@ -1695,11 +1981,21 @@ func TestReplaceWhoseRestartDoesNotContinueReleasesSlot(t *testing.T) {
 
 	supervisor.failLifecycle(operation.token, stopErr)
 
-	another := changed
-	another.Args = []string{"--another"}
+	disabled := changed
+	disabled.Enabled = false
 
-	if plan := supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, another}); len(plan.startIDs) != 0 {
+	plan := supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, disabled})
+
+	if len(plan.startIDs) != 0 {
 		t.Fatalf("reconcile during the replacement stop planned starts = %v, want none", plan.startIDs)
+	}
+
+	if !containsID(plan.stopIDs, changed.PluginID) {
+		t.Fatalf("disable reconcile stop IDs = %#v, want %q", plan.stopIDs, changed.PluginID)
+	}
+
+	if supervisor.pluginSnapshot(changed.PluginID).pendingStart {
+		t.Fatal("disable during the replacement stop left a pending start")
 	}
 
 	requireNothingStartedForTest(t, supervisor, started)

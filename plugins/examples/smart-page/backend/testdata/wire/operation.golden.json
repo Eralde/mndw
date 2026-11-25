@@ -1,0 +1,78 @@
+[
+  {
+    "schemaVersion": 1,
+    "id": "op-queued",
+    "kind": "discover",
+    "deviceId": null,
+    "status": "queued",
+    "createdAt": "2026-11-24T11:00:00Z",
+    "completedAt": null,
+    "result": null,
+    "error": null
+  },
+  {
+    "schemaVersion": 1,
+    "id": "op-running",
+    "kind": "refresh",
+    "deviceId": "dev-a",
+    "status": "running",
+    "createdAt": "2026-11-24T11:01:00Z",
+    "completedAt": null,
+    "result": null,
+    "error": null
+  },
+  {
+    "schemaVersion": 1,
+    "id": "op-discover-ok",
+    "kind": "discover",
+    "deviceId": null,
+    "status": "succeeded",
+    "createdAt": "2026-11-24T11:02:00Z",
+    "completedAt": "2026-11-24T11:02:03Z",
+    "result": {
+      "kind": "discover",
+      "deviceIds": ["dev-a"],
+      "truncated": false,
+      "exitCode": 0
+    },
+    "error": null
+  },
+  {
+    "schemaVersion": 1,
+    "id": "op-refresh-ok",
+    "kind": "refresh",
+    "deviceId": "dev-a",
+    "status": "succeeded",
+    "createdAt": "2026-11-24T11:03:00Z",
+    "completedAt": "2026-11-24T11:03:04Z",
+    "result": {
+      "kind": "refresh",
+      "deviceId": "dev-a",
+      "exitCode": 0,
+      "sampleAccepted": true
+    },
+    "error": null
+  },
+  {
+    "schemaVersion": 1,
+    "id": "op-failed",
+    "kind": "refresh",
+    "deviceId": "dev-a",
+    "status": "failed",
+    "createdAt": "2026-11-24T11:04:00Z",
+    "completedAt": "2026-11-24T11:04:10Z",
+    "result": null,
+    "error": {"code": "timeout"}
+  },
+  {
+    "schemaVersion": 1,
+    "id": "op-cancelled",
+    "kind": "discover",
+    "deviceId": null,
+    "status": "cancelled",
+    "createdAt": "2026-11-24T11:05:00Z",
+    "completedAt": "2026-11-24T11:05:01Z",
+    "result": null,
+    "error": {"code": "service-stopping"}
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "revision": "1",
+  "persistentHistory": true,
+  "devices": [
+    {"deviceId": "dev-a", "mode": "off"},
+    {"deviceId": "dev-b", "mode": "allow-wake"}
+  ]
+}

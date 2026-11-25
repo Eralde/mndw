@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "deviceId": "dev-a",
+  "serverNow": "2026-11-24T12:00:00Z",
+  "clockStatus": "valid",
+  "from": "2026-11-23T12:00:00Z",
+  "to": "2026-11-24T12:00:00Z",
+  "buckets": [
+    {
+      "hourStart": "2026-11-24T08:00:00Z",
+      "firstSampleAt": "2026-11-24T08:10:00Z",
+      "lastSampleAt": "2026-11-24T08:50:00Z",
+      "sampleCount": 2,
+      "temperatureC": {"min": 41, "max": 43, "last": 43},
+      "counters": [{"name": "power_on_hours", "value": "120", "unit": "hours"}],
+      "assessment": {
+        "level": "normal",
+        "reasons": ["no-applicable-warning"],
+        "rulesVersion": 1
+      }
+    },
+    {
+      "hourStart": "2026-11-24T10:00:00Z",
+      "firstSampleAt": "2026-11-24T10:15:00Z",
+      "lastSampleAt": "2026-11-24T10:15:00Z",
+      "sampleCount": 1,
+      "temperatureC": null,
+      "counters": [],
+      "assessment": {
+        "level": "unknown",
+        "reasons": ["no-health-data"],
+        "rulesVersion": 1
+      }
+    }
+  ],
+  "gaps": [
+    {"from": "2026-11-23T12:00:00Z", "to": "2026-11-24T08:00:00Z"},
+    {"from": "2026-11-24T09:00:00Z", "to": "2026-11-24T10:00:00Z"},
+    {"from": "2026-11-24T11:00:00Z", "to": "2026-11-24T12:00:00Z"}
+  ],
+  "coverage": {"sampleCount": 3, "coveredSeconds": 7200, "windowSeconds": 86400},
+  "truncated": false,
+  "reason": null
+}

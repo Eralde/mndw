@@ -1,0 +1,27 @@
+{
+  "name": "@mndw/example-smart-page",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "mndw": {
+    "backendBuildScript": "build-backend",
+    "backend": {
+      "binaryName": "smart-page",
+      "entryPackage": "./cmd/smart-page"
+    }
+  },
+  "scripts": {
+    "build-backend": "mndw build-backend",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@mndw/cli": "workspace:*",
+    "@mndw/sdk": "workspace:*",
+    "@mndw/ui": "workspace:*",
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@types/node": "22.19.15",
+    "happy-dom": "20.11.1",
+    "svelte": "^5.56.4",
+    "vitest": "^3.2.7"
+  }
+}

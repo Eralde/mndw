@@ -1,0 +1,47 @@
+{
+  "json_format_version": [
+    1,
+    0
+  ],
+  "smartctl": {
+    "version": [
+      7,
+      5
+    ],
+    "pre_release": false,
+    "svn_revision": "5714",
+    "platform_info": "aarch64-linux-4.9-ndm-5",
+    "build_info": "(localbuild)",
+    "argv": [
+      "smartctl",
+      "-a",
+      "--json=v",
+      "-n",
+      "standby,3,5",
+      "-d",
+      "sat",
+      "/dev/sda"
+    ],
+    "messages": [
+      {
+        "string": "Device is in STANDBY mode, exit(3)",
+        "severity": "information"
+      }
+    ],
+    "exit_status": 3
+  },
+  "local_time": {
+    "time_t": 1767225600,
+    "asctime": "Thu Jan  1 00:00:00 2026"
+  },
+  "device": {
+    "name": "/dev/sda",
+    "info_name": "/dev/sda [SAT]",
+    "type": "sat",
+    "protocol": "ATA"
+  },
+  "power_mode": {
+    "ata_value": 0,
+    "name": "STANDBY"
+  }
+}

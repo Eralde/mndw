@@ -13,6 +13,9 @@ const EXAMPLE_ARCHIVE_TARGETS: Readonly<Record<string, ExampleTarget>> = {
   'iperf-widget-aarch64.zip': 'aarch64',
   'iperf-widget-mips.zip': 'mips',
   'iperf-widget-mipsel.zip': 'mipsel',
+  'smart-page-aarch64.zip': 'aarch64',
+  'smart-page-mips.zip': 'mips',
+  'smart-page-mipsel.zip': 'mipsel',
 };
 
 export function targetForDeviceArchitecture(raw: string | undefined): ExampleTarget | undefined {

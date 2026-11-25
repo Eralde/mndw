@@ -1,0 +1,24 @@
+{
+  "manifestVersion": 1,
+  "name": "smart-page",
+  "version": "0.1.0",
+  "type": "page",
+  "label": "S.M.A.R.T. status",
+  "description": "View S.M.A.R.T. storage diagnostics.",
+  "route": "/smart",
+  "entry": "index.js",
+  "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}},
+  "backend": {
+    "kind": "service",
+    "protocolVersion": 1,
+    "command": "backend/smart-page",
+    "packages": ["smartmontools"],
+    "routes": [
+      {"id": "snapshot", "transport": "http", "method": "GET", "path": "snapshot", "access": "session"},
+      {"id": "discover", "transport": "http", "method": "POST", "path": "discover", "access": "session"},
+      {"id": "refresh", "transport": "http", "method": "POST", "path": "refresh", "access": "session"},
+      {"id": "device-type", "transport": "http", "method": "POST", "path": "device-type", "access": "session"},
+      {"id": "operation", "transport": "http", "method": "GET", "path": "operation", "access": "session"}
+    ]
+  }
+}

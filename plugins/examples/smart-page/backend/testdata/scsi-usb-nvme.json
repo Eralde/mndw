@@ -1,0 +1,85 @@
+{
+  "json_format_version": [
+    1,
+    0
+  ],
+  "smartctl": {
+    "version": [
+      7,
+      5
+    ],
+    "pre_release": false,
+    "svn_revision": "5714",
+    "platform_info": "aarch64-linux-4.9-ndm-5",
+    "build_info": "(localbuild)",
+    "argv": [
+      "smartctl",
+      "-a",
+      "--json=v",
+      "-d",
+      "scsi",
+      "/dev/sda"
+    ],
+    "exit_status": 4
+  },
+  "local_time": {
+    "time_t": 1767225600,
+    "asctime": "Thu Jan  1 00:00:00 2026"
+  },
+  "device": {
+    "name": "/dev/sda",
+    "info_name": "/dev/sda",
+    "type": "scsi",
+    "protocol": "SCSI"
+  },
+  "scsi_vendor": "Samsung",
+  "scsi_product": "PSSD T7",
+  "model_name": "Samsung PSSD T7",
+  "scsi_model_name": "Samsung PSSD T7",
+  "scsi_revision": "0",
+  "scsi_version": "SPC-4",
+  "user_capacity": {
+    "blocks": 3907029168,
+    "blocks_s": "3907029168",
+    "bytes": 2000398934016,
+    "bytes_s": "2000398934016"
+  },
+  "logical_block_size": 512,
+  "scsi_lb_provisioning": {
+    "name": "fully provisioned",
+    "value": 0,
+    "management_enabled": {
+      "name": "LBPME",
+      "value": -1
+    },
+    "read_zeros": {
+      "name": "LBPRZ",
+      "value": 0
+    }
+  },
+  "rotation_rate": 0,
+  "logical_unit_id": "0x0000000000000001",
+  "serial_number": "NVME-USB-SYNTHETIC-002",
+  "device_type": {
+    "scsi_terminology": "Peripheral Device Type [PDT]",
+    "scsi_value": 0,
+    "name": "disk"
+  },
+  "smart_support": {
+    "available": true,
+    "enabled": true
+  },
+  "temperature_warning": {
+    "enabled": false
+  },
+  "smart_status": {
+    "passed": true
+  },
+  "temperature": {
+    "current": 0,
+    "drive_trip": 0
+  },
+  "seagate_farm_log": {
+    "supported": false
+  }
+}

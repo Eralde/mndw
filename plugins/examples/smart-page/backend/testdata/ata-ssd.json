@@ -1,0 +1,18 @@
+{
+  "smartctl": {"version": [7, 5], "exit_status": 0},
+  "device": {"name": "/dev/synthetic-ssd", "type": "sat", "protocol": "ATA"},
+  "model_name": "Synthetic ATA SSD",
+  "serial_number": "SSD-SYNTHETIC-001",
+  "firmware_version": "1.0",
+  "rotation_rate": 0,
+  "user_capacity": {"bytes": 1000000000},
+  "smart_status": {"passed": true},
+  "power_on_time": {"hours": 18446744073709551615},
+  "temperature": {"current": 31},
+  "ata_smart_attributes": {
+    "table": [
+      {"id": 197, "name": "Vendor_Specific_197", "value": 100, "thresh": 0, "raw": {"value": 0, "string": "0"}},
+      {"id": 198, "name": "Vendor_Specific_198", "value": 100, "thresh": 0, "raw": {"value": 0, "string": "0"}}
+    ]
+  }
+}

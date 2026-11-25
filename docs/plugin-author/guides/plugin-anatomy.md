@@ -87,4 +87,4 @@ Built-in plugins in `plugins/builtin/` include `device-info-widget`, `cpu-temp-w
 `terminal-page`, `clock-widget`, `dns-lookup-widget`, `mws-page`, `clients-widget`, `system-log-page`, and
 `ports-widget`.
 Uploadable examples in `plugins/examples/` include `backend-echo`, `demo-page`, `device-traffic-widget`,
-`iperf-widget`, and `ping-widget`.
+`iperf-widget`, `ping-widget`, and `smart-page`.

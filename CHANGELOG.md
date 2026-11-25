@@ -32,6 +32,11 @@ A part with nothing in it is left out.
 
 ### For plugin authors
 
+- New smart-page example: a page with a Go service backend that finds drives with Entware's `smartctl`
+  (`backend.packages: ["smartmontools"]`) and shows their S.M.A.R.T. health, key counters and attributes. It
+  searches for drives when opened, asks before a read that may wake a sleeping HDD (not for SSD or NVMe; the answer
+  can be remembered per drive) and lets the user override the device type of a USB bridge. Archives for aarch64,
+  mips and mipsel come from `pnpm build-example-plugins`.
 - Reinstalling a plugin without changing its version now loads the new files: the browser no longer keeps the old
   `index.js`, styles or translations, and Settings asks to reload the page if the plugin was already loaded. The
   plugin list reports `installedAt` for each installed plugin.

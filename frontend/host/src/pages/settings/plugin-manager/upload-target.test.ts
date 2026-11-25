@@ -27,6 +27,12 @@ describe('upload target guidance', () => {
       deviceTarget: 'mips',
     });
     expect(validateExampleUploadTarget('iperf-widget-aarch64.zip', 'aarch64')).toBeUndefined();
+    expect(validateExampleUploadTarget('smart-page-mipsel.zip', 'mips')).toEqual({
+      filename: 'smart-page-mipsel.zip',
+      archiveTarget: 'mipsel',
+      deviceTarget: 'mips',
+    });
+    expect(validateExampleUploadTarget('smart-page-aarch64.zip', 'aarch64')).toBeUndefined();
     expect(validateExampleUploadTarget('device-traffic-widget.zip', 'mips')).toBeUndefined();
     expect(validateExampleUploadTarget('ping-widget.zip', 'mips')).toBeUndefined();
   });

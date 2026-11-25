@@ -1,0 +1,78 @@
+{
+  "json_format_version": [
+    1,
+    0
+  ],
+  "smartctl": {
+    "version": [
+      7,
+      5
+    ],
+    "pre_release": false,
+    "svn_revision": "5714",
+    "platform_info": "aarch64-linux-4.9-ndm-5",
+    "build_info": "(localbuild)",
+    "argv": [
+      "smartctl",
+      "-a",
+      "--json=v",
+      "-d",
+      "scsi",
+      "/dev/sda"
+    ],
+    "exit_status": 0
+  },
+  "local_time": {
+    "time_t": 1767225600,
+    "asctime": "Thu Jan  1 00:00:00 2026"
+  },
+  "device": {
+    "name": "/dev/sda",
+    "info_name": "/dev/sda",
+    "type": "scsi",
+    "protocol": "SCSI"
+  },
+  "scsi_vendor": "WD",
+  "scsi_product": "My Passport 25A0",
+  "model_name": "WD My Passport 25A0",
+  "scsi_model_name": "WD My Passport 25A0",
+  "scsi_revision": "1014",
+  "scsi_version": "SPC-4",
+  "user_capacity": {
+    "blocks": 3906963456,
+    "blocks_s": "3906963456",
+    "bytes": 2000365289472,
+    "bytes_s": "2000365289472"
+  },
+  "logical_block_size": 512,
+  "physical_block_size": 4096,
+  "scsi_lb_provisioning": {
+    "name": "fully provisioned",
+    "value": 0,
+    "management_enabled": {
+      "name": "LBPME",
+      "value": 0
+    },
+    "read_zeros": {
+      "name": "LBPRZ",
+      "value": 0
+    }
+  },
+  "rotation_rate": 5200,
+  "serial_number": "HDD-USB-SYNTHETIC-001",
+  "device_type": {
+    "scsi_terminology": "Peripheral Device Type [PDT]",
+    "scsi_value": 0,
+    "name": "disk"
+  },
+  "smart_support": {
+    "available": false
+  },
+  "temperature": {
+    "current": 0,
+    "drive_trip": 0
+  },
+  "seagate_farm_log": {
+    "supported": false
+  }
+}

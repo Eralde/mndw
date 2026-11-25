@@ -49,6 +49,7 @@ describe('example plugin distribution', () => {
     expect(names).toContain('rci-device-name-widget.zip');
 
     for (const target of EXAMPLE_TARGETS) {
+      expect(names).toContain(`smart-page-${target}.zip`);
       expect(names).toContain(`ping-widget-${target}.zip`);
       expect(names).toContain(`iperf-widget-${target}.zip`);
     }

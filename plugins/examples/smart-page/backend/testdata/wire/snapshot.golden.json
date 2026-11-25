@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "serverNow": "2026-11-24T12:00:00Z",
+  "clockStatus": "valid",
+  "devices": [
+    {
+      "deviceId": "dev-a",
+      "path": "/dev/sda",
+      "deviceType": "sat",
+      "deviceTypeSource": "scan",
+      "usbBridge": "1058:25a0",
+      "binding": "validated",
+      "sample": {
+        "schemaVersion": 1,
+        "deviceId": "dev-a",
+        "sampledAt": "2026-11-24T11:59:57Z",
+        "protocol": "ata",
+        "identity": {
+          "reliable": true,
+          "model": "ACME HDD 2TB",
+          "serial": null,
+          "wwn": "0x5001b448b9a1c001",
+          "capacityBytes": "2000398934016"
+        },
+        "temperatureC": null,
+        "powerOnHours": "18446744073709551615",
+        "rotationRate": 5200,
+        "health": "passed",
+        "assessment": {
+          "level": "normal",
+          "reasons": ["no-applicable-warning"],
+          "rulesVersion": 1
+        },
+        "counters": [
+          {
+            "name": "power_on_hours",
+            "value": "18446744073709551615",
+            "unit": "hours"
+          }
+        ],
+        "capabilities": {
+          "attributes": true,
+          "temperature": true,
+          "standbyOnlyValidated": false
+        },
+        "attributes": [
+          {
+            "id": 9,
+            "name": "Power_On_Hours",
+            "raw": null,
+            "normalized": 100,
+            "threshold": null
+          }
+        ]
+      },
+      "collection": {
+        "status": "ok",
+        "exitCode": 0
+      },
+      "freshness": {
+        "lastAttemptAt": "2026-11-24T11:59:57Z",
+        "lastSuccessAt": "2026-11-24T11:59:57Z",
+        "stale": false
+      },
+      "polling": null,
+      "truncated": false
+    }
+  ],
+  "diagnostics": {
+    "checkedAt": "2026-11-24T11:59:58Z",
+    "euid": 0,
+    "egid": 0,
+    "groups": [0, 6],
+    "utility": {
+      "path": "/opt/sbin/smartctl",
+      "version": "smartctl 7.5",
+      "available": true
+    },
+    "smartd": {
+      "status": "not-detected",
+      "checkedAt": "2026-11-24T11:59:58Z",
+      "reason": null
+    },
+    "reasons": []
+  },
+  "config": null,
+  "persistence": null,
+  "truncated": false,
+  "disconnectedTruncated": false
+}

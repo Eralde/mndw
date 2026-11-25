@@ -1,0 +1,20 @@
+{
+  "smartctl": {"version": [7, 5], "exit_status": 8},
+  "device": {"name": "/dev/synthetic-wrong-bridge", "type": "sntasmedia", "protocol": "NVMe"},
+  "model_name": "Wrong Bridge NVMe\u0001",
+  "serial_number": "NVME-SYNTHETIC-001",
+  "firmware_version": "FW\u00e9",
+  "user_capacity": {"bytes": 1000000000},
+  "smart_status": {"passed": false},
+  "nvme_smart_health_information_log": {
+    "critical_warning": 101,
+    "temperature": 29538,
+    "available_spare": 101,
+    "available_spare_threshold": 108,
+    "percentage_used": 109,
+    "data_units_read": 12345678901234567890123456789012345678,
+    "data_units_written": 12345678901234567890123456789012345678,
+    "media_errors": 0,
+    "unsafe_shutdowns": 0
+  }
+}

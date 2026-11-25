@@ -1,0 +1,524 @@
+{
+  "json_format_version": [
+    1,
+    0
+  ],
+  "smartctl": {
+    "version": [
+      7,
+      5
+    ],
+    "pre_release": false,
+    "svn_revision": "5714",
+    "platform_info": "aarch64-linux-4.9-ndm-5",
+    "build_info": "(localbuild)",
+    "argv": [
+      "smartctl",
+      "-a",
+      "--json=v",
+      "-d",
+      "sntasmedia",
+      "/dev/sda"
+    ],
+    "uint128_precision_bits": 128,
+    "exit_status": 0
+  },
+  "local_time": {
+    "time_t": 1767225600,
+    "asctime": "Thu Jan  1 00:00:00 2026"
+  },
+  "device": {
+    "name": "/dev/sda",
+    "info_name": "/dev/sda [USB NVMe ASMedia]",
+    "type": "sntasmedia",
+    "protocol": "NVMe"
+  },
+  "model_name": "Samsung Portable SSD T7",
+  "serial_number": "NVME-USB-SYNTHETIC-001",
+  "firmware_version": "FXG42P2Q",
+  "nvme_pci_vendor": {
+    "id": 5197,
+    "subsystem_id": 5197
+  },
+  "nvme_ieee_oui_identifier": 9528,
+  "nvme_total_capacity": 2000398934016,
+  "nvme_total_capacity_s": "2000398934016",
+  "nvme_total_capacity_le": [
+    0,
+    96,
+    17,
+    193,
+    209,
+    1
+  ],
+  "nvme_unallocated_capacity": 0,
+  "nvme_unallocated_capacity_s": "0",
+  "nvme_controller_id": 5,
+  "nvme_version": {
+    "string": "1.3",
+    "value": 66304
+  },
+  "nvme_number_of_namespaces": 1,
+  "nvme_namespaces": [
+    {
+      "id": 1,
+      "size": {
+        "blocks": 3907029168,
+        "blocks_s": "3907029168",
+        "bytes": 2000398934016,
+        "bytes_s": "2000398934016",
+        "bytes_le": [
+          0,
+          96,
+          17,
+          193,
+          209,
+          1
+        ]
+      },
+      "capacity": {
+        "blocks": 3907029168,
+        "blocks_s": "3907029168",
+        "bytes": 2000398934016,
+        "bytes_s": "2000398934016",
+        "bytes_le": [
+          0,
+          96,
+          17,
+          193,
+          209,
+          1
+        ]
+      },
+      "utilization": {
+        "blocks": 3907029168,
+        "blocks_s": "3907029168",
+        "bytes": 2000398934016,
+        "bytes_s": "2000398934016",
+        "bytes_le": [
+          0,
+          96,
+          17,
+          193,
+          209,
+          1
+        ]
+      },
+      "formatted_lba_size": 512,
+      "features": {
+        "value": 0,
+        "thin_provisioning": false,
+        "na_fields": false,
+        "dealloc_or_unwritten_block_error": false,
+        "uid_reuse": false,
+        "np_fields": false,
+        "other": 0
+      },
+      "lba_formats": [
+        {
+          "formatted": true,
+          "data_bytes": 512,
+          "metadata_bytes": 0,
+          "relative_performance": 0
+        }
+      ]
+    }
+  ],
+  "user_capacity": {
+    "blocks": 3907029168,
+    "blocks_s": "3907029168",
+    "bytes": 2000398934016,
+    "bytes_s": "2000398934016",
+    "bytes_le": [
+      0,
+      96,
+      17,
+      193,
+      209,
+      1
+    ]
+  },
+  "logical_block_size": 512,
+  "smart_support": {
+    "available": true,
+    "enabled": true
+  },
+  "nvme_firmware_update_capabilities": {
+    "value": 22,
+    "slots": 3,
+    "first_slot_is_read_only": false,
+    "activiation_without_reset": true,
+    "multiple_update_detection": false,
+    "other": 0
+  },
+  "nvme_optional_admin_commands": {
+    "value": 7,
+    "security_send_receive": true,
+    "format_nvm": true,
+    "firmware_download": true,
+    "namespace_management": false,
+    "self_test": false,
+    "directives": false,
+    "mi_send_receive": false,
+    "virtualization_management": false,
+    "doorbell_buffer_config": false,
+    "get_lba_status": false,
+    "command_and_feature_lockdown": false,
+    "other": 0
+  },
+  "nvme_optional_nvm_commands": {
+    "value": 31,
+    "compare": true,
+    "write_uncorrectable": true,
+    "dataset_management": true,
+    "write_zeroes": true,
+    "save_select_feature_nonzero": true,
+    "reservations": false,
+    "timestamp": false,
+    "verify": false,
+    "copy": false,
+    "other": 0
+  },
+  "nvme_log_page_attributes": {
+    "value": 3,
+    "smart_health_per_namespace": true,
+    "commands_effects_log": true,
+    "extended_get_log_page_cmd": false,
+    "telemetry_log": false,
+    "persistent_event_log": false,
+    "supported_log_pages_log": false,
+    "telemetry_data_area_4": false,
+    "other": 0
+  },
+  "nvme_maximum_data_transfer_pages": 512,
+  "nvme_composite_temperature_threshold": {
+    "warning": 52,
+    "critical": 56
+  },
+  "temperature": {
+    "op_limit_max": 52,
+    "critical_limit_max": 56,
+    "current": 23
+  },
+  "nvme_power_states": [
+    {
+      "non_operational_state": false,
+      "relative_read_latency": 0,
+      "relative_read_throughput": 0,
+      "relative_write_latency": 0,
+      "relative_write_throughput": 0,
+      "entry_latency_us": 0,
+      "exit_latency_us": 0,
+      "max_power": {
+        "value": 483,
+        "scale": 2,
+        "units_per_watt": 100
+      }
+    },
+    {
+      "non_operational_state": false,
+      "relative_read_latency": 1,
+      "relative_read_throughput": 1,
+      "relative_write_latency": 1,
+      "relative_write_throughput": 1,
+      "entry_latency_us": 0,
+      "exit_latency_us": 0,
+      "max_power": {
+        "value": 354,
+        "scale": 2,
+        "units_per_watt": 100
+      }
+    },
+    {
+      "non_operational_state": false,
+      "relative_read_latency": 2,
+      "relative_read_throughput": 2,
+      "relative_write_latency": 2,
+      "relative_write_throughput": 2,
+      "entry_latency_us": 0,
+      "exit_latency_us": 0,
+      "max_power": {
+        "value": 304,
+        "scale": 2,
+        "units_per_watt": 100
+      }
+    },
+    {
+      "non_operational_state": true,
+      "relative_read_latency": 3,
+      "relative_read_throughput": 3,
+      "relative_write_latency": 3,
+      "relative_write_throughput": 3,
+      "entry_latency_us": 26000,
+      "exit_latency_us": 1000,
+      "max_power": {
+        "value": 500,
+        "scale": 1,
+        "units_per_watt": 10000
+      }
+    }
+  ],
+  "smart_status": {
+    "passed": true,
+    "nvme": {
+      "value": 0
+    }
+  },
+  "nvme_smart_health_information_log": {
+    "nsid": -1,
+    "critical_warning": 0,
+    "temperature": 23,
+    "available_spare": 100,
+    "available_spare_threshold": 10,
+    "percentage_used": 0,
+    "data_units_read": 12364754,
+    "data_units_read_s": "12364754",
+    "data_units_read_le": [
+      210,
+      171,
+      188
+    ],
+    "data_units_written": 11802817,
+    "data_units_written_s": "11802817",
+    "data_units_written_le": [
+      193,
+      24,
+      180
+    ],
+    "host_reads": 69680267,
+    "host_reads_s": "69680267",
+    "host_reads_le": [
+      139,
+      60,
+      39,
+      4
+    ],
+    "host_writes": 52687690,
+    "host_writes_s": "52687690",
+    "host_writes_le": [
+      74,
+      243,
+      35,
+      3
+    ],
+    "controller_busy_time": 429,
+    "controller_busy_time_s": "429",
+    "controller_busy_time_le": [
+      173,
+      1
+    ],
+    "power_cycles": 583,
+    "power_cycles_s": "583",
+    "power_cycles_le": [
+      71,
+      2
+    ],
+    "power_on_hours": 526,
+    "power_on_hours_s": "526",
+    "power_on_hours_le": [
+      14,
+      2
+    ],
+    "unsafe_shutdowns": 65,
+    "unsafe_shutdowns_s": "65",
+    "unsafe_shutdowns_le": [
+      65
+    ],
+    "media_errors": 0,
+    "media_errors_s": "0",
+    "num_err_log_entries": 0,
+    "num_err_log_entries_s": "0",
+    "warning_temp_time": 0,
+    "critical_comp_time": 0,
+    "temperature_sensors": [
+      23,
+      25
+    ]
+  },
+  "spare_available": {
+    "current_percent": 100,
+    "threshold_percent": 10
+  },
+  "endurance_used": {
+    "current_percent": 0
+  },
+  "power_cycle_count": 583,
+  "power_on_time": {
+    "hours": 526
+  },
+  "nvme_error_information_log": {
+    "size": 64,
+    "read": 16,
+    "unread": 48,
+    "table": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      {
+        "error_count": 7309942666549010464,
+        "submission_queue_id": 28515,
+        "command_id": 28013,
+        "status_field": {
+          "value": 14130,
+          "do_not_retry": false,
+          "status_code_type": 7,
+          "status_code": 50,
+          "string": "Vendor Specific Status 0x32"
+        },
+        "phase_tag": true,
+        "parm_error_location": 25956,
+        "lba": {
+          "value": 2314885530817012324,
+          "value_s": "2314885530817012324"
+        },
+        "nsid": 170679584,
+        "vendor_specific": 32
+      },
+      {
+        "error_count": 2482447019792477555,
+        "submission_queue_id": 8250,
+        "command_id": 2683,
+        "status_field": {
+          "value": 4112,
+          "do_not_retry": false,
+          "status_code_type": 0,
+          "status_code": 16,
+          "string": "Metadata SGL Length Invalid"
+        },
+        "phase_tag": false,
+        "parm_error_location": 8224,
+        "lba": {
+          "value": 7954887897593815072,
+          "value_s": "7954887897593815072"
+        },
+        "nsid": 540680804,
+        "vendor_specific": 34
+      },
+      {
+        "error_count": 2314885530817035040,
+        "submission_queue_id": 8224,
+        "command_id": 8736,
+        "status_field": {
+          "value": 8354,
+          "do_not_retry": false,
+          "status_code_type": 0,
+          "status_code": 162,
+          "string": "Unknown Generic Command Status 0xa2"
+        },
+        "phase_tag": false,
+        "parm_error_location": 14882,
+        "lba": {
+          "value": 7362632527347851808,
+          "value_s": "7362632527347851808"
+        },
+        "nsid": 2037607529,
+        "vendor_specific": 115
+      },
+      {
+        "error_count": 8316289737438801235,
+        "submission_queue_id": 29561,
+        "command_id": 25972,
+        "status_field": {
+          "value": 5814,
+          "do_not_retry": false,
+          "status_code_type": 6,
+          "status_code": 182,
+          "string": "Unknown Status 0x6/0xb6"
+        },
+        "phase_tag": true,
+        "parm_error_location": 26948,
+        "lba": {
+          "value": 7453301735637085797,
+          "value_s": "7453301735637085797"
+        },
+        "nsid": 1835884914,
+        "vendor_specific": 101
+      },
+      {
+        "error_count": 8315168235715324276,
+        "submission_queue_id": 11298,
+        "command_id": 8202,
+        "status_field": {
+          "value": 4112,
+          "do_not_retry": false,
+          "status_code_type": 0,
+          "status_code": 16,
+          "string": "Metadata SGL Length Invalid"
+        },
+        "phase_tag": false,
+        "parm_error_location": 8224,
+        "lba": {
+          "value": 4189002159798362144,
+          "value_s": "4189002159798362144"
+        },
+        "nsid": 1951736352,
+        "vendor_specific": 105
+      },
+      {
+        "error_count": 2314885530817014818,
+        "submission_queue_id": 8224,
+        "command_id": 8736,
+        "status_field": {
+          "value": 9379,
+          "do_not_retry": false,
+          "status_code_type": 4,
+          "status_code": 163,
+          "string": "Unknown Status 0x4/0xa3"
+        },
+        "phase_tag": false,
+        "parm_error_location": 14882,
+        "lba": {
+          "value": 8371438843878842912,
+          "value_s": "8371438843878842912"
+        },
+        "nsid": 1868850537,
+        "vendor_specific": 115
+      },
+      {
+        "error_count": 2473116257761632288,
+        "submission_queue_id": 8250,
+        "command_id": 21794,
+        "status_field": {
+          "value": 13498,
+          "do_not_retry": false,
+          "status_code_type": 4,
+          "status_code": 186,
+          "string": "Unknown Status 0x4/0xba"
+        },
+        "phase_tag": false,
+        "parm_error_location": 26988,
+        "lba": {
+          "value": 7214893482595934580,
+          "value_s": "7214893482595934580"
+        },
+        "nsid": 2037588085,
+        "vendor_specific": 115
+      },
+      {
+        "error_count": 8247308223656895060,
+        "submission_queue_id": 28021,
+        "command_id": 28261,
+        "status_field": {
+          "value": 13498,
+          "do_not_retry": false,
+          "status_code_type": 4,
+          "status_code": 186,
+          "string": "Unknown Status 0x4/0xba"
+        },
+        "phase_tag": false,
+        "parm_error_location": 25632,
+        "lba": {
+          "value": 8315171486950255717,
+          "value_s": "8315171486950255717"
+        },
+        "nsid": 1702130553,
+        "vendor_specific": 109
+      }
+    ]
+  }
+}

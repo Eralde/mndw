@@ -1,0 +1,17 @@
+{
+  "smartctl": {"version": [7, 5], "exit_status": 8},
+  "device": {"name": "/dev/synthetic-failed", "type": "sat", "protocol": "ATA"},
+  "model_name": "Synthetic Failed HDD",
+  "serial_number": "HDD-SYNTHETIC-001",
+  "firmware_version": "1.0",
+  "rotation_rate": 7200,
+  "user_capacity": {"bytes": 2000000000},
+  "smart_status": {"passed": false},
+  "power_on_time": {"hours": 100},
+  "temperature": {"current": 30},
+  "ata_smart_attributes": {
+    "table": [
+      {"id": 197, "name": "Current_Pending_Sector", "value": 100, "thresh": 10, "when_failed": "now", "raw": {"value": 1, "string": "1"}}
+    ]
+  }
+}

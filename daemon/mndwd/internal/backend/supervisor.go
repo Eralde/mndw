@@ -252,6 +252,15 @@ func (s *serviceState) claimSlot() {
 	}
 }
 
+// unclaimSlot turns a held slot back into an unclaimed reservation, which is what a restart that keeps its slot
+// needs: the start that follows claims it again, and a start that never launches gives it back through
+// takeUnstartedReservationLocked. A record without a slot stays without one.
+func (s *serviceState) unclaimSlot() {
+	if s.slot == slotHeld {
+		s.slot = slotReservedByReconcile
+	}
+}
+
 // setReservation marks a held slot as reserved by Reconcile, or as claimed by Start. It requires a slot: on
 // slotNone it would create one without counting it in Supervisor.reservedServices.
 func (s *serviceState) setReservation(reserved bool) {
@@ -318,11 +327,25 @@ type startRequest struct {
 	generation uint64
 }
 
-// stopState is never mutated after done is closed; waiters keep the pointer and read err from it.
+// stopKind says what a stop does to the plugin's status and slot.
+type stopKind int
+
+const (
+	// stopKeep leaves status and slot alone: the cleanup after a failed start.
+	stopKeep stopKind = iota
+	// stopRestart resets the status to StateStopped and keeps the slot: a replace, whose restart continues.
+	stopRestart
+	// stopRelease resets the status and releases the slot when the stop's cleanup is done: disable, remove, an
+	// incompatible protocol, StopAll, an unregistered child.
+	stopRelease
+)
+
+// stopState is never mutated after done is closed; waiters keep the pointer and read err from it. kind only grows
+// while the stop runs: a disable that joins a replace stop makes it a release.
 type stopState struct {
-	done        chan struct{}
-	err         error
-	releaseSlot bool
+	done chan struct{}
+	err  error
+	kind stopKind
 }
 
 type transitionState struct {
@@ -1375,7 +1398,7 @@ func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) reconci
 
 		if service == nil || service.service.status.State == StateStopped || service.service.status.State == StateCapacityBlocked ||
 			!service.service.spec.Equal(spec) {
-			reserved, effects := s.reserveForReconcileLocked(spec, false)
+			reserved, effects := s.reserveForReconcileLocked(spec)
 
 			plan.effects = append(plan.effects, effects...)
 
@@ -1423,16 +1446,14 @@ func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) reconci
 // reserveForReconcileLocked makes service admission follow the sorted Reconcile order.
 // The returned candidate already owns its slot before Runtime launches startup work. The effects start plugins that
 // the admission queue admitted ahead of this one; the caller runs them after unlocking.
-//
-// ahead is passed through to requestSlotLocked.
-func (s *Supervisor) reserveForReconcileLocked(spec ServiceSpec, ahead bool) (bool, []effect) {
+func (s *Supervisor) reserveForReconcileLocked(spec ServiceSpec) (bool, []effect) {
 	record, done, ok := s.prepareReservationLocked(spec)
 
 	if done {
 		return ok, nil
 	}
 
-	granted, effects := s.requestSlotLocked(record, spec, ahead)
+	granted, effects := s.requestSlotLocked(record, spec)
 
 	s.finishReservationLocked(record, spec, granted)
 
@@ -1516,35 +1537,73 @@ func (s *Supervisor) admissibleLocked(pluginID string, plugin *pluginRecord) boo
 // operation OpNone, intent IntentRun, no stop. It does nothing while shutting down, after the lifetime ends, or
 // before startDesired is set.
 func (s *Supervisor) admitLocked() []effect {
-	_, effects := s.admitQueueLocked(nil, ServiceSpec{}, false)
+	_, effects := s.admitQueueLocked(nil, ServiceSpec{})
 
 	return effects
 }
 
-// settleAndAdmitLocked is the tail every event rule ends with: the plugin's own pending start first, then admission.
-// The order matters: a stopping plugin's own pending start must not lose the slot it needs to a blocked plugin.
+// settleAndAdmitLocked is the tail every event rule ends with: the plugin's own pending start first, then the slot
+// the plugin no longer owns, then admission, so a slot freed here goes to the first waiter in the same critical
+// section.
 func (s *Supervisor) settleAndAdmitLocked(pluginID string) []effect {
 	effects := s.settleLocked(pluginID)
 
+	s.releaseOwnerlessSlotLocked(s.plugins[pluginID])
+
 	return append(effects, s.admitLocked()...)
+}
+
+// keepRestartSlotLocked decides what a restart with a changed spec does with the slot the old process held. A spec
+// the daemon can run keeps the slot, as an unclaimed reservation until the start claims it. An incompatible spec
+// cannot start, so the slot is released at once, as reserveForReconcileLocked does not ask for one for it, and the
+// first admissible waiter gets it in the caller's tail.
+func (s *Supervisor) keepRestartSlotLocked(record *pluginRecord, spec ServiceSpec) {
+	if s.supportedProtocol(spec.ProtocolVersion) {
+		record.service.unclaimSlot()
+
+		return
+	}
+
+	s.releaseServiceSlotLocked(record)
+}
+
+// releaseOwnerlessSlotLocked releases a held slot that nothing owns any more and reports whether it did. Ownerless
+// means: held, no process phase, no stop, no pending start, no startup ticket, no active run of this plugin, and the
+// status is StateStopped (a restart that did not continue) or StateFailed (past the retry cutoff). Every other state
+// without a process either has an owner that will act (backoff, a retry or startup in flight) or is not this rule's
+// to judge.
+//
+// The predicate is I14's violation condition limited to Stopped and Failed. Its pending-start and startup-ticket
+// terms are kept on purpose: no current path reaches a held, Stopped or Failed slot with either of them set, but
+// dropping them would stop the rule from reading as I14's violation and let a later step release a slot that
+// still has an owner.
+func (s *Supervisor) releaseOwnerlessSlotLocked(record *pluginRecord) bool {
+	if record == nil || record.service == nil {
+		return false
+	}
+
+	service := record.service
+	activeRun := record.transition != nil && record.transition.run != nil && !record.transition.run.completed
+
+	if service.slot != slotHeld || service.proc != nil || service.stop != nil || service.pending != nil ||
+		service.startup != nil || activeRun ||
+		(service.status.State != StateStopped && service.status.State != StateFailed) {
+		return false
+	}
+
+	return s.releaseServiceSlotLocked(record)
 }
 
 // requestSlotLocked is how a starting plugin asks for a slot: the requester joins the queue for this one pass (it
 // counts as admissible even though its own operation is in flight), the admission loop runs over the queue in
 // lessServiceSpec order, and the requester learns whether it got a slot. Plugins admitted before it in that pass
-// get startup effects, returned to the caller.
-//
-// ahead puts the requester in front of the queue instead of its lessServiceSpec place. Two requesters are ahead: a
-// plugin that released its own slot earlier in the same critical section to ask again (a changed spec restarts the
-// plugin; today it keeps its slot and a waiter never gets it), and a plugin settling its own pending start (decided
-// before admission, so a waiter that sorts earlier does not take the slot the start needs). Every other requester
-// waits its turn.
-func (s *Supervisor) requestSlotLocked(record *pluginRecord, spec ServiceSpec, ahead bool) (bool, []effect) {
+// get startup effects, returned to the caller. A plugin that already owns a slot does not ask: a restart keeps it.
+func (s *Supervisor) requestSlotLocked(record *pluginRecord, spec ServiceSpec) (bool, []effect) {
 	if record.service.slot != slotNone {
 		return true, nil
 	}
 
-	return s.admitQueueLocked(record, spec, ahead)
+	return s.admitQueueLocked(record, spec)
 }
 
 type admissionCandidate struct {
@@ -1554,7 +1613,7 @@ type admissionCandidate struct {
 
 // admitQueueLocked is the one admission loop behind admitLocked (requester == nil) and requestSlotLocked. It is the
 // only caller of acquireServiceSlotLocked.
-func (s *Supervisor) admitQueueLocked(requester *pluginRecord, requesterSpec ServiceSpec, requesterAhead bool) (bool, []effect) {
+func (s *Supervisor) admitQueueLocked(requester *pluginRecord, requesterSpec ServiceSpec) (bool, []effect) {
 	var queue []admissionCandidate
 
 	if s.admissionOpenLocked() {
@@ -1570,14 +1629,6 @@ func (s *Supervisor) admitQueueLocked(requester *pluginRecord, requesterSpec Ser
 	}
 
 	slices.SortStableFunc(queue, func(left, right admissionCandidate) int {
-		if requesterAhead && left.requester != right.requester {
-			if left.requester {
-				return -1
-			}
-
-			return 1
-		}
-
 		if lessServiceSpec(left.spec, right.spec) {
 			return -1
 		}
@@ -1736,11 +1787,8 @@ func (s *Supervisor) planStartLocked(spec ServiceSpec, paths RuntimePaths) start
 		return startPlan{action: startNoop}
 	}
 
-	released := false
-
+	// A changed spec restarts the plugin and it keeps the slot it holds; only the status starts over.
 	if !previousSpec.Equal(spec) && record.service.slot != slotNone {
-		released = s.releaseServiceSlotLocked(record)
-
 		record.service.status.State = StateStopped
 		record.service.status.NextAttemptAt = nil
 	}
@@ -1763,7 +1811,7 @@ func (s *Supervisor) planStartLocked(spec ServiceSpec, paths RuntimePaths) start
 
 	s.clearPendingStartLocked(record)
 
-	granted, effects := s.requestSlotLocked(record, spec, released)
+	granted, effects := s.requestSlotLocked(record, spec)
 
 	if !granted {
 		record.service.status.State = StateCapacityBlocked
@@ -1834,13 +1882,13 @@ func (s *Supervisor) startService(run *operationRun, spec ServiceSpec) error {
 		// An updated service may already own a slot. Stop that old process,
 		// then leave the incompatible manifest represented as stopped without
 		// exposing a listener or scheduling retries for the unsupported version.
-		_ = s.stopProcess(run.ctx, spec.PluginID, true)
+		_ = s.stopProcess(run.ctx, spec.PluginID, stopRelease)
 
 		s.restampIncompatible(run, spec)
 
 		return plan.err
 	case startReplace:
-		if err := s.stopProcess(run.ctx, spec.PluginID, true); err != nil {
+		if err := s.stopProcess(run.ctx, spec.PluginID, stopRestart); err != nil {
 			return err
 		}
 
@@ -1993,7 +2041,7 @@ func (s *Supervisor) cleanupFailedStart(pluginID string) {
 
 	defer cancel()
 
-	_ = s.stopProcess(cleanupCtx, pluginID, false)
+	_ = s.stopProcess(cleanupCtx, pluginID, stopKeep)
 }
 
 func (s *Supervisor) registerServiceProcess(
@@ -2204,15 +2252,11 @@ func (s *Supervisor) observeProcessExit(pluginID string, process *registeredProc
 		record.service.status.State = StateStopped
 		record.service.status.NextAttemptAt = nil
 
-		released := false
-
-		if record.service.slot != slotNone {
-			released = s.releaseServiceSlotLocked(record)
-		}
+		s.keepRestartSlotLocked(record, *plugin.desired)
 
 		s.markPendingStartLocked(record, *plugin.desired, false)
 
-		reserved, reserveEffects := s.reserveForReconcileLocked(*plugin.desired, released)
+		reserved, reserveEffects := s.reserveForReconcileLocked(*plugin.desired)
 
 		effects = append(effects, reserveEffects...)
 
@@ -2437,14 +2481,13 @@ func (s *Supervisor) settleLocked(pluginID string) []effect {
 	}
 
 	if !record.service.spec.Equal(spec) && record.service.slot != slotNone {
-		s.releaseServiceSlotLocked(record)
-
 		record.service.status.State = StateStopped
 		record.service.status.NextAttemptAt = nil
+
+		s.keepRestartSlotLocked(record, spec)
 	}
 
-	// The plugin's own pending start is decided before admission, so it asks ahead of the queue.
-	reserved, effects := s.reserveForReconcileLocked(spec, true)
+	reserved, effects := s.reserveForReconcileLocked(spec)
 
 	s.clearPendingStartLocked(record)
 
@@ -2458,7 +2501,7 @@ func (s *Supervisor) settleLocked(pluginID string) []effect {
 }
 
 func (s *Supervisor) stopRecord(ctx context.Context, pluginID string) error {
-	return s.stopProcess(ctx, pluginID, true)
+	return s.stopProcess(ctx, pluginID, stopRelease)
 }
 
 func (s *Supervisor) releaseUnstartedReservation(run *operationRun) (bool, []effect) {
@@ -2492,7 +2535,7 @@ func (s *Supervisor) takeUnstartedReservationLocked(run *operationRun) (bool, []
 	return true, s.admitLocked()
 }
 
-func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseReservation bool) error {
+func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, kind stopKind) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -2514,7 +2557,7 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseRe
 
 			s.stopRetryTimerLocked(pluginID)
 
-			if releaseReservation {
+			if kind != stopKeep {
 				record.service.status = RuntimeStatus{State: StateStopped, RestartCount: restartCount}
 
 				record.service.claimSlot()
@@ -2533,8 +2576,8 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseRe
 		if record.service.stop != nil {
 			stop := record.service.stop
 
-			if releaseReservation {
-				stop.releaseSlot = true
+			if kind != stopKeep {
+				stop.kind = max(stop.kind, kind)
 				restartCount := record.service.status.RestartCount
 				record.service.status = RuntimeStatus{State: StateStopped, RestartCount: restartCount}
 
@@ -2553,12 +2596,12 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseRe
 
 		process, paths := record.service.process(), record.service.paths
 		restartCount := record.service.status.RestartCount
-		stop := &stopState{done: make(chan struct{}), releaseSlot: releaseReservation}
+		stop := &stopState{done: make(chan struct{}), kind: kind}
 		record.service.stop = stop
 
 		s.stopRetryTimerLocked(pluginID)
 
-		if releaseReservation {
+		if kind != stopKeep {
 			record.service.status = RuntimeStatus{State: StateStopped, RestartCount: restartCount}
 
 			record.service.claimSlot()
@@ -2657,7 +2700,7 @@ func (s *Supervisor) finishStop(
 		return stopErr
 	}
 
-	releaseSlot := stop.releaseSlot
+	releaseSlot := stop.kind == stopRelease
 
 	if process != nil {
 		record.service.proc = nil

@@ -482,8 +482,7 @@ func checkInvariantI14(pluginID string, record *pluginRecord) (invariantViolatio
 	startup := record.service != nil && record.service.startup != nil
 
 	if record.slot() != slotHeld || record.phase() != nil ||
-		stop || pending || startup || status.State == StateBackoff ||
-		status.State == StateFailed || activeRun {
+		stop || pending || startup || status.State == StateBackoff || activeRun {
 		return invariantViolation{}, false
 	}
 

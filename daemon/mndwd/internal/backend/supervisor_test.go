@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -924,7 +925,7 @@ func TestStopWaiterReadsItsOwnStopResult(t *testing.T) {
 	waitResult := make(chan error, 1)
 
 	go func() {
-		waitResult <- supervisor.stopProcess(waitCtx, "demo", false)
+		waitResult <- supervisor.stopProcess(waitCtx, "demo", stopKeep)
 	}()
 
 	// Done signals after stopProcess captured stopA and reached the joiner select.
@@ -1134,6 +1135,29 @@ func receiveStartedForTest(t *testing.T, started <-chan string, want string) {
 	}
 }
 
+// receiveStartedSetForTest waits for exactly the wanted startups in any order: one tail can return several startup
+// effects, and startupEffect.run starts each in its own goroutine.
+func receiveStartedSetForTest(t *testing.T, started <-chan string, want ...string) {
+	t.Helper()
+
+	remaining := slices.Clone(want)
+
+	for len(remaining) > 0 {
+		select {
+		case got := <-started:
+			index := slices.Index(remaining, got)
+
+			if index < 0 {
+				t.Fatalf("started plugin = %q, want one of %q", got, remaining)
+			}
+
+			remaining = slices.Delete(remaining, index, index+1)
+		case <-time.After(time.Second):
+			t.Fatalf("plugins %q were not started", remaining)
+		}
+	}
+}
+
 func requireNothingStartedForTest(t *testing.T, supervisor *Supervisor, started <-chan string) {
 	t.Helper()
 
@@ -1157,56 +1181,6 @@ func newAdmissionSupervisorForTest(t *testing.T) (*Supervisor, <-chan string) {
 	supervisor.startDesired = func(spec ServiceSpec) { started <- spec.PluginID }
 
 	return supervisor, started
-}
-
-// A stop that finished released the slot of its plugin, which also has a pending start. The plugin decides that start
-// before admission, so a capacity-blocked plugin that sorts earlier does not take the slot first.
-func TestFinishedStopSettlesOwnPendingStartBeforeAdmission(t *testing.T) {
-	supervisor, started := newAdmissionSupervisorForTest(t)
-	waiter := enabledSpec("alpha")
-	own := enabledSpec("beta")
-	changed := own
-	changed.Args = []string{"--changed"}
-
-	supervisor.Reconcile(context.Background(), []ServiceSpec{own})
-	supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, own})
-
-	if got := supervisor.Status(waiter.PluginID).State; got != StateCapacityBlocked {
-		t.Fatalf("waiter state = %q, want %q", got, StateCapacityBlocked)
-	}
-
-	// The state stopProcess leaves while it waits for the process: stop requested with its slot to be released.
-	paths := RuntimePaths{}
-	stop := &stopState{done: make(chan struct{}), releaseSlot: true}
-
-	supervisor.mu.Lock()
-
-	record := supervisor.serviceRecordLocked(own.PluginID)
-	record.service.stop = stop
-
-	supervisor.unlock()
-
-	supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, changed})
-	supervisor.launchDesiredStartup(changed)
-
-	if !supervisor.pluginSnapshot(own.PluginID).pendingStart {
-		t.Fatal("startup during the stop did not leave a pending start")
-	}
-
-	if err := supervisor.finishStop(own.PluginID, record, nil, paths, stop, nil); err != nil {
-		t.Fatalf("finishStop = %v, want nil", err)
-	}
-
-	receiveStartedForTest(t, started, own.PluginID)
-	requireNothingStartedForTest(t, supervisor, started)
-
-	if got := supervisor.Status(waiter.PluginID).State; got != StateCapacityBlocked {
-		t.Fatalf("waiter state after the stop = %q, want %q", got, StateCapacityBlocked)
-	}
-
-	if !supervisor.pluginSnapshot(own.PluginID).serviceSlotHeld {
-		t.Fatal("plugin with the pending start did not get the slot")
-	}
 }
 
 // The slot of the plugin is free while another plugin's operation runs; when that operation ends the plugin is
@@ -1335,7 +1309,7 @@ func TestStopAllAfterAdmissionBeforeStartupRuns(t *testing.T) {
 
 // Past the retry cutoff a plugin stays failed: a start request that waited behind its running process (same spec, not
 // a retry) is dropped when the crash reaches StateFailed, instead of relaunching the plugin at once. The failed plugin
-// keeps its slot today, so the earlier waiter gets nothing it would not get without the request.
+// gives its slot to the earlier waiter.
 func TestCrashPastRetryCutoffDropsSameSpecPendingStart(t *testing.T) {
 	supervisor, started := newAdmissionSupervisorForTest(t)
 	spec := enabledSpec("beta")
@@ -1354,16 +1328,13 @@ func TestCrashPastRetryCutoffDropsSameSpecPendingStart(t *testing.T) {
 
 	close(done.done)
 	supervisor.observeExit(spec.PluginID, done)
+	receiveStartedForTest(t, started, waiter.PluginID)
 	requireNothingStartedForTest(t, supervisor, started)
 
 	snapshot := supervisor.pluginSnapshot(spec.PluginID)
 
 	if snapshot.status.State != StateFailed || snapshot.pendingStart {
 		t.Fatalf("after the cutoff crash state = %q, pending start = %t, want %q and none", snapshot.status.State, snapshot.pendingStart, StateFailed)
-	}
-
-	if got := supervisor.Status(waiter.PluginID).State; got != StateCapacityBlocked {
-		t.Fatalf("waiter state = %q, want %q (the failed plugin keeps its slot)", got, StateCapacityBlocked)
 	}
 }
 
@@ -1521,4 +1492,400 @@ func TestPlanStartWithChangedSpecKeepsItsSlotFromEarlierWaiter(t *testing.T) {
 	if got := supervisor.Status(waiter.PluginID).State; got != StateCapacityBlocked {
 		t.Fatalf("waiter state = %q, want %q", got, StateCapacityBlocked)
 	}
+}
+
+// releaseStopWithPendingStartForTest finishes a release stop of own while own has a pending start for a changed spec
+// and waiter is capacity-blocked. Production reaches this state when a lifecycle start arrives during a release stop
+// that outlives its run (a timed-out disable): planStartLocked marks the pending start for the same spec, and for a
+// changed spec startReplace joins the stop and the join takes the stronger kind. The helper writes the stop and
+// calls Reconcile and launchDesiredStartup by hand instead, because Reconcile never lists a plugin that has a stop
+// in startIDs (prepareReservationLocked refuses while stop != nil).
+func releaseStopWithPendingStartForTest(t *testing.T, supervisor *Supervisor, waiter, own ServiceSpec) {
+	t.Helper()
+
+	changed := own
+	changed.Args = []string{"--changed"}
+
+	supervisor.Reconcile(context.Background(), []ServiceSpec{own})
+	supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, own})
+
+	paths := RuntimePaths{}
+	stop := &stopState{done: make(chan struct{}), kind: stopRelease}
+
+	supervisor.mu.Lock()
+
+	record := supervisor.serviceRecordLocked(own.PluginID)
+	record.service.stop = stop
+
+	supervisor.unlock()
+
+	supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, changed})
+	supervisor.launchDesiredStartup(changed)
+
+	if !supervisor.pluginSnapshot(own.PluginID).pendingStart {
+		t.Fatal("startup during the stop did not leave a pending start")
+	}
+
+	if err := supervisor.finishStop(own.PluginID, record, nil, paths, stop, nil); err != nil {
+		t.Fatalf("finishStop = %v, want nil", err)
+	}
+}
+
+// A stop that releases the slot finished while its plugin, disabled and enabled again with a changed spec, has a pending
+// start. The plugin gave its slot up, so its start asks the queue like any other and waits behind a capacity-blocked
+// plugin that sorts earlier.
+func TestReleaseStopPendingStartWaitsBehindEarlierWaiter(t *testing.T) {
+	supervisor, started := newAdmissionSupervisorForTest(t)
+	waiter := enabledSpec("alpha")
+	own := enabledSpec("beta")
+
+	releaseStopWithPendingStartForTest(t, supervisor, waiter, own)
+	receiveStartedForTest(t, started, waiter.PluginID)
+	requireNothingStartedForTest(t, supervisor, started)
+
+	if got := supervisor.Status(own.PluginID).State; got != StateCapacityBlocked {
+		t.Fatalf("plugin with the pending start state = %q, want %q", got, StateCapacityBlocked)
+	}
+
+	if !supervisor.pluginSnapshot(waiter.PluginID).serviceSlotHeld {
+		t.Fatal("waiter that sorts earlier did not get the released slot")
+	}
+}
+
+// The same, with the waiter sorting later: the plugin's own pending start is decided before admission, so it wins the
+// slot it released and the waiter stays blocked.
+func TestReleaseStopPendingStartWinsAgainstLaterWaiter(t *testing.T) {
+	supervisor, started := newAdmissionSupervisorForTest(t)
+	waiter := enabledSpec("beta")
+	own := enabledSpec("alpha")
+
+	releaseStopWithPendingStartForTest(t, supervisor, waiter, own)
+	receiveStartedForTest(t, started, own.PluginID)
+	requireNothingStartedForTest(t, supervisor, started)
+
+	if got := supervisor.Status(waiter.PluginID).State; got != StateCapacityBlocked {
+		t.Fatalf("waiter state = %q, want %q", got, StateCapacityBlocked)
+	}
+
+	if !supervisor.pluginSnapshot(own.PluginID).serviceSlotHeld {
+		t.Fatal("plugin with the pending start did not get the slot")
+	}
+}
+
+// replaceFixtureForTest holds one slot: beta runs a registered process and is replaced by a changed spec, alpha sorts
+// first and is capacity-blocked. The returned run is the lifecycle start of beta, active throughout.
+func replaceFixtureForTest(t *testing.T) (
+	supervisor *Supervisor,
+	started <-chan string,
+	waiter, changed ServiceSpec,
+	done *processExit,
+	operation lifecycleOperation,
+) {
+	t.Helper()
+
+	supervisor, started = newAdmissionSupervisorForTest(t)
+	supervisor.cfg.StopTimeout = 5 * time.Millisecond
+	supervisor.cfg.FinalReapTimeout = 15 * time.Millisecond
+	waiter = enabledSpec("alpha")
+	own := enabledSpec("beta")
+	changed = own
+	changed.Args = []string{"--changed"}
+	done = newProcessExit()
+
+	seedRegisteredServiceForTest(supervisor, own, RuntimeStatus{State: StateReady}, nil, done)
+	supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, own})
+
+	if got := supervisor.Status(waiter.PluginID).State; got != StateCapacityBlocked {
+		t.Fatalf("waiter state = %q, want %q", got, StateCapacityBlocked)
+	}
+
+	if plan := supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, changed}); !containsID(plan.startIDs, own.PluginID) {
+		t.Fatalf("start IDs = %#v, want %q", plan.startIDs, own.PluginID)
+	}
+
+	operation = supervisor.beginLifecycleOperation(own.PluginID, OpStarting, IntentRun)
+
+	if plan := supervisor.planStart(changed, RuntimePaths{}); plan.action != startReplace || plan.err != nil {
+		t.Fatalf("plan for the changed spec = (%d, %v), want (%d, nil)", plan.action, plan.err, startReplace)
+	}
+
+	return supervisor, started, waiter, changed, done, operation
+}
+
+func requireSlotsForTest(t *testing.T, supervisor *Supervisor, want int, when string) {
+	t.Helper()
+
+	if got := supervisor.reservedServiceCount(); got != want {
+		t.Fatalf("reserved slots %s = %d, want %d", when, got, want)
+	}
+}
+
+// A replaced plugin keeps its slot against a capacity-blocked plugin that sorts earlier. The test waits for the stop's
+// cleanup before the replacing run plans again, which is the order that used to hand the freed slot to the waiter.
+func TestReplaceKeepsSlotFromEarlierWaiter(t *testing.T) {
+	supervisor, started, waiter, changed, done, _ := replaceFixtureForTest(t)
+
+	close(done.done)
+
+	if err := supervisor.stopProcess(context.Background(), changed.PluginID, stopRestart); err != nil {
+		t.Fatalf("replace stop = %v, want nil", err)
+	}
+
+	waitForSupervisorStopForTest(t, supervisor, changed.PluginID)
+	requireNothingStartedForTest(t, supervisor, started)
+	requireSlotsForTest(t, supervisor, 1, "after the stop's cleanup")
+
+	if got := supervisor.Status(waiter.PluginID).State; got != StateCapacityBlocked {
+		t.Fatalf("waiter state after the cleanup = %q, want %q", got, StateCapacityBlocked)
+	}
+
+	if plan := supervisor.planStart(changed, RuntimePaths{}); plan.action != startProceed || plan.err != nil {
+		t.Fatalf("plan after the cleanup = (%d, %v), want (%d, nil)", plan.action, plan.err, startProceed)
+	}
+
+	requireNothingStartedForTest(t, supervisor, started)
+	requireSlotsForTest(t, supervisor, 1, "once the replacement is planned")
+
+	if got := supervisor.Status(waiter.PluginID).State; got != StateCapacityBlocked {
+		t.Fatalf("waiter state after the replacement = %q, want %q", got, StateCapacityBlocked)
+	}
+}
+
+// The replace stop times out, so the run ends with its error while the old process is still alive. The plugin keeps its
+// slot through the timeout and the cleanup, the waiter stays blocked, and the restart continues with the new spec.
+func TestTimedOutReplaceKeepsSlotFromEarlierWaiter(t *testing.T) {
+	supervisor, started, waiter, changed, done, operation := replaceFixtureForTest(t)
+
+	stopErr := supervisor.stopProcess(context.Background(), changed.PluginID, stopRestart)
+
+	if stopErr == nil {
+		t.Fatal("replace stop = nil, want the timeout error")
+	}
+
+	supervisor.failLifecycle(operation.token, stopErr)
+	requireNothingStartedForTest(t, supervisor, started)
+	requireSlotsForTest(t, supervisor, 1, "after the run ended with the timeout")
+
+	close(done.done)
+	waitForSupervisorStopForTest(t, supervisor, changed.PluginID)
+	receiveStartedForTest(t, started, changed.PluginID)
+	requireNothingStartedForTest(t, supervisor, started)
+	requireSlotsForTest(t, supervisor, 1, "after the stop's cleanup")
+
+	if got := supervisor.Status(waiter.PluginID).State; got != StateCapacityBlocked {
+		t.Fatalf("waiter state = %q, want %q", got, StateCapacityBlocked)
+	}
+
+	if !supervisor.pluginSnapshot(changed.PluginID).serviceSlotHeld {
+		t.Fatal("restarting plugin lost its slot")
+	}
+}
+
+// The timed-out replace's pending start is no longer wanted when the stop's cleanup ends (Reconcile brought another
+// spec), so the restart does not continue: the slot is released after the cleanup and the waiter is admitted in the
+// same critical section.
+func TestReplaceWhoseRestartDoesNotContinueReleasesSlot(t *testing.T) {
+	supervisor, started, waiter, changed, done, operation := replaceFixtureForTest(t)
+
+	stopErr := supervisor.stopProcess(context.Background(), changed.PluginID, stopRestart)
+
+	if stopErr == nil {
+		t.Fatal("replace stop = nil, want the timeout error")
+	}
+
+	supervisor.failLifecycle(operation.token, stopErr)
+
+	another := changed
+	another.Args = []string{"--another"}
+
+	if plan := supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, another}); len(plan.startIDs) != 0 {
+		t.Fatalf("reconcile during the replacement stop planned starts = %v, want none", plan.startIDs)
+	}
+
+	requireNothingStartedForTest(t, supervisor, started)
+	requireSlotsForTest(t, supervisor, 1, "while the stop is in flight")
+
+	close(done.done)
+	waitForSupervisorStopForTest(t, supervisor, changed.PluginID)
+	receiveStartedForTest(t, started, waiter.PluginID)
+	requireNothingStartedForTest(t, supervisor, started)
+	requireSlotsForTest(t, supervisor, 1, "after the stop's cleanup")
+
+	if supervisor.pluginSnapshot(changed.PluginID).serviceSlotHeld {
+		t.Fatal("plugin whose restart did not continue kept its slot")
+	}
+
+	if !supervisor.pluginSnapshot(waiter.PluginID).serviceSlotHeld {
+		t.Fatal("waiter was not admitted when the slot was released")
+	}
+}
+
+// A plugin that crashes past the retry cutoff reaches StateFailed and gives its slot to the first waiter in the same
+// critical section; starting it again asks the queue like any other start.
+func TestFailedPluginReleasesSlotToWaiter(t *testing.T) {
+	supervisor, started := newAdmissionSupervisorForTest(t)
+	waiter := enabledSpec("alpha")
+	own := enabledSpec("beta")
+	done := newProcessExit()
+
+	seedRegisteredServiceForTest(supervisor, own, RuntimeStatus{State: StateReady, ConsecutiveFailures: maxConsecutiveFailures - 1}, nil, done)
+	supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, own})
+
+	done.err = errors.New("crash")
+
+	close(done.done)
+	supervisor.observeExit(own.PluginID, done)
+	receiveStartedForTest(t, started, waiter.PluginID)
+	requireNothingStartedForTest(t, supervisor, started)
+
+	snapshot := supervisor.pluginSnapshot(own.PluginID)
+
+	if snapshot.status.State != StateFailed || snapshot.serviceSlotHeld {
+		t.Fatalf("failed plugin state = %q, slot held = %t, want %q and no slot", snapshot.status.State, snapshot.serviceSlotHeld, StateFailed)
+	}
+
+	if !supervisor.pluginSnapshot(waiter.PluginID).serviceSlotHeld {
+		t.Fatal("waiter was not admitted when the failed plugin gave its slot up")
+	}
+
+	supervisor.beginLifecycleOperation(own.PluginID, OpStarting, IntentRun)
+
+	if plan := supervisor.planStart(own, RuntimePaths{}); plan.action != startNoop || !errors.Is(plan.err, ErrServiceCapacityExceeded) {
+		t.Fatalf("plan for the failed plugin = (%d, %v), want (%d, %v)", plan.action, plan.err, startNoop, ErrServiceCapacityExceeded)
+	}
+}
+
+// A start that fails at the retry cutoff inside its run reaches StateFailed too; the slot is released when that run
+// ends, not before, and the waiter is admitted then. The cutoff count is seeded because production reaches it only
+// after four earlier failures; the failure itself is a real one (the spec has no command to validate).
+func TestFailedStartReleasesSlotWhenItsRunEnds(t *testing.T) {
+	supervisor, started := newAdmissionSupervisorForTest(t)
+	waiter := enabledSpec("alpha")
+	own := enabledSpec("beta")
+
+	supervisor.Reconcile(context.Background(), []ServiceSpec{own})
+	supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, own})
+
+	supervisor.mu.Lock()
+
+	supervisor.serviceRecordLocked(own.PluginID).service.status.ConsecutiveFailures = maxConsecutiveFailures - 1
+
+	supervisor.unlock()
+
+	if err := startSupervisorForTest(supervisor, own); err == nil {
+		t.Fatal("start of a spec without a command = nil, want an error")
+	}
+
+	receiveStartedForTest(t, started, waiter.PluginID)
+	requireNothingStartedForTest(t, supervisor, started)
+
+	snapshot := supervisor.pluginSnapshot(own.PluginID)
+
+	if snapshot.status.State != StateFailed || snapshot.serviceSlotHeld {
+		t.Fatalf("failed plugin state = %q, slot held = %t, want %q and no slot", snapshot.status.State, snapshot.serviceSlotHeld, StateFailed)
+	}
+
+	if !supervisor.pluginSnapshot(waiter.PluginID).serviceSlotHeld {
+		t.Fatal("waiter was not admitted when the failed start's run ended")
+	}
+}
+
+// A stop that is already running keeps the stronger of the kinds asked of it: a disable that joins a replace stop makes
+// it a release, and a replace that joins a release stop does not downgrade it. The run stays active so that a kept
+// slot has an owner at cleanup; the slot is the only difference between the cases.
+func TestStopJoinKeepsTheStrongerKind(t *testing.T) {
+	tests := []struct {
+		name         string
+		first, again stopKind
+		wantSlotHeld bool
+	}{
+		{name: "release joins restart", first: stopRestart, again: stopRelease},
+		{name: "restart joins release", first: stopRelease, again: stopRestart},
+		{name: "restart joins restart", first: stopRestart, again: stopRestart, wantSlotHeld: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			supervisor, _ := newAdmissionSupervisorForTest(t)
+			supervisor.cfg.StopTimeout = 5 * time.Millisecond
+			supervisor.cfg.FinalReapTimeout = 15 * time.Millisecond
+			spec := enabledSpec("beta")
+			done := newProcessExit()
+
+			seedRegisteredServiceForTest(supervisor, spec, RuntimeStatus{State: StateReady}, nil, done)
+			supervisor.beginLifecycleOperation(spec.PluginID, OpStarting, IntentRun)
+
+			if err := supervisor.stopProcess(context.Background(), spec.PluginID, test.first); err == nil {
+				t.Fatal("first stop = nil, want the timeout error")
+			}
+
+			joinCtx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+
+			defer cancel()
+
+			if err := supervisor.stopProcess(joinCtx, spec.PluginID, test.again); !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("joining stop = %v, want the caller's deadline", err)
+			}
+
+			close(done.done)
+			waitForSupervisorStopForTest(t, supervisor, spec.PluginID)
+
+			if got := supervisor.pluginSnapshot(spec.PluginID).serviceSlotHeld; got != test.wantSlotHeld {
+				t.Fatalf("slot held after the cleanup = %t, want %t", got, test.wantSlotHeld)
+			}
+		})
+	}
+}
+
+// beta runs a registered process and alpha is capacity-blocked behind it. Reconcile brings beta a spec the daemon
+// cannot run, and beta's process crashes before the startup run begins. The incompatible spec cannot start, so the
+// slot is not kept: alpha is admitted in the exit's critical section, and beta keeps the status it crashed with,
+// because no stop resets it.
+func TestCrashWithIncompatibleDesiredSpecReleasesSlotToWaiter(t *testing.T) {
+	supervisor, started := newAdmissionSupervisorForTest(t)
+	waiter := enabledSpec("alpha")
+	own := enabledSpec("beta")
+	incompatible := own
+	incompatible.ProtocolVersion = 9
+	done := newProcessExit()
+
+	seedRegisteredServiceForTest(supervisor, own,
+		RuntimeStatus{State: StateReady, ConsecutiveFailures: 2, LastError: "earlier"}, nil, done)
+	supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, own})
+
+	if got := supervisor.Status(waiter.PluginID).State; got != StateCapacityBlocked {
+		t.Fatalf("waiter state = %q, want %q", got, StateCapacityBlocked)
+	}
+
+	if plan := supervisor.Reconcile(context.Background(), []ServiceSpec{waiter, incompatible}); !containsID(plan.startIDs, own.PluginID) {
+		t.Fatalf("start IDs = %#v, want %q", plan.startIDs, own.PluginID)
+	}
+
+	done.err = errors.New("crash")
+
+	close(done.done)
+	supervisor.observeExit(own.PluginID, done)
+
+	// The exit's tail returns two startup effects, the waiter's (admitted) and the plugin's own (it ends at the
+	// incompatible protocol). Each runs in its own goroutine, so they arrive in either order; who got the slot is
+	// checked below.
+	receiveStartedSetForTest(t, started, waiter.PluginID, own.PluginID)
+	requireNothingStartedForTest(t, supervisor, started)
+
+	if !supervisor.pluginSnapshot(waiter.PluginID).serviceSlotHeld {
+		t.Fatal("waiter was not given the slot of the plugin that cannot restart")
+	}
+
+	snapshot := supervisor.pluginSnapshot(own.PluginID)
+
+	if snapshot.serviceSlotHeld || snapshot.reservationPending {
+		t.Fatalf("crashed plugin still owns a slot: held=%t reserved=%t", snapshot.serviceSlotHeld, snapshot.reservationPending)
+	}
+
+	if snapshot.status.ConsecutiveFailures != 2 || snapshot.status.LastError != "earlier" {
+		t.Fatalf("crashed plugin status = (failures %d, error %q), want (2, \"earlier\")",
+			snapshot.status.ConsecutiveFailures, snapshot.status.LastError)
+	}
+
+	requireSlotsForTest(t, supervisor, 1, "after the crash")
 }

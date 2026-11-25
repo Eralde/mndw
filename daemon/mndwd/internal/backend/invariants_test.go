@@ -248,7 +248,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 		{
 			name: "I4 stop state with done channel is valid",
 			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.service.stop = &stopState{done: make(chan struct{}), releaseSlot: true}
+				record.service.stop = &stopState{done: make(chan struct{}), kind: stopRelease}
 			},
 		},
 		{
@@ -505,7 +505,9 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			},
 		},
 		{
-			name: "I14 held slot can be failed",
+			name:       "I14 held slot of a failed plugin is an orphan",
+			wantID:     "I14",
+			wantPlugin: "demo",
 			configure: func(s *Supervisor, record *pluginRecord) {
 				record.service.slot = slotHeld
 				record.service.status.State = StateFailed

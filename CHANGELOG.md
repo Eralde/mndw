@@ -25,6 +25,8 @@ A part with nothing in it is left out.
   log reader instead of downloading the whole log each time.
 - A plugin backend waiting for a free slot now starts as soon as one frees up, including when it was busy at the
   moment the slot was freed. Before, it could stay waiting until the next change in the plugin list.
+- A plugin backend restarted with new settings keeps its slot; before, a waiting plugin could sometimes take it. A
+  plugin backend that has stopped retrying after repeated crashes now frees its slot for a waiting plugin.
 
 ### For plugin authors
 

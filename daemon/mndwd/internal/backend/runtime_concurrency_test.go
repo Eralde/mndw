@@ -257,7 +257,7 @@ func TestStopDeadlineRetainsLaunchReservationUntilExactWait(t *testing.T) {
 	awaitTestSignal(t, launchEntered, "first service to enter its pre-Start launcher gate")
 
 	stopCtx, cancelStop := context.WithTimeout(context.Background(), 35*time.Millisecond)
-	err := runtime.supervisor.stopProcess(stopCtx, first.Name, true)
+	err := runtime.supervisor.stopProcess(stopCtx, first.Name, stopRelease)
 
 	cancelStop()
 
@@ -282,7 +282,7 @@ func TestStopDeadlineRetainsLaunchReservationUntilExactWait(t *testing.T) {
 	releaseLaunchGate()
 	awaitTestSignal(t, waitEntered, "first child's exact Wait to enter its gate")
 
-	if err := runtime.supervisor.stopProcess(context.Background(), first.Name, true); err == nil {
+	if err := runtime.supervisor.stopProcess(context.Background(), first.Name, stopRelease); err == nil {
 		t.Fatal("stop succeeded while the child's exact Wait remained gated")
 	}
 

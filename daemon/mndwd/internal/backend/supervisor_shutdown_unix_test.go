@@ -399,7 +399,7 @@ func seedTermIgnoringService(t *testing.T, runtime *Runtime, spec ServiceSpec) (
 func timeoutTermIgnoringService(t *testing.T, runtime *Runtime, pluginID string) chan struct{} {
 	t.Helper()
 
-	err := runtime.supervisor.stopProcess(context.Background(), pluginID, true)
+	err := runtime.supervisor.stopProcess(context.Background(), pluginID, stopRelease)
 	if err == nil || !strings.Contains(err.Error(), "did not exit after kill") {
 		t.Fatalf("initial stop error = %v, want final-reap timeout", err)
 	}
@@ -431,7 +431,7 @@ func TestStopProcessJoinHonorsCallerDeadline(t *testing.T) {
 	defer cancel()
 
 	started := time.Now()
-	err := runtime.supervisor.stopProcess(ctx, spec.PluginID, false)
+	err := runtime.supervisor.stopProcess(ctx, spec.PluginID, stopKeep)
 	elapsed := time.Since(started)
 
 	if !errors.Is(err, context.DeadlineExceeded) {
@@ -875,7 +875,7 @@ func TestStopProcessLogsUnreapedPID(t *testing.T) {
 		done:        done,
 	}, nil)
 
-	stopErr := runtime.supervisor.stopProcess(context.Background(), pluginID, true)
+	stopErr := runtime.supervisor.stopProcess(context.Background(), pluginID, stopRelease)
 
 	if stopErr == nil || !strings.Contains(stopErr.Error(), "did not exit after kill") {
 		t.Fatalf("stop error = %v, want final-reap timeout", stopErr)

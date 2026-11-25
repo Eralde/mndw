@@ -152,7 +152,7 @@ func (s *Supervisor) reapUnregisteredProcess(pluginID string, process *registere
 
 	defer cancel()
 
-	_ = s.stopProcess(ctx, pluginID, true)
+	_ = s.stopProcess(ctx, pluginID, stopRelease)
 }
 
 func serviceDataDir(root string, spec ServiceSpec) string {

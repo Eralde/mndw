@@ -2618,6 +2618,7 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, kind stop
 			}
 
 			exited, waitErr := waitForProcessExitContext(ctx, process.exit.done, s.cfg.StopTimeout)
+			reaped = exited
 
 			if waitErr != nil {
 				stopErr = errors.Join(stopErr, fmt.Errorf("stop service %q: %w", pluginID, waitErr))
@@ -2628,7 +2629,9 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, kind stop
 					_ = killExecProcess(process.command.Process)
 				}
 
-				reaped, reapErr := waitForProcessReap(ctx, process.exit.done, s.cfg.FinalReapTimeout)
+				var reapErr error
+
+				reaped, reapErr = waitForProcessReap(ctx, process.exit.done, s.cfg.FinalReapTimeout)
 
 				if reapErr != nil {
 					stopErr = errors.Join(stopErr, fmt.Errorf("reap service %q: %w", pluginID, reapErr))
@@ -2658,7 +2661,10 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, kind stop
 			return stopErr
 		}
 
-		return s.finishStop(pluginID, record, process, paths, stop, stopErr)
+		// The process is gone, so the stop is complete whatever happened to the caller's context while it waited. The
+		// stop records what the finalizer would record, nil, so joiners and lastStopErr do not see the first caller's
+		// context error; that caller still hears its own.
+		return errors.Join(stopErr, s.finishStop(pluginID, record, process, paths, stop, nil))
 	}
 }
 

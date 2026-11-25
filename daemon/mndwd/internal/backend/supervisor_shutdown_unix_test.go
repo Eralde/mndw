@@ -910,3 +910,117 @@ func TestStopProcessLogsUnreapedPID(t *testing.T) {
 		t.Fatalf("warning log = %q, want unreaped pid %d", logs.String(), command.Process.Pid)
 	}
 }
+
+// startTermExitingProcess starts a child that dies on SIGTERM (sleep has the default handler) and reaps it as soon as
+// it exits.
+func startTermExitingProcess(t *testing.T) (*exec.Cmd, *processExit) {
+	t.Helper()
+
+	command := exec.Command("sleep", "60")
+
+	configureExecCommand(command)
+
+	if err := command.Start(); err != nil {
+		t.Fatalf("start sleep: %v", err)
+	}
+
+	done := newProcessExit()
+
+	go func() {
+		done.err = command.Wait()
+
+		close(done.done)
+	}()
+
+	t.Cleanup(func() {
+		_ = killExecProcess(command.Process)
+
+		select {
+		case <-done.done:
+		case <-time.After(time.Second):
+			t.Errorf("sleep process was not reaped")
+		}
+	})
+
+	return command, done
+}
+
+// A stop whose process exits in time is finished when stopRecord returns: evidence removed, process and stop cleared,
+// slot released. Only a process that survives the kill window is finished later, by the finalizer.
+func TestStopReturnsAfterCleanupWhenProcessExitsInTime(t *testing.T) {
+	tests := []struct {
+		name    string
+		timeout time.Duration
+		start   func(*testing.T) (*exec.Cmd, *processExit)
+	}{
+		{
+			name:    "exits on SIGTERM",
+			timeout: time.Second,
+			start:   startTermExitingProcess,
+		},
+		{
+			name:    "ignores SIGTERM and dies on SIGKILL within the final reap",
+			timeout: 20 * time.Millisecond,
+			start: func(t *testing.T) (*exec.Cmd, *processExit) {
+				command, done, _ := startTermIgnoringProcess(t, true)
+
+				return command, done
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			supervisor, _ := newAdmissionSupervisorForTest(t)
+			supervisor.cfg.StopTimeout = test.timeout
+			supervisor.cfg.FinalReapTimeout = time.Second
+			spec := enabledSpec("beta")
+			paths, err := NewRuntimePaths(supervisor.cfg.RuntimeRoot, spec.PluginID)
+			if err != nil {
+				t.Fatalf("runtime paths: %v", err)
+			}
+
+			if err := paths.Ensure(); err != nil {
+				t.Fatalf("ensure runtime paths: %v", err)
+			}
+
+			for _, evidence := range []string{paths.BackendSocket, paths.ServiceLease} {
+				if err := os.WriteFile(evidence, nil, 0o600); err != nil {
+					t.Fatalf("write evidence %s: %v", evidence, err)
+				}
+			}
+
+			command, done := test.start(t)
+
+			seedSupervisorStateForTest(supervisor, spec.PluginID, &spec, &serviceRecord{
+				spec:        spec,
+				paths:       paths,
+				status:      RuntimeStatus{State: StateReady},
+				serviceHeld: true,
+				command:     command,
+				done:        done,
+			}, &transition{intent: IntentRun})
+
+			if err := supervisor.stopRecord(context.Background(), spec.PluginID); err != nil {
+				t.Fatalf("stop = %v, want nil", err)
+			}
+
+			for _, evidence := range []string{paths.BackendSocket, paths.ServiceLease} {
+				if _, err := os.Stat(evidence); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("evidence %s after the stop returned: %v", evidence, err)
+				}
+			}
+
+			supervisor.mu.Lock()
+
+			service := supervisor.serviceRecordLocked(spec.PluginID).service
+			process, stop, slot := service.proc, service.stop, service.slot
+
+			supervisor.unlock()
+
+			if process != nil || stop != nil || slot != slotNone {
+				t.Errorf("after the stop returned: process = %v, stop = %v, slot = %v, want none of them", process, stop, slot)
+			}
+		})
+	}
+}

@@ -1889,3 +1889,78 @@ func TestCrashWithIncompatibleDesiredSpecReleasesSlotToWaiter(t *testing.T) {
 
 	requireSlotsForTest(t, supervisor, 1, "after the crash")
 }
+
+// The stopper's context ends while it waits for the process, and the process exits inside the final reap. The stop is
+// complete, so it records what the background finalizer would record, nil: a joiner and lastStopErr do not see the
+// first caller's context error. That caller still hears its own.
+func TestStopOfReapedProcessRecordsNoCallerContextError(t *testing.T) {
+	supervisor, _ := newAdmissionSupervisorForTest(t)
+	supervisor.cfg.StopTimeout = time.Minute
+	supervisor.cfg.FinalReapTimeout = time.Minute
+	own := enabledSpec("beta")
+	done := newProcessExit()
+
+	seedRegisteredServiceForTest(supervisor, own, RuntimeStatus{State: StateReady}, nil, done)
+
+	canceled, cancel := context.WithCancel(context.Background())
+
+	cancel()
+
+	stopperCtx := &observedDoneContext{Context: canceled, observed: make(chan struct{})}
+	stopperResult := make(chan error, 1)
+
+	go func() {
+		stopperResult <- supervisor.stopProcess(stopperCtx, own.PluginID, stopRelease)
+	}()
+
+	// The stopper asks for Done only once it waits in the final reap, with its context already ended.
+	select {
+	case <-stopperCtx.observed:
+	case <-time.After(time.Second):
+		t.Fatal("stopper did not reach the final reap")
+	}
+
+	joinerCtx := &observedDoneContext{Context: context.Background(), observed: make(chan struct{})}
+	joinerResult := make(chan error, 1)
+
+	go func() {
+		joinerResult <- supervisor.stopProcess(joinerCtx, own.PluginID, stopKeep)
+	}()
+
+	select {
+	case <-joinerCtx.observed:
+	case <-time.After(time.Second):
+		t.Fatal("joiner did not reach its wait")
+	}
+
+	close(done.done)
+
+	var stopperErr, joinerErr error
+
+	for range 2 {
+		select {
+		case stopperErr = <-stopperResult:
+		case joinerErr = <-joinerResult:
+		case <-time.After(time.Second):
+			t.Fatal("stop did not finish")
+		}
+	}
+
+	if !errors.Is(stopperErr, context.Canceled) {
+		t.Fatalf("stopper error = %v, want its own context error", stopperErr)
+	}
+
+	if joinerErr != nil {
+		t.Fatalf("joiner error = %v, want nil", joinerErr)
+	}
+
+	supervisor.mu.Lock()
+
+	lastStopErr := supervisor.serviceRecordLocked(own.PluginID).service.lastStopErr
+
+	supervisor.unlock()
+
+	if lastStopErr != nil {
+		t.Fatalf("lastStopErr = %v, want nil", lastStopErr)
+	}
+}

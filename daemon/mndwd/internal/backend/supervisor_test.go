@@ -9,12 +9,147 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 )
 
 type observedDoneContext struct {
 	context.Context
 	observed chan struct{}
 	once     sync.Once
+}
+
+func TestStartupsIdleTracksCount(t *testing.T) {
+	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 1}))
+
+	if unsafe.Sizeof(startupTicket{}) == 0 {
+		t.Fatal("startupTicket must not be zero-sized because its pointer is an identity")
+	}
+
+	if unsafe.Sizeof(retryState{}) == 0 {
+		t.Fatal("retryState must not be zero-sized because its pointer is an identity")
+	}
+
+	supervisor.mu.Lock()
+
+	firstIdle := supervisor.startupsIdleLocked()
+
+	select {
+	case <-firstIdle:
+	default:
+		supervisor.mu.Unlock()
+		t.Fatal("idle channel is open with no startups")
+	}
+
+	supervisor.addStartupLocked()
+
+	active := supervisor.startupsIdleLocked()
+
+	if count := supervisor.startups; count != 1 {
+		supervisor.mu.Unlock()
+		t.Fatalf("startup count after first add = %d, want 1", count)
+	}
+
+	supervisor.addStartupLocked()
+
+	count := supervisor.startups
+	idle := supervisor.startupsIdleLocked()
+
+	if count != 2 || idle != active {
+		supervisor.mu.Unlock()
+		t.Fatalf("startup count/channel after second add = %d/%p, want 2/%p", count, idle, active)
+	}
+
+	supervisor.doneStartupLocked()
+
+	select {
+	case <-active:
+		supervisor.mu.Unlock()
+		t.Fatal("idle channel closed while one startup remained")
+	default:
+	}
+
+	supervisor.doneStartupLocked()
+
+	select {
+	case <-active:
+	default:
+		supervisor.mu.Unlock()
+		t.Fatal("idle channel remained open after the last startup finished")
+	}
+
+	supervisor.addStartupLocked()
+
+	next := supervisor.startupsIdleLocked()
+
+	if next == active {
+		supervisor.mu.Unlock()
+		t.Fatal("new startup reused the closed idle channel")
+	}
+
+	supervisor.doneStartupLocked()
+	supervisor.mu.Unlock()
+}
+
+func TestRetryCallbackAfterCancelDoesNothing(t *testing.T) {
+	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 1}))
+	const pluginID = "retry"
+	started := make(chan struct{}, 1)
+	callbackWaiting := make(chan struct{}, 1)
+	callbackDone := make(chan string, 1)
+	supervisor.startDesired = func(ServiceSpec) {
+		started <- struct{}{}
+	}
+	supervisor.retryCallbackStarting = func(string) {
+		callbackWaiting <- struct{}{}
+	}
+	supervisor.retryCallbackDone = func(name string) {
+		callbackDone <- name
+	}
+
+	spec := enabledSpec(pluginID)
+
+	supervisor.mu.Lock()
+	supervisor.setDesiredLocked(pluginID, &spec)
+
+	record := supervisor.ensureServiceRecordLocked(pluginID)
+	record.service.status.State = StateBackoff
+
+	if !supervisor.acquireServiceSlotLocked(record) {
+		supervisor.mu.Unlock()
+		t.Fatal("failed to reserve retry service slot")
+	}
+
+	transition := supervisor.ensureTransitionRecordLocked(pluginID)
+	transition.transition.intent = IntentRun
+
+	supervisor.scheduleRetry(pluginID, time.Millisecond)
+
+	select {
+	case <-callbackWaiting:
+	case <-time.After(time.Second):
+		supervisor.mu.Unlock()
+		t.Fatal("retry callback did not reach the mutex")
+	}
+
+	supervisor.stopRetryTimerLocked(pluginID)
+	supervisor.mu.Unlock()
+
+	select {
+	case name := <-callbackDone:
+		if name != pluginID {
+			t.Fatalf("retry callback completion plugin = %q, want %q", name, pluginID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("retry callback did not finish after cancellation")
+	}
+
+	waitStartupsIdleForTest(supervisor)
+
+	select {
+	case <-started:
+		t.Fatal("canceled retry callback started the service")
+	default:
+	}
 }
 
 func (ctx *observedDoneContext) Done() <-chan struct{} {
@@ -909,7 +1044,7 @@ func TestPendingStartResumesAfterOperationEnds(t *testing.T) {
 	supervisor.unlock()
 
 	supervisor.resumePendingStartup(spec.PluginID)
-	supervisor.startupWG.Wait()
+	waitStartupsIdleForTest(supervisor)
 
 	select {
 	case got := <-started:
@@ -930,7 +1065,7 @@ func TestPendingStartResumesAfterOperationEnds(t *testing.T) {
 		t.Fatal("pending start was lost when its operation ended")
 	}
 
-	supervisor.startupWG.Wait()
+	waitStartupsIdleForTest(supervisor)
 }
 
 func TestPendingStartKeepsItsOwnArgs(t *testing.T) {

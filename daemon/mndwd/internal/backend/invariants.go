@@ -18,7 +18,7 @@ const (
 	invI5  invariantID = "I5" // type guarantee since step 5
 	invI6  invariantID = "I6" // type guarantee since step 4
 	invI7  invariantID = "I7"
-	invI8  invariantID = "I8"
+	invI8  invariantID = "I8" // type guarantee since step 7
 	invI9  invariantID = "I9"
 	invI10 invariantID = "I10"
 	invI11 invariantID = "I11"
@@ -40,7 +40,6 @@ var invariantModes = map[invariantID]invariantMode{
 	invI3:  invariantEnforced,
 	invI4:  invariantEnforced,
 	invI7:  invariantEnforced,
-	invI8:  invariantEnforced,
 	invI9:  invariantEnforced,
 	invI10: invariantEnforced,
 	invI11: invariantEnforced,
@@ -254,10 +253,6 @@ func (s *Supervisor) checkInvariantsLocked() []invariantViolation {
 			violations = append(violations, violation)
 		}
 
-		if violation, ok := checkInvariantI8(pluginID, record); ok {
-			violations = append(violations, violation)
-		}
-
 		if violation, ok := checkInvariantI9(pluginID, record); ok {
 			violations = append(violations, violation)
 		}
@@ -369,23 +364,6 @@ func checkInvariantI7(s *Supervisor) (invariantViolation, bool) {
 	}, true
 }
 
-func checkInvariantI8(pluginID string, record *pluginRecord) (invariantViolation, bool) {
-	if record.service != nil || (record.retryTimer == nil && !record.startupQueued) {
-		return invariantViolation{}, false
-	}
-
-	return invariantViolation{
-		ID:       invI8,
-		PluginID: pluginID,
-		Detail: fmt.Sprintf(
-			"service=%t retryTimer=%t startupQueued=%t",
-			record.service != nil,
-			record.retryTimer != nil,
-			record.startupQueued,
-		),
-	}, true
-}
-
 func checkInvariantI9(pluginID string, record *pluginRecord) (invariantViolation, bool) {
 	transition := record.transition
 
@@ -428,7 +406,9 @@ func checkInvariantI10(pluginID string, record *pluginRecord) (invariantViolatio
 }
 
 func checkInvariantI11(pluginID string, record *pluginRecord) (invariantViolation, bool) {
-	if record.retryTimer == nil || (record.desired != nil && record.desired.Enabled) {
+	retry := record.service != nil && record.service.retry != nil
+
+	if !retry || (record.desired != nil && record.desired.Enabled) {
 		return invariantViolation{}, false
 	}
 
@@ -437,7 +417,7 @@ func checkInvariantI11(pluginID string, record *pluginRecord) (invariantViolatio
 	return invariantViolation{
 		ID:       invI11,
 		PluginID: pluginID,
-		Detail:   fmt.Sprintf("retryTimer=true desiredPresent=%t desiredEnabled=%t", record.desired != nil, desiredEnabled),
+		Detail:   fmt.Sprintf("retry=true desiredPresent=%t desiredEnabled=%t", record.desired != nil, desiredEnabled),
 	}, true
 }
 
@@ -498,9 +478,10 @@ func checkInvariantI14(pluginID string, record *pluginRecord) (invariantViolatio
 	activeRun := record.transition != nil && record.transition.run != nil && !record.transition.run.completed
 	stop := record.service != nil && record.service.stop != nil
 	pending := record.pendingRequest() != nil
+	startup := record.service != nil && record.service.startup != nil
 
 	if record.slot() != slotHeld || record.phase() != nil ||
-		stop || pending || record.startupQueued || status.State == StateBackoff ||
+		stop || pending || startup || status.State == StateBackoff ||
 		status.State == StateFailed || activeRun {
 		return invariantViolation{}, false
 	}
@@ -509,12 +490,12 @@ func checkInvariantI14(pluginID string, record *pluginRecord) (invariantViolatio
 		ID:       invI14,
 		PluginID: pluginID,
 		Detail: fmt.Sprintf(
-			"slot=%s proc=%s stop=%t pending=%t startupQueued=%t status.State=%q activeRun=%t",
+			"slot=%s proc=%s stop=%t pending=%t startup=%t status.State=%q activeRun=%t",
 			record.slot(),
 			invariantPhaseName(record.phase()),
 			stop,
 			pending,
-			record.startupQueued,
+			startup,
 			status.State,
 			activeRun,
 		),

@@ -689,7 +689,7 @@ func TestLifecycleStartDuringDeferredStopResumesAfterReap(t *testing.T) {
 		t.Fatal("same-spec lifecycle start was lost during deferred stop")
 	}
 
-	runtime.supervisor.startupWG.Wait()
+	waitStartupsIdleForTest(runtime.supervisor)
 }
 
 func TestChangedSpecLifecycleStartSurvivesItsReplacementStop(t *testing.T) {
@@ -767,7 +767,7 @@ func TestChangedSpecLifecycleStartSurvivesItsReplacementStop(t *testing.T) {
 		t.Fatal("changed-spec lifecycle start was lost during its replacement stop")
 	}
 
-	runtime.supervisor.startupWG.Wait()
+	waitStartupsIdleForTest(runtime.supervisor)
 
 	select {
 	case got := <-started:

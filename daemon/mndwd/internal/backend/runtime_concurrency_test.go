@@ -149,7 +149,7 @@ func TestSupersededStartupRetainsRejectedChildUntilExactWait(t *testing.T) {
 
 	waitForOperation(t, runtime, plugin.Name, OpStopping)
 	releaseRegistrationGate()
-	runtime.supervisor.startupWG.Wait()
+	waitStartupsIdleForTest(runtime.supervisor)
 
 	if got := runtime.Limits().ReservedServices; got != 1 {
 		t.Fatalf("reserved services before exact Wait = %d, want 1", got)
@@ -179,7 +179,7 @@ func TestSupersededStartupRetainsRejectedChildUntilExactWait(t *testing.T) {
 	releaseWaitGate()
 
 	waitForSupervisorStopForTest(t, runtime.supervisor, plugin.Name)
-	runtime.supervisor.startupWG.Wait()
+	waitStartupsIdleForTest(runtime.supervisor)
 
 	if got := runtime.Limits().ReservedServices; got != 0 {
 		t.Fatalf("reserved services after exact Wait = %d, want 0", got)
@@ -501,7 +501,7 @@ func TestPromotedServiceQueuedBehindStartupProjectsAsStarting(t *testing.T) {
 	queuedStartPlan := make(chan startPlanSnapshot, 1)
 
 	declareInvariantFixtureForTest(runtime.supervisor, "service-d", invI14,
-		"fake startDesired reserves without beginDesiredStartup; finishDesiredStartup clears startupQueued")
+		"fake startDesired reserves without beginDesiredStartup; startup effect clears its identity ticket")
 
 	runtime.supervisor.startDesired = func(spec ServiceSpec) {
 		if spec.PluginID == "service-c" {
@@ -623,6 +623,7 @@ func TestPromotedBlockedReservationSurvivesRepeatedReconcileAndReleasesOnce(t *t
 				RuntimeRoot: t.TempDir(),
 				Limits:      Limits{MaxSupervisedServices: 1},
 			})
+			var secondStartCalls atomic.Int32
 			releaseSecond := make(chan struct{})
 			secondEntered := make(chan struct{}, 1)
 			var releaseOnce sync.Once
@@ -636,7 +637,7 @@ func TestPromotedBlockedReservationSurvivesRepeatedReconcileAndReleasesOnce(t *t
 				waited := make(chan struct{})
 
 				go func() {
-					runtime.supervisor.startupWG.Wait()
+					waitStartupsIdleForTest(runtime.supervisor)
 					close(waited)
 				}()
 
@@ -651,6 +652,8 @@ func TestPromotedBlockedReservationSurvivesRepeatedReconcileAndReleasesOnce(t *t
 				if spec.PluginID != "second" {
 					return
 				}
+
+				secondStartCalls.Add(1)
 
 				select {
 				case secondEntered <- struct{}{}:
@@ -690,8 +693,16 @@ func TestPromotedBlockedReservationSurvivesRepeatedReconcileAndReleasesOnce(t *t
 					t.Fatalf("promoted reservation snapshot = %+v, want blocked service with pending owned slot", snapshot)
 				}
 
-				if !snapshot.startupQueued || snapshot.startupSeq != 1 {
-					t.Fatalf("promoted startup queue = queued %v sequence %d, want one queued startup", snapshot.startupQueued, snapshot.startupSeq)
+				runtime.supervisor.mu.Lock()
+
+				issued := runtime.supervisor.startups
+
+				runtime.supervisor.mu.Unlock()
+
+				startCalls := secondStartCalls.Load()
+
+				if !snapshot.startupPresent || issued != 1 || startCalls != 1 {
+					t.Fatalf("promoted startup = present %v issued %d start calls %d, want one queued startup", snapshot.startupPresent, issued, startCalls)
 				}
 
 				if got := runtime.Limits().ReservedServices; got != 1 {
@@ -795,7 +806,7 @@ func TestDirectStartupWinsBeforeRetryTimerWithoutDuplicate(t *testing.T) {
 		waited := make(chan struct{})
 
 		go func() {
-			runtime.supervisor.startupWG.Wait()
+			waitStartupsIdleForTest(runtime.supervisor)
 			close(waited)
 		}()
 
@@ -847,12 +858,18 @@ func TestDirectStartupWinsBeforeRetryTimerWithoutDuplicate(t *testing.T) {
 		t.Fatal("retry callback did not complete")
 	}
 
-	if runtime.supervisor.pluginSnapshot(spec.PluginID).retryTimerPresent {
+	if runtime.supervisor.pluginSnapshot(spec.PluginID).retryPresent {
 		t.Error("retry timer remained scheduled after its callback completed")
 	}
 
-	if got := runtime.supervisor.pluginSnapshot(spec.PluginID).startupSeq; got != 1 {
-		t.Fatalf("startup sequence after retry callback = %d, want one direct startup", got)
+	runtime.supervisor.mu.Lock()
+
+	startupCount := runtime.supervisor.startups
+
+	runtime.supervisor.unlock()
+
+	if startupCount != 1 {
+		t.Fatalf("startup count while the direct callback is held = %d, want one issued startup", startupCount)
 	}
 
 	select {
@@ -875,7 +892,7 @@ func TestDirectStartupWinsBeforeRetryTimerWithoutDuplicate(t *testing.T) {
 	waited := make(chan struct{})
 
 	go func() {
-		runtime.supervisor.startupWG.Wait()
+		waitStartupsIdleForTest(runtime.supervisor)
 		close(waited)
 	}()
 
@@ -907,7 +924,7 @@ func TestRetryTimerBeforeRegisteredProcessExitKeepsRetryPending(t *testing.T) {
 		t.Fatal("retry timer callback did not complete")
 	}
 
-	runtime.supervisor.startupWG.Wait()
+	waitStartupsIdleForTest(runtime.supervisor)
 
 	select {
 	case got := <-started:
@@ -929,7 +946,7 @@ func TestRetryTimerBeforeRegisteredProcessExitKeepsRetryPending(t *testing.T) {
 		t.Fatal("retry was lost after the exact Wait completed")
 	}
 
-	runtime.supervisor.startupWG.Wait()
+	waitStartupsIdleForTest(runtime.supervisor)
 
 	select {
 	case got := <-started:
@@ -961,7 +978,7 @@ func TestRegisteredProcessExitBeforeRetryTimerLaunchesOnce(t *testing.T) {
 		t.Fatal("retry timer callback did not complete")
 	}
 
-	runtime.supervisor.startupWG.Wait()
+	waitStartupsIdleForTest(runtime.supervisor)
 
 	select {
 	case got := <-started:
@@ -990,7 +1007,7 @@ func TestDirectDesiredStartDuringRegisteredProcessReapRunsAfterExit(t *testing.T
 	runtime.supervisor.startDesired = func(startSpec ServiceSpec) { started <- startSpec }
 
 	runtime.supervisor.launchDesiredStartup(spec)
-	runtime.supervisor.startupWG.Wait()
+	waitStartupsIdleForTest(runtime.supervisor)
 
 	select {
 	case got := <-started:
@@ -1012,7 +1029,7 @@ func TestDirectDesiredStartDuringRegisteredProcessReapRunsAfterExit(t *testing.T
 		t.Fatal("direct start was lost while the old process was being reaped")
 	}
 
-	runtime.supervisor.startupWG.Wait()
+	waitStartupsIdleForTest(runtime.supervisor)
 
 	select {
 	case got := <-started:
@@ -1065,7 +1082,7 @@ func TestDesiredOrIntentChangeDuringRegisteredProcessReap(t *testing.T) {
 			t.Fatal("changed desired service did not launch after reap")
 		}
 
-		runtime.supervisor.startupWG.Wait()
+		waitStartupsIdleForTest(runtime.supervisor)
 	})
 
 	t.Run("stop intent suppresses pending direct start", func(t *testing.T) {
@@ -1084,7 +1101,7 @@ func TestDesiredOrIntentChangeDuringRegisteredProcessReap(t *testing.T) {
 		disabled.Enabled = false
 
 		runtime.supervisor.Reconcile(context.Background(), []ServiceSpec{disabled})
-		runtime.supervisor.startupWG.Wait()
+		waitStartupsIdleForTest(runtime.supervisor)
 
 		select {
 		case got := <-started:
@@ -1096,7 +1113,7 @@ func TestDesiredOrIntentChangeDuringRegisteredProcessReap(t *testing.T) {
 
 		close(done.done)
 		runtime.supervisor.observeExit(spec.PluginID, done)
-		runtime.supervisor.startupWG.Wait()
+		waitStartupsIdleForTest(runtime.supervisor)
 
 		select {
 		case got := <-started:

@@ -83,9 +83,8 @@ type pluginSnapshot struct {
 	status             RuntimeStatus
 	serviceSlotHeld    bool
 	reservationPending bool
-	startupQueued      bool
-	startupSeq         uint64
-	retryTimerPresent  bool
+	startupPresent     bool
+	retryPresent       bool
 	pendingStart       bool
 	processPresent     bool
 	processID          uint64
@@ -106,8 +105,6 @@ type serviceRecord struct {
 	stderr             *StderrRing
 	stop               *stopState
 	lastStopErr        error
-	startupQueued      bool
-	startupSeq         uint64
 }
 
 type transition struct {
@@ -202,8 +199,7 @@ func (s *Supervisor) pluginSnapshotLocked(name string) pluginSnapshot {
 		snapshot.status = cloneRuntimeStatus(record.service.status)
 		snapshot.serviceSlotHeld = record.service.slot != slotNone
 		snapshot.reservationPending = record.service.slot == slotReservedByReconcile
-		snapshot.startupQueued = record.startupQueued
-		snapshot.startupSeq = record.startupSeq
+		snapshot.startupPresent = record.service.startup != nil
 		snapshot.pendingStart = record.service.pending != nil
 		snapshot.processPresent = record.service.process() != nil
 
@@ -221,8 +217,8 @@ func (s *Supervisor) pluginSnapshotLocked(name string) pluginSnapshot {
 		snapshot.generation = transition.generation
 	}
 
-	if record := s.plugins[name]; record != nil {
-		snapshot.retryTimerPresent = record.retryTimer != nil
+	if record := s.plugins[name]; record != nil && record.service != nil {
+		snapshot.retryPresent = record.service.retry != nil
 	}
 
 	return snapshot
@@ -325,8 +321,6 @@ func setSupervisorServiceRecordLockedForTest(s *Supervisor, pluginID string, fix
 	record.service.recentStderr = fixture.stderr
 	record.service.stop = fixture.stop
 	record.service.lastStopErr = fixture.lastStopErr
-	record.startupQueued = fixture.startupQueued
-	record.startupSeq = fixture.startupSeq
 
 	markInvariantFixtureForTest(s, pluginID)
 
@@ -405,6 +399,9 @@ func resetSupervisorServicesForTest(s *Supervisor) {
 
 	for pluginID, record := range s.plugins {
 		if record.service != nil {
+			s.stopRetryTimerOnlyLocked(record)
+
+			record.service.startup = nil
 			record.service.proc = nil
 
 			s.releaseServiceSlotLocked(record)
@@ -414,15 +411,22 @@ func resetSupervisorServicesForTest(s *Supervisor) {
 
 		s.clearPendingStartLocked(record)
 
-		record.startupQueued = false
-		record.startupSeq = 0
-
 		s.prunePluginRecordLocked(pluginID)
 
 		if s.plugins[pluginID] != nil {
 			markInvariantFixtureForTest(s, pluginID)
 		}
 	}
+}
+
+func waitStartupsIdleForTest(s *Supervisor) {
+	s.mu.Lock()
+
+	idle := s.startupsIdleLocked()
+
+	s.unlock()
+
+	<-idle
 }
 
 func assertSupervisorServiceSlotsInvariantForTest(t *testing.T, s *Supervisor) {

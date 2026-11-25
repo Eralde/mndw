@@ -259,26 +259,6 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			},
 		},
 		{
-			name:       "I8 absent service has no retry timer",
-			wantID:     "I8",
-			wantPlugin: "demo",
-			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.service = nil
-				desired := ServiceSpec{PluginID: "demo", Enabled: true}
-				record.desired = &desired
-				record.retryTimer = time.NewTimer(time.Hour)
-			},
-		},
-		{
-			name:       "I8 absent service has no queued startup",
-			wantID:     "I8",
-			wantPlugin: "demo",
-			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.service = nil
-				record.startupQueued = true
-			},
-		},
-		{
 			name:       "I9 active operation has an incomplete run",
 			wantID:     "I9",
 			wantPlugin: "demo",
@@ -330,7 +310,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			wantID:     "I11",
 			wantPlugin: "demo",
 			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.retryTimer = time.NewTimer(time.Hour)
+				record.service.retry = &retryState{timer: time.NewTimer(time.Hour)}
 			},
 		},
 		{
@@ -340,7 +320,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			configure: func(_ *Supervisor, record *pluginRecord) {
 				desired := ServiceSpec{PluginID: "demo", Enabled: false}
 				record.desired = &desired
-				record.retryTimer = time.NewTimer(time.Hour)
+				record.service.retry = &retryState{timer: time.NewTimer(time.Hour)}
 			},
 		},
 		{
@@ -512,7 +492,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			name: "I14 held slot can have a queued startup",
 			configure: func(s *Supervisor, record *pluginRecord) {
 				record.service.slot = slotHeld
-				record.startupQueued = true
+				record.service.startup = &startupTicket{spec: record.service.spec}
 				s.reservedServices = 1
 			},
 		},
@@ -578,8 +558,8 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 
 			s.mu.Unlock()
 
-			if record.retryTimer != nil {
-				t.Cleanup(func() { record.retryTimer.Stop() })
+			if record.service != nil && record.service.retry != nil && record.service.retry.timer != nil {
+				t.Cleanup(func() { record.service.retry.timer.Stop() })
 			}
 
 			if test.wantID == "" {
@@ -618,7 +598,7 @@ func TestCheckInvariantsSortsByPluginAndPreservesInvariantOrder(t *testing.T) {
 		},
 	}
 	alpha := &pluginRecord{
-		startupQueued: true,
+		transition: &transitionState{operation: OpStarting},
 	}
 
 	s.mu.Lock()
@@ -631,7 +611,7 @@ func TestCheckInvariantsSortsByPluginAndPreservesInvariantOrder(t *testing.T) {
 	s.mu.Unlock()
 
 	want := []expectedInvariantViolation{
-		{id: "I8", pluginID: "alpha"},
+		{id: "I9", pluginID: "alpha"},
 		{id: "I2", pluginID: "demo"},
 		{id: "I10", pluginID: "demo"},
 	}

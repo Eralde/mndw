@@ -521,7 +521,7 @@ func TestPromotedServiceQueuedBehindStartupProjectsAsStarting(t *testing.T) {
 	}
 
 	go func() {
-		runtime.supervisor.promoteBlocked()
+		runtime.supervisor.admitBlockedForTest()
 		close(promotedDone)
 	}()
 
@@ -722,7 +722,7 @@ func TestPromotedBlockedReservationSurvivesRepeatedReconcileAndReleasesOnce(t *t
 				runtime.supervisor.launchDesiredStartup(enabledSpec(pluginID))
 			}
 
-			runtime.supervisor.promoteBlocked()
+			runtime.supervisor.admitBlockedForTest()
 			assertPendingReservation()
 
 			if testCase.remove {

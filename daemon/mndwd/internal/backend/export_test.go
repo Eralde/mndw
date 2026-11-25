@@ -168,13 +168,37 @@ func (s *Supervisor) intentOf(name string) Intent {
 func (s *Supervisor) planStart(spec ServiceSpec, paths RuntimePaths) startPlanSnapshot {
 	s.mu.Lock()
 
-	defer s.unlock()
-
 	plan := s.planStartLocked(spec, paths)
 
 	markInvariantFixtureForTest(s, spec.PluginID, invI14)
 
+	s.unlock()
+
+	s.runEffects(plan.effects)
+
 	return startPlanSnapshot{action: plan.action, err: plan.err}
+}
+
+// admitBlockedForTest runs the admission rule as an event does: under the lock, effects after unlocking.
+func (s *Supervisor) admitBlockedForTest() {
+	s.mu.Lock()
+
+	effects := s.admitLocked()
+
+	s.unlock()
+
+	s.runEffects(effects)
+}
+
+// settleAndAdmitForTest runs the tail of an event rule for one plugin: under the lock, effects after unlocking.
+func (s *Supervisor) settleAndAdmitForTest(pluginID string) {
+	s.mu.Lock()
+
+	effects := s.settleAndAdmitLocked(pluginID)
+
+	s.unlock()
+
+	s.runEffects(effects)
 }
 
 func (s *Supervisor) pluginSnapshot(name string) pluginSnapshot {

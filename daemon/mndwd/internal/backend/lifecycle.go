@@ -98,8 +98,8 @@ func (r *Runtime) executeLifecycleOutcome(
 	control := &lifecycleControl{runtime: r, token: outcome.token}
 	err := r.supervisor.runLifecycleWork(outcome.token, control, work)
 
-	if r.supervisor.releaseUnstartedReservationForLifecycle(outcome.token) {
-		r.supervisor.promoteBlocked()
+	if released, effects := r.supervisor.releaseUnstartedReservationForLifecycle(outcome.token); released {
+		r.supervisor.runEffects(effects)
 	}
 
 	var lifecycleEvent *LifecycleEvent

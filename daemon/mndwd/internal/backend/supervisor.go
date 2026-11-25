@@ -83,20 +83,6 @@ func (e startupEffect) run(s *Supervisor) {
 	}()
 }
 
-type promoteEffect struct{}
-
-func (promoteEffect) run(s *Supervisor) {
-	s.promoteBlocked()
-}
-
-type settleEffect struct {
-	pluginID string
-}
-
-func (e settleEffect) run(s *Supervisor) {
-	s.resumePendingStartup(e.pluginID)
-}
-
 // runEffects runs effects in order and must never be called with Supervisor.mu held.
 func (s *Supervisor) runEffects(effects []effect) {
 	for _, current := range effects {
@@ -727,65 +713,64 @@ func (s *Supervisor) isCurrentLocked(run *operationRun) bool {
 	return record != nil && record.transition.run == run && record.transition.operation == run.op
 }
 
-// commitLocked requires Supervisor.mu held.
-func (s *Supervisor) commitLocked(run *operationRun) {
+// commitLocked requires Supervisor.mu held. Like every rule below that ends a run, it returns effects for the caller
+// to run after unlocking.
+func (s *Supervisor) commitLocked(run *operationRun) []effect {
 	if run == nil {
-		return
+		return nil
 	}
 
 	if run.targetIntent == IntentRemove {
 		if !s.isCurrentLocked(run) {
-			return
+			return nil
 		}
 
 		s.nextGen++
 	}
 
-	s.terminalizeLocked(run, run.targetIntent, nil)
+	return s.terminalizeLocked(run, run.targetIntent, nil)
 }
 
 // failRestoreLocked requires Supervisor.mu held.
-func (s *Supervisor) failRestoreLocked(run *operationRun, err error) {
+func (s *Supervisor) failRestoreLocked(run *operationRun, err error) []effect {
 	if run == nil {
-		return
+		return nil
 	}
 
 	record := s.transitionRecordLocked(run.name)
 
 	if record == nil {
-		return
+		return nil
 	}
 
-	s.terminalizeLocked(run, record.transition.priorIntent, err)
+	return s.terminalizeLocked(run, record.transition.priorIntent, err)
 }
 
 // failKeepLocked requires Supervisor.mu held.
-func (s *Supervisor) failKeepLocked(run *operationRun, err error) {
+func (s *Supervisor) failKeepLocked(run *operationRun, err error) []effect {
 	if run == nil {
-		return
+		return nil
 	}
 
-	s.terminalizeLocked(run, run.targetIntent, err)
+	return s.terminalizeLocked(run, run.targetIntent, err)
 }
 
 // failLocked requires Supervisor.mu held.
-func (s *Supervisor) failLocked(run *operationRun, err error) {
+func (s *Supervisor) failLocked(run *operationRun, err error) []effect {
 	if run == nil {
-		return
+		return nil
 	}
 
 	if traitsOf(run.op).restoreOnFail {
-		s.failRestoreLocked(run, err)
-
-		return
+		return s.failRestoreLocked(run, err)
 	}
 
-	s.failKeepLocked(run, err)
+	return s.failKeepLocked(run, err)
 }
 
 // forceStopLocked requires Supervisor.mu held.
-func (s *Supervisor) forceStopLocked(run *operationRun, err error) {
-	s.terminalizeLocked(run, IntentStop, err)
+func (s *Supervisor) forceStopLocked(run *operationRun, err error) []effect {
+	return s.terminalizeLocked(run, IntentStop, err)
 }
 
 func (s *Supervisor) newRunLocked(name string, op Operation, want Intent) *operationRun {
@@ -804,9 +789,11 @@ func (s *Supervisor) newRunLocked(name string, op Operation, want Intent) *opera
 	}
 }
 
-func (s *Supervisor) terminalizeLocked(run *operationRun, intent Intent, err error) {
+// terminalizeLocked ends the current run and settles in the same critical section: the plugin's own pending start
+// first, then admission, because the ended operation can make this plugin or a blocked one admissible.
+func (s *Supervisor) terminalizeLocked(run *operationRun, intent Intent, err error) []effect {
 	if !s.isCurrentLocked(run) {
-		return
+		return nil
 	}
 
 	record := s.transitionRecordLocked(run.name)
@@ -818,21 +805,7 @@ func (s *Supervisor) terminalizeLocked(run *operationRun, intent Intent, err err
 	run.cancel()
 	close(run.done)
 
-	if service := s.serviceRecordLocked(run.name); service != nil && service.pendingRequest() != nil {
-		// The four callers hold this lock; threading a settle effect return value through them is out of scope this step.
-		// Settlement is asynchronous, so count it before releasing the lock; StopAll's idle snapshot must include it.
-		s.addStartupLocked()
-
-		go func() {
-			defer func() {
-				s.mu.Lock()
-				s.doneStartupLocked()
-				s.unlock()
-			}()
-
-			s.resumePendingStartup(run.name)
-		}()
-	}
+	return s.settleAndAdmitLocked(run.name)
 }
 
 func (s *Supervisor) completeSupersededLocked(run *operationRun) {
@@ -937,8 +910,12 @@ func (s *Supervisor) markLifecycleServiceReady(token *lifecycleToken, record *pl
 	return token != nil && s.markServiceReady(token.run, record)
 }
 
-func (s *Supervisor) releaseUnstartedReservationForLifecycle(token *lifecycleToken) bool {
-	return token != nil && s.releaseUnstartedReservation(token.run)
+func (s *Supervisor) releaseUnstartedReservationForLifecycle(token *lifecycleToken) (bool, []effect) {
+	if token == nil {
+		return false, nil
+	}
+
+	return s.releaseUnstartedReservation(token.run)
 }
 
 func (s *Supervisor) runLifecycleWork(
@@ -975,9 +952,11 @@ func (s *Supervisor) finishLifecycle(token *lifecycleToken, op Operation) *Lifec
 
 	s.mu.Lock()
 
-	defer s.unlock()
+	effects := s.commitLocked(run)
 
-	s.commitLocked(run)
+	s.unlock()
+
+	s.runEffects(effects)
 
 	state := LifecycleStopped
 	reason := lifecycleStopReason(op, run.targetIntent)
@@ -995,17 +974,19 @@ func (s *Supervisor) failLifecycle(token *lifecycleToken, err error) {
 		return
 	}
 
+	var effects []effect
+
 	s.mu.Lock()
 
-	defer s.unlock()
-
 	if errors.Is(err, ErrForceStopTerminal) {
-		s.forceStopLocked(token.run, err)
-
-		return
+		effects = s.forceStopLocked(token.run, err)
+	} else {
+		effects = s.failLocked(token.run, err)
 	}
 
-	s.failLocked(token.run, err)
+	s.unlock()
+
+	s.runEffects(effects)
 }
 
 func (s *Supervisor) blocksTraffic(pluginID string) bool {
@@ -1286,10 +1267,12 @@ type reconcilePlan struct {
 	startIDs  []string
 	stopIDs   []string
 	removeIDs []string
+	// effects start plugins that admission handed a slot to ahead of a candidate; the caller runs them.
+	effects []effect
 }
 
 // lessServiceSpec is the supervisor's ordering policy: builtin services first, then by PluginID.
-// Both start (Reconcile) and promotion (promoteBlocked) sort by it so they act in one consistent order.
+// Both start (Reconcile) and admission (admitQueueLocked) sort by it so they act in one consistent order.
 func lessServiceSpec(a, b ServiceSpec) bool {
 	if a.Builtin != b.Builtin {
 		return a.Builtin
@@ -1392,7 +1375,11 @@ func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) reconci
 
 		if service == nil || service.service.status.State == StateStopped || service.service.status.State == StateCapacityBlocked ||
 			!service.service.spec.Equal(spec) {
-			if s.reserveForReconcileLocked(spec) {
+			reserved, effects := s.reserveForReconcileLocked(spec, false)
+
+			plan.effects = append(plan.effects, effects...)
+
+			if reserved {
 				plan.startIDs = append(plan.startIDs, spec.PluginID)
 			}
 		}
@@ -1434,9 +1421,28 @@ func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) reconci
 }
 
 // reserveForReconcileLocked makes service admission follow the sorted Reconcile order.
-// The returned candidate already owns its slot before Runtime launches startup work.
-func (s *Supervisor) reserveForReconcileLocked(spec ServiceSpec) bool {
-	record := s.serviceRecordLocked(spec.PluginID)
+// The returned candidate already owns its slot before Runtime launches startup work. The effects start plugins that
+// the admission queue admitted ahead of this one; the caller runs them after unlocking.
+//
+// ahead is passed through to requestSlotLocked.
+func (s *Supervisor) reserveForReconcileLocked(spec ServiceSpec, ahead bool) (bool, []effect) {
+	record, done, ok := s.prepareReservationLocked(spec)
+
+	if done {
+		return ok, nil
+	}
+
+	granted, effects := s.requestSlotLocked(record, spec, ahead)
+
+	s.finishReservationLocked(record, spec, granted)
+
+	return granted, effects
+}
+
+// prepareReservationLocked is everything reserveForReconcileLocked decides before it needs a slot. When done is
+// true, ok is the answer and no slot is involved.
+func (s *Supervisor) prepareReservationLocked(spec ServiceSpec) (record *pluginRecord, done, ok bool) {
+	record = s.serviceRecordLocked(spec.PluginID)
 
 	if record == nil {
 		record = s.ensureServiceRecordLocked(spec.PluginID)
@@ -1448,7 +1454,7 @@ func (s *Supervisor) reserveForReconcileLocked(spec ServiceSpec) bool {
 	}
 
 	if record.service.stop != nil {
-		return false
+		return record, true, false
 	}
 
 	compatible := s.supportedProtocol(spec.ProtocolVersion)
@@ -1459,7 +1465,7 @@ func (s *Supervisor) reserveForReconcileLocked(spec ServiceSpec) bool {
 			record.service.status.NextAttemptAt = nil
 		}
 
-		return true
+		return record, true, true
 	}
 
 	if record.service.slot != slotNone {
@@ -1467,22 +1473,153 @@ func (s *Supervisor) reserveForReconcileLocked(spec ServiceSpec) bool {
 			record.service.setReservation(record.service.process() == nil)
 		}
 
-		return true
+		return record, true, true
 	}
 
-	if !s.acquireServiceSlotLocked(record) {
-		record.service.status.State = StateCapacityBlocked
-		record.service.status.NextAttemptAt = nil
-		record.service.status.RequiredProtocol = spec.ProtocolVersion
-		record.service.status.SupportedProtocols = slices.Clone(s.cfg.SupportedProtocols)
-		record.service.status.Compatible = &compatible
+	return record, false, false
+}
 
-		return false
+// finishReservationLocked writes the status that follows the slot decision of a reservation.
+func (s *Supervisor) finishReservationLocked(record *pluginRecord, spec ServiceSpec, granted bool) {
+	if granted {
+		record.service.setReservation(record.service.status.State == StateStopped || record.service.status.State == StateCapacityBlocked)
+
+		return
 	}
 
-	record.service.setReservation(record.service.status.State == StateStopped || record.service.status.State == StateCapacityBlocked)
+	compatible := s.supportedProtocol(spec.ProtocolVersion)
 
-	return true
+	record.service.status.State = StateCapacityBlocked
+	record.service.status.NextAttemptAt = nil
+	record.service.status.RequiredProtocol = spec.ProtocolVersion
+	record.service.status.SupportedProtocols = slices.Clone(s.cfg.SupportedProtocols)
+	record.service.status.Compatible = &compatible
+}
+
+// admissionOpenLocked says whether admission may start plugins other than a requester.
+func (s *Supervisor) admissionOpenLocked() bool {
+	return !s.shuttingDown && s.lifetimeCtx.Err() == nil && s.startDesired != nil
+}
+
+// admissibleLocked is I13's definition of a plugin the admission queue may hand a slot to.
+func (s *Supervisor) admissibleLocked(pluginID string, plugin *pluginRecord) bool {
+	service := s.serviceRecordLocked(pluginID)
+	transition := s.transitionRecordLocked(pluginID)
+
+	return plugin.desired != nil && plugin.desired.Enabled && service != nil && service.service.slot == slotNone &&
+		service.service.status.State == StateCapacityBlocked && service.service.stop == nil && transition != nil &&
+		transition.transition.operation == OpNone && transition.transition.intent == IntentRun
+}
+
+// admitLocked hands free slots to admissible capacity-blocked plugins in lessServiceSpec order and returns their
+// startup effects. Admissible is I13's definition: service present, desired.Enabled, no slot, StateCapacityBlocked,
+// operation OpNone, intent IntentRun, no stop. It does nothing while shutting down, after the lifetime ends, or
+// before startDesired is set.
+func (s *Supervisor) admitLocked() []effect {
+	_, effects := s.admitQueueLocked(nil, ServiceSpec{}, false)
+
+	return effects
+}
+
+// settleAndAdmitLocked is the tail every event rule ends with: the plugin's own pending start first, then admission.
+// The order matters: a stopping plugin's own pending start must not lose the slot it needs to a blocked plugin.
+func (s *Supervisor) settleAndAdmitLocked(pluginID string) []effect {
+	effects := s.settleLocked(pluginID)
+
+	return append(effects, s.admitLocked()...)
+}
+
+// requestSlotLocked is how a starting plugin asks for a slot: the requester joins the queue for this one pass (it
+// counts as admissible even though its own operation is in flight), the admission loop runs over the queue in
+// lessServiceSpec order, and the requester learns whether it got a slot. Plugins admitted before it in that pass
+// get startup effects, returned to the caller.
+//
+// ahead puts the requester in front of the queue instead of its lessServiceSpec place. Two requesters are ahead: a
+// plugin that released its own slot earlier in the same critical section to ask again (a changed spec restarts the
+// plugin; today it keeps its slot and a waiter never gets it), and a plugin settling its own pending start (decided
+// before admission, so a waiter that sorts earlier does not take the slot the start needs). Every other requester
+// waits its turn.
+func (s *Supervisor) requestSlotLocked(record *pluginRecord, spec ServiceSpec, ahead bool) (bool, []effect) {
+	if record.service.slot != slotNone {
+		return true, nil
+	}
+
+	return s.admitQueueLocked(record, spec, ahead)
+}
+
+type admissionCandidate struct {
+	spec      ServiceSpec
+	requester bool
+}
+
+// admitQueueLocked is the one admission loop behind admitLocked (requester == nil) and requestSlotLocked. It is the
+// only caller of acquireServiceSlotLocked.
+func (s *Supervisor) admitQueueLocked(requester *pluginRecord, requesterSpec ServiceSpec, requesterAhead bool) (bool, []effect) {
+	var queue []admissionCandidate
+
+	if s.admissionOpenLocked() {
+		for pluginID, plugin := range s.plugins {
+			if (requester == nil || plugin != requester) && s.admissibleLocked(pluginID, plugin) {
+				queue = append(queue, admissionCandidate{spec: *plugin.desired})
+			}
+		}
+	}
+
+	if requester != nil {
+		queue = append(queue, admissionCandidate{spec: requesterSpec, requester: true})
+	}
+
+	slices.SortStableFunc(queue, func(left, right admissionCandidate) int {
+		if requesterAhead && left.requester != right.requester {
+			if left.requester {
+				return -1
+			}
+
+			return 1
+		}
+
+		if lessServiceSpec(left.spec, right.spec) {
+			return -1
+		}
+
+		if lessServiceSpec(right.spec, left.spec) {
+			return 1
+		}
+
+		return 0
+	})
+
+	granted := false
+	effects := make([]effect, 0, len(queue))
+
+	for _, candidate := range queue {
+		if candidate.requester {
+			granted = s.acquireServiceSlotLocked(requester)
+
+			continue
+		}
+
+		if s.admitCandidateLocked(candidate.spec) {
+			effects = append(effects, s.trackDesiredStartupLocked(candidate.spec)...)
+		}
+	}
+
+	return granted, effects
+}
+
+// admitCandidateLocked reserves a slot for a capacity-blocked plugin and reports whether its startup may begin.
+func (s *Supervisor) admitCandidateLocked(spec ServiceSpec) bool {
+	record, done, ok := s.prepareReservationLocked(spec)
+
+	if done {
+		return ok
+	}
+
+	granted := s.acquireServiceSlotLocked(record)
+
+	s.finishReservationLocked(record, spec, granted)
+
+	return granted
 }
 
 type startAction int
@@ -1504,18 +1641,28 @@ type startPlan struct {
 	record *pluginRecord
 	action startAction
 	err    error
+	// effects start plugins that admission handed a slot to ahead of this one; planStartForRun runs them.
+	effects []effect
 }
 
 func (s *Supervisor) planStartForRun(run *operationRun, spec ServiceSpec, paths RuntimePaths) startPlan {
 	s.mu.Lock()
 
-	defer s.unlock()
-
 	if !s.isCurrentLocked(run) {
+		s.unlock()
+
 		return startPlan{action: startNoop, err: errSuperseded}
 	}
 
-	return s.planStartLocked(spec, paths)
+	plan := s.planStartLocked(spec, paths)
+
+	s.unlock()
+
+	s.runEffects(plan.effects)
+
+	plan.effects = nil
+
+	return plan
 }
 
 func (s *Supervisor) planStartLocked(spec ServiceSpec, paths RuntimePaths) startPlan {
@@ -1589,8 +1736,10 @@ func (s *Supervisor) planStartLocked(spec ServiceSpec, paths RuntimePaths) start
 		return startPlan{action: startNoop}
 	}
 
+	released := false
+
 	if !previousSpec.Equal(spec) && record.service.slot != slotNone {
-		s.releaseServiceSlotLocked(record)
+		released = s.releaseServiceSlotLocked(record)
 
 		record.service.status.State = StateStopped
 		record.service.status.NextAttemptAt = nil
@@ -1614,16 +1763,18 @@ func (s *Supervisor) planStartLocked(spec ServiceSpec, paths RuntimePaths) start
 
 	s.clearPendingStartLocked(record)
 
-	if !s.acquireServiceSlotLocked(record) {
+	granted, effects := s.requestSlotLocked(record, spec, released)
+
+	if !granted {
 		record.service.status.State = StateCapacityBlocked
 
-		return startPlan{action: startNoop, err: ErrServiceCapacityExceeded}
+		return startPlan{action: startNoop, err: ErrServiceCapacityExceeded, effects: effects}
 	}
 
 	record.service.status.State = StateStarting
 	record.service.status.NextAttemptAt = nil
 
-	return startPlan{record: record, action: startProceed}
+	return startPlan{record: record, action: startProceed, effects: effects}
 }
 
 // restampIncompatible re-applies the protocol status fields that stopProcess
@@ -1731,10 +1882,9 @@ func (s *Supervisor) startService(run *operationRun, spec ServiceSpec) error {
 
 	command, stderr, err := s.launchServiceFunc(spec, paths, validated)
 	if err != nil {
-		effects := s.finishFailedLaunch(spec.PluginID, record, launch)
+		s.finishFailedLaunch(spec.PluginID, record, launch)
 
 		s.failStart(run, spec.PluginID, err)
-		s.runEffects(effects)
 
 		return err
 	}
@@ -1810,24 +1960,18 @@ func (s *Supervisor) beginServiceLaunch(run *operationRun, record *pluginRecord)
 	return launch, true
 }
 
-func (s *Supervisor) finishFailedLaunch(pluginID string, record *pluginRecord, launch *launchIdentity) []effect {
+// finishFailedLaunch decides nothing about a pending start: startService runs inside a current run, so the plugin's
+// operation is still set and the run's own end settles the pending start (terminalizeLocked).
+func (s *Supervisor) finishFailedLaunch(pluginID string, record *pluginRecord, launch *launchIdentity) {
 	s.mu.Lock()
-
-	var effects []effect
 
 	if s.plugins[pluginID] == record && record.service.launching() == launch {
 		record.service.proc = nil
-
-		if record.pendingRequest() != nil {
-			effects = []effect{settleEffect{pluginID: pluginID}}
-		}
 
 		close(launch.done)
 	}
 
 	s.unlock()
-
-	return effects
 }
 
 func (s *Supervisor) attachStartedProcess(record *pluginRecord, launch *launchIdentity, process *registeredProcess) {
@@ -2029,8 +2173,8 @@ func (s *Supervisor) observeExit(pluginID string, done *processExit) {
 
 func (s *Supervisor) observeProcessExit(pluginID string, process *registeredProcess) {
 	err := process.exit.wait()
-	shouldPromote := false
-	shouldResume := false
+
+	var effects []effect
 
 	s.mu.Lock()
 
@@ -2060,51 +2204,47 @@ func (s *Supervisor) observeProcessExit(pluginID string, process *registeredProc
 		record.service.status.State = StateStopped
 		record.service.status.NextAttemptAt = nil
 
-		if record.service.slot != slotNone {
-			s.releaseServiceSlotLocked(record)
+		released := false
 
-			shouldPromote = true
+		if record.service.slot != slotNone {
+			released = s.releaseServiceSlotLocked(record)
 		}
 
 		s.markPendingStartLocked(record, *plugin.desired, false)
 
-		if !s.reserveForReconcileLocked(*plugin.desired) {
+		reserved, reserveEffects := s.reserveForReconcileLocked(*plugin.desired, released)
+
+		effects = append(effects, reserveEffects...)
+
+		if !reserved {
 			s.clearPendingStartLocked(record)
-		} else {
-			shouldResume = true
 		}
 	} else if record.service.status.State != StateStopped {
-		pendingStart := record.service.pending != nil
-
-		if pendingStart {
+		if record.service.pending != nil {
 			_, retry := recordFailure(&record.service.status, s.now(), "exited", err)
 
 			if retry {
 				s.stopRetryTimerOnlyLocked(record)
 
 				record.service.status.NextAttemptAt = nil
-				shouldResume = true
 			} else {
 				s.stopRetryTimerLocked(pluginID)
+
+				// Past the retry cutoff the plugin stays failed, so a start request for the spec it ran with
+				// is dropped. A changed spec stays: it settles when the run in flight ends, or went through the
+				// changed-spec branch above when no run is in flight.
+				if record.service.pending.spec.Equal(record.service.spec) {
+					s.clearPendingStartLocked(record)
+				}
 			}
 		} else {
 			s.transitionFailureLocked(record, pluginID, "exited", err)
 		}
-	} else if record.service.pending != nil {
-		shouldResume = true
 	}
+
+	effects = append(effects, s.settleAndAdmitLocked(pluginID)...)
 
 	s.unlock()
-
-	var effects []effect
-
-	if shouldPromote {
-		effects = append(effects, promoteEffect{})
-	}
-
-	if shouldResume {
-		effects = append(effects, settleEffect{pluginID: pluginID})
-	}
 
 	s.runEffects(effects)
 }
@@ -2267,18 +2407,6 @@ func (s *Supervisor) scheduleRetry(pluginID string, delay time.Duration) {
 	service.service.retry = state
 }
 
-// resumePendingStartup is the wake-up wrapper; each caller keeps its own condition and its order against
-// promoteBlocked and failStart.
-func (s *Supervisor) resumePendingStartup(pluginID string) {
-	s.mu.Lock()
-
-	effects := s.settleLocked(pluginID)
-
-	s.unlock()
-
-	s.runEffects(effects)
-}
-
 // settleLocked decides whether the pending start may run now and returns effects for the caller to run after unlocking.
 func (s *Supervisor) settleLocked(pluginID string) []effect {
 	record := s.serviceRecordLocked(pluginID)
@@ -2315,24 +2443,25 @@ func (s *Supervisor) settleLocked(pluginID string) []effect {
 		record.service.status.NextAttemptAt = nil
 	}
 
-	if !s.reserveForReconcileLocked(spec) {
-		s.clearPendingStartLocked(record)
-
-		return nil
-	}
+	// The plugin's own pending start is decided before admission, so it asks ahead of the queue.
+	reserved, effects := s.reserveForReconcileLocked(spec, true)
 
 	s.clearPendingStartLocked(record)
 
+	if !reserved {
+		return effects
+	}
+
 	record.service.status.NextAttemptAt = nil
 
-	return s.trackDesiredStartupLocked(spec)
+	return append(effects, s.trackDesiredStartupLocked(spec)...)
 }
 
 func (s *Supervisor) stopRecord(ctx context.Context, pluginID string) error {
 	return s.stopProcess(ctx, pluginID, true)
 }
 
-func (s *Supervisor) releaseUnstartedReservation(run *operationRun) bool {
+func (s *Supervisor) releaseUnstartedReservation(run *operationRun) (bool, []effect) {
 	s.mu.Lock()
 
 	defer s.unlock()
@@ -2340,15 +2469,17 @@ func (s *Supervisor) releaseUnstartedReservation(run *operationRun) bool {
 	return s.takeUnstartedReservationLocked(run)
 }
 
-func (s *Supervisor) takeUnstartedReservationLocked(run *operationRun) bool {
+// takeUnstartedReservationLocked gives an unclaimed reservation back and hands the slot to the first admissible
+// plugin in the same critical section; the effects start it.
+func (s *Supervisor) takeUnstartedReservationLocked(run *operationRun) (bool, []effect) {
 	if !s.isCurrentLocked(run) {
-		return false
+		return false, nil
 	}
 
 	record := s.serviceRecordLocked(run.name)
 
 	if record == nil || record.service.proc != nil || record.service.slot != slotReservedByReconcile {
-		return false
+		return false, nil
 	}
 
 	s.releaseServiceSlotLocked(record)
@@ -2358,7 +2489,7 @@ func (s *Supervisor) takeUnstartedReservationLocked(run *operationRun) bool {
 		record.service.status.NextAttemptAt = nil
 	}
 
-	return true
+	return true, s.admitLocked()
 }
 
 func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseReservation bool) error {
@@ -2541,79 +2672,16 @@ func (s *Supervisor) finishStop(
 	stop.err = stopErr
 	record.service.lastStopErr = stopErr
 	record.service.stop = nil
-	resumePending := record.service.pending != nil
 
 	close(stop.done)
 
+	effects := s.settleAndAdmitLocked(pluginID)
+
 	s.unlock()
-
-	var effects []effect
-
-	if releaseSlot {
-		effects = append(effects, promoteEffect{})
-	}
-
-	if resumePending {
-		effects = append(effects, settleEffect{pluginID: pluginID})
-	}
 
 	s.runEffects(effects)
 
 	return stopErr
-}
-
-func (s *Supervisor) promoteBlocked() {
-	s.mu.Lock()
-
-	if s.shuttingDown || s.lifetimeCtx.Err() != nil || s.startDesired == nil {
-		s.unlock()
-
-		return
-	}
-
-	blocked := make([]ServiceSpec, 0)
-
-	for pluginID, plugin := range s.plugins {
-		service := s.serviceRecordLocked(pluginID)
-
-		if plugin.desired != nil && service != nil && service.service.status.State == StateCapacityBlocked && plugin.desired.Enabled {
-			blocked = append(blocked, *plugin.desired)
-		}
-	}
-
-	slices.SortStableFunc(blocked, func(left, right ServiceSpec) int {
-		if lessServiceSpec(left, right) {
-			return -1
-		}
-
-		if lessServiceSpec(right, left) {
-			return 1
-		}
-
-		return 0
-	})
-
-	effects := make([]effect, 0, len(blocked))
-
-	for _, spec := range blocked {
-		plugin := s.plugins[spec.PluginID]
-		record := s.serviceRecordLocked(spec.PluginID)
-		transitionRecord := s.transitionRecordLocked(spec.PluginID)
-
-		if plugin == nil || plugin.desired == nil || !plugin.desired.Equal(spec) || record == nil || record.service.slot != slotNone ||
-			record.service.status.State != StateCapacityBlocked || transitionRecord == nil ||
-			transitionRecord.transition.operation != OpNone || transitionRecord.transition.intent != IntentRun {
-			continue
-		}
-
-		if s.reserveForReconcileLocked(spec) {
-			effects = append(effects, s.trackDesiredStartupLocked(spec)...)
-		}
-	}
-
-	s.unlock()
-
-	s.runEffects(effects)
 }
 
 func ptrTime(value time.Time) *time.Time { return &value }

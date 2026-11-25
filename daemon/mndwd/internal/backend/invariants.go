@@ -44,7 +44,7 @@ var invariantModes = map[invariantID]invariantMode{
 	invI10: invariantEnforced,
 	invI11: invariantEnforced,
 	invI12: invariantEnforced,
-	invI13: invariantObserved,
+	invI13: invariantEnforced,
 	invI14: invariantEnforced,
 }
 
@@ -233,7 +233,8 @@ func (s *Supervisor) checkInvariantsLocked() []invariantViolation {
 		violations = append(violations, violation)
 	}
 
-	checkI13 := !s.shuttingDown && (s.lifetimeCtx == nil || s.lifetimeCtx.Err() == nil) &&
+	// The gate mirrors admissionOpenLocked: while admission is closed, I13 says nothing about admitLocked.
+	checkI13 := !s.shuttingDown && (s.lifetimeCtx == nil || s.lifetimeCtx.Err() == nil) && s.startDesired != nil &&
 		s.reservedServices < s.cfg.Limits.MaxSupervisedServices
 
 	for pluginID, record := range s.plugins {
@@ -432,7 +433,7 @@ func checkInvariantI12(pluginID string, record *pluginRecord) (invariantViolatio
 }
 
 func checkInvariantI13(pluginID string, record *pluginRecord, reservedServices int, maxServices int) (invariantViolation, bool) {
-	// promoteBlocked compares desired with a copy, so service.spec is not part of admissibility.
+	// admitLocked compares desired with a copy, so service.spec is not part of admissibility.
 	// reserveForReconcileLocked rejects records with an active stop state.
 	status := RuntimeStatus{}
 

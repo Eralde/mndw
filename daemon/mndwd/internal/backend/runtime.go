@@ -130,6 +130,8 @@ func (r *Runtime) Reconcile(ctx context.Context, plugins []*registry.Plugin) {
 
 	plan := r.supervisor.Reconcile(ctx, specs)
 
+	r.supervisor.runEffects(plan.effects)
+
 	for _, pluginID := range plan.startIDs {
 		spec, exists := specsByID[pluginID]
 

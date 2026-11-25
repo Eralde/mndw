@@ -23,6 +23,8 @@ A part with nothing in it is left out.
   hook sent malformed data. Each entry names the interface.
 - The router's CPU is no longer loaded every 10 seconds: mndw reads new device log entries through one background
   log reader instead of downloading the whole log each time.
+- A plugin backend waiting for a free slot now starts as soon as one frees up, including when it was busy at the
+  moment the slot was freed. Before, it could stay waiting until the next change in the plugin list.
 
 ### For plugin authors
 

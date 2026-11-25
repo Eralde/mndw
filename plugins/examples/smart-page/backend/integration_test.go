@@ -262,7 +262,7 @@ const testShutdownPollInterval = 10 * time.Millisecond
 func TestShutdownBudget(t *testing.T) {
 	helperBinary := filepath.Join(t.TempDir(), "smart-page-shutdown.test")
 	build := exec.Command("go", "test", "-c", "-o", helperBinary, "./cmd/smart-page")
-	build.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off", "GOCACHE=/Users/eralde/dev/mndw/.cache/go-build")
+	build.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off")
 
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build shutdown helper binary: %v\n%s", err, output)

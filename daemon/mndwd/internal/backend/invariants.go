@@ -16,7 +16,7 @@ const (
 	invI3  invariantID = "I3"
 	invI4  invariantID = "I4"
 	invI5  invariantID = "I5"
-	invI6  invariantID = "I6"
+	invI6  invariantID = "I6" // type guarantee since step 4
 	invI7  invariantID = "I7"
 	invI8  invariantID = "I8"
 	invI9  invariantID = "I9"
@@ -41,7 +41,6 @@ var invariantModes = map[invariantID]invariantMode{
 	invI3:  invariantEnforced,
 	invI4:  invariantEnforced,
 	invI5:  invariantEnforced,
-	invI6:  invariantEnforced,
 	invI7:  invariantEnforced,
 	invI8:  invariantEnforced,
 	invI9:  invariantEnforced,
@@ -265,10 +264,6 @@ func (s *Supervisor) checkInvariantsLocked() []invariantViolation {
 			violations = append(violations, violation)
 		}
 
-		if violation, ok := checkInvariantI6(pluginID, record); ok {
-			violations = append(violations, violation)
-		}
-
 		if violation, ok := checkInvariantI8(pluginID, record); ok {
 			violations = append(violations, violation)
 		}
@@ -369,25 +364,6 @@ func checkInvariantI5(pluginID string, record *pluginRecord) (invariantViolation
 	return invariantViolation{ID: invI5, PluginID: pluginID, Detail: "processRegistered=true process=false"}, true
 }
 
-func checkInvariantI6(pluginID string, record *pluginRecord) (invariantViolation, bool) {
-	emptyPendingSpec := record.pendingStartSpec.Equal(ServiceSpec{})
-
-	if record.pendingStart || (!record.pendingStartRetry && emptyPendingSpec) {
-		return invariantViolation{}, false
-	}
-
-	return invariantViolation{
-		ID:       invI6,
-		PluginID: pluginID,
-		Detail: fmt.Sprintf(
-			"pendingStart=%t pendingStartRetry=%t pendingStartSpecEmpty=%t",
-			record.pendingStart,
-			record.pendingStartRetry,
-			emptyPendingSpec,
-		),
-	}, true
-}
-
 func checkInvariantI7(s *Supervisor) (invariantViolation, bool) {
 	serviceHeld := 0
 
@@ -409,7 +385,7 @@ func checkInvariantI7(s *Supervisor) (invariantViolation, bool) {
 
 func checkInvariantI8(pluginID string, record *pluginRecord) (invariantViolation, bool) {
 	if record.service != nil || (record.launch == nil && record.process == nil && record.retryTimer == nil &&
-		!record.serviceHeld && !record.pendingStart && !record.startupQueued) {
+		!record.serviceHeld && !record.startupQueued) {
 		return invariantViolation{}, false
 	}
 
@@ -417,13 +393,12 @@ func checkInvariantI8(pluginID string, record *pluginRecord) (invariantViolation
 		ID:       invI8,
 		PluginID: pluginID,
 		Detail: fmt.Sprintf(
-			"service=%t launch=%t process=%t retryTimer=%t serviceHeld=%t pendingStart=%t startupQueued=%t",
+			"service=%t launch=%t process=%t retryTimer=%t serviceHeld=%t startupQueued=%t",
 			record.service != nil,
 			record.launch != nil,
 			record.process != nil,
 			record.retryTimer != nil,
 			record.serviceHeld,
-			record.pendingStart,
 			record.startupQueued,
 		),
 	}, true
@@ -538,9 +513,10 @@ func checkInvariantI14(pluginID string, record *pluginRecord) (invariantViolatio
 
 	activeRun := record.transition != nil && record.transition.run != nil && !record.transition.run.completed
 	stop := record.service != nil && record.service.stop != nil
+	pending := record.pendingRequest() != nil
 
 	if !record.serviceHeld || record.reservationPending || record.launch != nil || record.process != nil ||
-		stop || record.pendingStart || record.startupQueued || status.State == StateBackoff ||
+		stop || pending || record.startupQueued || status.State == StateBackoff ||
 		status.State == StateFailed || activeRun {
 		return invariantViolation{}, false
 	}
@@ -549,13 +525,13 @@ func checkInvariantI14(pluginID string, record *pluginRecord) (invariantViolatio
 		ID:       invI14,
 		PluginID: pluginID,
 		Detail: fmt.Sprintf(
-			"serviceHeld=%t reservationPending=%t launch=%t process=%t stop=%t pendingStart=%t startupQueued=%t status.State=%q activeRun=%t",
+			"serviceHeld=%t reservationPending=%t launch=%t process=%t stop=%t pending=%t startupQueued=%t status.State=%q activeRun=%t",
 			record.serviceHeld,
 			record.reservationPending,
 			record.launch != nil,
 			record.process != nil,
 			stop,
-			record.pendingStart,
+			pending,
 			record.startupQueued,
 			status.State,
 			activeRun,

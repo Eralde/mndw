@@ -122,6 +122,17 @@ type serviceState struct {
 	recentStderr *StderrRing
 	stop         *stopState
 	lastStopErr  error
+	// pending is a start that waits until the plugin is idle; nil means none.
+	pending *startRequest
+}
+
+// startRequest is never mutated once stored; markPendingStartLocked replaces it as a whole.
+type startRequest struct {
+	spec ServiceSpec
+	// retry marks a start recorded by the retry timer, which needs StateBackoff to still hold when it runs.
+	retry bool
+	// generation is the transition generation when the request was recorded.
+	generation uint64
 }
 
 // stopState is never mutated after done is closed; waiters keep the pointer and read err from it.
@@ -150,13 +161,18 @@ type pluginRecord struct {
 	processRegistered  bool
 	startupQueued      bool
 	startupSeq         uint64
-	pendingStart       bool
-	pendingStartRetry  bool
-	pendingStartSpec   ServiceSpec
-	pendingStartGen    uint64
 	retryTimer         *time.Timer
 	retryGen           uint64
 	sockets            map[socketCloser]struct{}
+}
+
+// pendingRequest reads through a possibly absent service: a record without one has no pending start.
+func (r *pluginRecord) pendingRequest() *startRequest {
+	if r.service == nil {
+		return nil
+	}
+
+	return r.service.pending
 }
 
 func (cfg SupervisorConfig) withDefaults() SupervisorConfig {
@@ -413,7 +429,7 @@ func (s *Supervisor) setDesiredLocked(pluginID string, desired *ServiceSpec) {
 
 	record := s.ensurePluginRecordLocked(pluginID)
 
-	if record.pendingStart && !record.pendingStartSpec.Equal(*desired) {
+	if pending := record.pendingRequest(); pending != nil && !pending.spec.Equal(*desired) {
 		s.clearPendingStartLocked(record)
 	}
 
@@ -437,7 +453,7 @@ func (s *Supervisor) prunePluginRecordLocked(pluginID string) {
 
 	if record == nil || record.desired != nil || record.service != nil || record.transition != nil ||
 		record.serviceHeld || record.reservationPending || record.launch != nil ||
-		record.process != nil || record.startupQueued || record.pendingStart || record.retryTimer != nil ||
+		record.process != nil || record.startupQueued || record.pendingRequest() != nil || record.retryTimer != nil ||
 		len(record.sockets) > 0 {
 		return
 	}
@@ -596,7 +612,7 @@ func (s *Supervisor) terminalizeLocked(run *operationRun, intent Intent, err err
 	run.cancel()
 	close(run.done)
 
-	if service := s.serviceRecordLocked(run.name); service != nil && service.pendingStart {
+	if service := s.serviceRecordLocked(run.name); service != nil && service.pendingRequest() != nil {
 		go s.resumePendingStartup(run.name)
 	}
 }
@@ -869,11 +885,13 @@ func (s *Supervisor) transitionGenerationLocked(pluginID string) uint64 {
 func (s *Supervisor) markPendingStartLocked(record *pluginRecord, spec ServiceSpec, retry bool) {
 	s.stopRetryTimerLocked(spec.PluginID)
 
-	record.pendingStart = true
-	record.pendingStartRetry = retry
-	record.pendingStartSpec = spec
-	record.pendingStartSpec.Args = append([]string(nil), spec.Args...)
-	record.pendingStartGen = s.transitionGenerationLocked(spec.PluginID)
+	spec.Args = append([]string(nil), spec.Args...)
+
+	record.service.pending = &startRequest{
+		spec:       spec,
+		retry:      retry,
+		generation: s.transitionGenerationLocked(spec.PluginID),
+	}
 }
 
 func (s *Supervisor) launchDesiredStartup(spec ServiceSpec) {
@@ -1605,7 +1623,7 @@ func (s *Supervisor) finishFailedLaunch(pluginID string, record *pluginRecord, l
 
 	if s.plugins[pluginID] == record && record.launch == launch {
 		record.launch = nil
-		resumePending = record.pendingStart
+		resumePending = record.pendingRequest() != nil
 
 		close(launch.done)
 	}
@@ -1860,7 +1878,7 @@ func (s *Supervisor) observeProcessExit(pluginID string, process *registeredProc
 			shouldResume = true
 		}
 	} else if record.service.status.State != StateStopped {
-		pendingStart := record.pendingStart
+		pendingStart := record.service.pending != nil
 
 		if pendingStart {
 			_, retry := recordFailure(&record.service.status, s.now(), "exited", err)
@@ -1876,7 +1894,7 @@ func (s *Supervisor) observeProcessExit(pluginID string, process *registeredProc
 		} else {
 			s.transitionFailureLocked(record, pluginID, "exited", err)
 		}
-	} else if record.pendingStart {
+	} else if record.service.pending != nil {
 		shouldResume = true
 	}
 
@@ -1953,10 +1971,9 @@ func (s *Supervisor) stopRetryTimerLocked(pluginID string) {
 }
 
 func (s *Supervisor) clearPendingStartLocked(record *pluginRecord) {
-	record.pendingStart = false
-	record.pendingStartRetry = false
-	record.pendingStartSpec = ServiceSpec{}
-	record.pendingStartGen = 0
+	if record.service != nil {
+		record.service.pending = nil
+	}
 }
 
 func (s *Supervisor) stopRetryTimerOnlyLocked(record *pluginRecord) {
@@ -2044,42 +2061,48 @@ func (s *Supervisor) scheduleRetry(pluginID string, delay time.Duration) {
 	record.retryTimer = timer
 }
 
+// resumePendingStartup is the wake-up wrapper; each caller keeps its own condition and its order against
+// promoteBlocked and failStart.
 func (s *Supervisor) resumePendingStartup(pluginID string) {
 	s.mu.Lock()
 
+	launch := s.settleLocked(pluginID)
+
+	s.unlock()
+
+	if launch != nil {
+		launch()
+	}
+}
+
+// settleLocked decides whether the pending start may run now. It returns the launch closure for the caller to run
+// after unlocking, or nil.
+func (s *Supervisor) settleLocked(pluginID string) func() {
 	record := s.serviceRecordLocked(pluginID)
 	plugin := s.plugins[pluginID]
 	transition := s.transitionRecordLocked(pluginID)
 
-	if record == nil || plugin == nil || transition == nil || !record.pendingStart {
-		s.unlock()
-
-		return
+	if record == nil || plugin == nil || transition == nil || record.service.pending == nil {
+		return nil
 	}
 
 	if record.launch != nil || record.process != nil || record.service.stop != nil || transition.transition.operation != OpNone {
-		s.unlock()
-
-		return
+		return nil
 	}
 
-	spec := record.pendingStartSpec
-	generation := record.pendingStartGen
+	request := record.service.pending
+	spec := request.spec
 
-	if !s.pendingStartEligibleLocked(pluginID, spec, generation) {
+	if !s.pendingStartEligibleLocked(pluginID, spec, request.generation) {
 		s.clearPendingStartLocked(record)
 
-		s.unlock()
-
-		return
+		return nil
 	}
 
-	if record.pendingStartRetry && record.service.status.State != StateBackoff {
+	if request.retry && record.service.status.State != StateBackoff {
 		s.clearPendingStartLocked(record)
 
-		s.unlock()
-
-		return
+		return nil
 	}
 
 	if !record.service.spec.Equal(spec) && record.serviceHeld {
@@ -2093,21 +2116,14 @@ func (s *Supervisor) resumePendingStartup(pluginID string) {
 	if !s.reserveForReconcileLocked(spec) {
 		s.clearPendingStartLocked(record)
 
-		s.unlock()
-
-		return
+		return nil
 	}
 
 	s.clearPendingStartLocked(record)
 
 	record.service.status.NextAttemptAt = nil
-	launch := s.trackDesiredStartupLocked(spec)
 
-	s.unlock()
-
-	if launch != nil {
-		launch()
-	}
+	return s.trackDesiredStartupLocked(spec)
 }
 
 func (s *Supervisor) stopRecord(ctx context.Context, pluginID string) error {
@@ -2323,7 +2339,7 @@ func (s *Supervisor) finishStop(
 	stop.err = stopErr
 	record.service.lastStopErr = stopErr
 	record.service.stop = nil
-	resumePending := record.pendingStart
+	resumePending := record.service.pending != nil
 
 	close(stop.done)
 

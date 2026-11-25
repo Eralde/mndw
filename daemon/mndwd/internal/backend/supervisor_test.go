@@ -852,3 +852,80 @@ func TestStopAllWaiterReadsItsOwnStopResult(t *testing.T) {
 		t.Fatalf("StopAll waiter error = %v, want its own result %v", results[0].err, errA)
 	}
 }
+
+// A pending start recorded by an operation's own planning stays parked while that operation is current, even after
+// the blocker that parked it is gone. Ending the operation is the only wake-up left.
+func TestPendingStartResumesAfterOperationEnds(t *testing.T) {
+	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 1}))
+	spec := enabledSpec("op-ends")
+	started := make(chan ServiceSpec, 1)
+	supervisor.startDesired = func(startSpec ServiceSpec) { started <- startSpec }
+
+	seedSupervisorStateForTest(supervisor, spec.PluginID, &spec, &serviceRecord{
+		spec: spec,
+		// Backoff only keeps the I14 fixture count of the suite unchanged; the path under test never branches on it.
+		status:      RuntimeStatus{State: StateBackoff},
+		serviceHeld: true,
+		done:        newProcessExit(),
+		stop:        &stopState{done: make(chan struct{})},
+	}, &transition{intent: IntentRun})
+
+	operation := supervisor.beginLifecycleOperation(spec.PluginID, OpStarting, IntentRun)
+
+	if err := supervisor.startDesiredService(operation.token, spec); err != nil {
+		t.Fatalf("start during deferred stop = %v, want nil", err)
+	}
+
+	supervisor.mu.Lock()
+
+	record := supervisor.serviceRecordLocked(spec.PluginID)
+	record.process = nil
+	record.processRegistered = false
+	record.service.stop = nil
+
+	supervisor.unlock()
+
+	supervisor.resumePendingStartup(spec.PluginID)
+	supervisor.startupWG.Wait()
+
+	select {
+	case got := <-started:
+		t.Fatalf("pending start launched while its operation was current: %+v", got)
+	default:
+	}
+
+	supervisor.mu.Lock()
+	supervisor.commitLocked(operation.token.run)
+	supervisor.unlock()
+
+	select {
+	case got := <-started:
+		if !got.Equal(spec) {
+			t.Fatalf("resumed spec = %+v, want %+v", got, spec)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("pending start was lost when its operation ended")
+	}
+
+	supervisor.startupWG.Wait()
+}
+
+func TestPendingStartKeepsItsOwnArgs(t *testing.T) {
+	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 1}))
+	spec := enabledSpec("own-args")
+	spec.Args = []string{"--old"}
+	record := setSupervisorServiceRecordForTest(supervisor, spec.PluginID, &serviceRecord{spec: spec})
+
+	supervisor.mu.Lock()
+
+	supervisor.markPendingStartLocked(record, spec, false)
+
+	spec.Args[0] = "--new"
+	got := record.service.pending.spec.Args[0]
+
+	supervisor.unlock()
+
+	if got != "--old" {
+		t.Fatalf("pending start Args[0] after the caller changed its spec = %q, want %q", got, "--old")
+	}
+}

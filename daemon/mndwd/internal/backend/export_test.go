@@ -204,7 +204,7 @@ func (s *Supervisor) pluginSnapshotLocked(name string) pluginSnapshot {
 		snapshot.reservationPending = record.reservationPending
 		snapshot.startupQueued = record.startupQueued
 		snapshot.startupSeq = record.startupSeq
-		snapshot.pendingStart = record.pendingStart
+		snapshot.pendingStart = record.service.pending != nil
 		snapshot.processPresent = record.process != nil
 
 		if record.process != nil {

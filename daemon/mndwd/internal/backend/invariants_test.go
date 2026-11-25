@@ -282,22 +282,6 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			},
 		},
 		{
-			name:       "I6 cleared pending start has no retry or spec",
-			wantID:     "I6",
-			wantPlugin: "demo",
-			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.pendingStartSpec = ServiceSpec{PluginID: "demo"}
-			},
-		},
-		{
-			name:       "I6 cleared pending start has no retry flag",
-			wantID:     "I6",
-			wantPlugin: "demo",
-			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.pendingStartRetry = true
-			},
-		},
-		{
 			name:   "I7 reserved service count matches records",
 			wantID: "I7",
 			configure: func(s *Supervisor, _ *pluginRecord) {
@@ -346,15 +330,6 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 				record.serviceHeld = true
 				record.reservationPending = true
 				s.reservedServices = 1
-			},
-		},
-		{
-			name:       "I8 absent service has no pending start",
-			wantID:     "I8",
-			wantPlugin: "demo",
-			configure: func(_ *Supervisor, record *pluginRecord) {
-				record.service = nil
-				record.pendingStart = true
 			},
 		},
 		{
@@ -493,7 +468,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 				record.transition = &transitionState{}
 				record.transition.intent = IntentRun
 				record.serviceHeld = true
-				record.pendingStart = true
+				record.service.pending = &startRequest{}
 				record.service.status.State = StateCapacityBlocked
 				s.reservedServices = 1
 			},
@@ -511,9 +486,8 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 				for index := 0; index < s.reservedServices; index++ {
 					pluginID := fmt.Sprintf("slot-%d", index)
 					s.plugins[pluginID] = &pluginRecord{
-						service:      &serviceState{},
-						serviceHeld:  true,
-						pendingStart: true,
+						service:     &serviceState{pending: &startRequest{}},
+						serviceHeld: true,
 					}
 				}
 			},
@@ -594,7 +568,7 @@ func TestCheckInvariantsDetectsEachViolation(t *testing.T) {
 			name: "I14 held slot can have a pending start",
 			configure: func(s *Supervisor, record *pluginRecord) {
 				record.serviceHeld = true
-				record.pendingStart = true
+				record.service.pending = &startRequest{}
 				s.reservedServices = 1
 			},
 		},

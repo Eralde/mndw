@@ -14,37 +14,46 @@ A part with nothing in it is left out.
 
 ### For users
 
+### For plugin authors
+
+## 0.4.2 — 2026-11-25
+
+### For users
+
 - Clients widget: the RSSI of wireless clients is colored green, orange or red, with the level in a tooltip.
-  The two thresholds are set in the widget settings (default −65 and −75 dBm). A client whose router reports no
-  RSSI now shows «—» instead of 0.
-- MWS map: each node shows its link speed above its card, as in the Nodes tab (hidden when zoomed far out).
-  The RSSI thresholds that color wireless links are set with the new dBm button on the map toolbar.
-- Event log: IP address changes on the router now appear. They were never delivered before, because the router
-  hook sent malformed data. Each entry names the interface.
-- The router's CPU is no longer loaded every 10 seconds: mndw reads new device log entries through one background
+  Set the two thresholds in the widget settings (default −65 and −75 dBm). A client whose router reports no RSSI
+  now shows «—» instead of 0.
+- MWS map: each node shows its link speed above its card, as in the Nodes tab (hidden when zoomed far out). Set
+  the RSSI thresholds that color wireless links with the new dBm button on the map toolbar.
+- Event log: IP address changes on the router now appear, each naming the interface. Before, they never arrived,
+  because the router hook sent malformed data.
+- mndw no longer loads the router's CPU every 10 seconds: it reads new device log entries through one background
   log reader instead of downloading the whole log each time.
-- A plugin backend waiting for a free slot now starts as soon as one frees up, including when it was busy at the
-  moment the slot was freed. Before, it could stay waiting until the next change in the plugin list.
-- A plugin backend enabled again or updated while it was still stopping now starts once the stop finishes.
-  Before, it stayed stopped until the next change in the plugin list.
-- A plugin backend restarted with new settings keeps its slot; before, a waiting plugin could sometimes take it. A
-  plugin backend that has stopped retrying after repeated crashes now frees its slot for a waiting plugin.
+- Plugin backends start when they should. One waiting for a free slot starts as soon as a slot frees up, even if
+  it was busy at that moment. One enabled again or updated while it was still stopping starts once the stop
+  finishes. One restarted with new settings keeps its slot, and one that stopped retrying after repeated crashes
+  gives its slot to a waiting plugin. Before, a backend could stay stopped until the next change in the plugin
+  list.
 
 ### For plugin authors
 
+- `net.ip_changed` events now reach plugins on a router; before, the hook's malformed data was rejected. The
+  payload gains `interface` (the router's interface name, such as `WifiMaster0/WifiStation0`) and `systemName`
+  (such as `apcli0`), and `link` is now the link state (`up` or `down`), not an interface name.
+  ([48c0f49](https://github.com/Eralde/mndw/commit/48c0f49d099a9cd4ce2b51efc26bb93b3eed1d44))
+- Reinstalling a plugin without changing its version now loads the new files: the browser no longer keeps the old
+  `index.js`, styles or translations, and Settings asks to reload the page if the plugin was already loaded. The
+  plugin list reports `installedAt` for each installed plugin.
+  ([b45cde0](https://github.com/Eralde/mndw/commit/b45cde00625c2ca38a92a55e5795537416c2e4e0))
+- `<mndw-line-chart>` and `<mndw-bar-chart>` work on touch screens: a tap or a horizontal drag shows the tooltip,
+  it stays until a tap outside the chart, and a vertical swipe still scrolls the page.
+  ([7f0e1b6](https://github.com/Eralde/mndw/commit/7f0e1b67330dfe3cee14b384e1472926911ae986))
 - New smart-page example: a page with a Go service backend that finds drives with Entware's `smartctl`
   (`backend.packages: ["smartmontools"]`) and shows their S.M.A.R.T. health, key counters and attributes. It
   searches for drives when opened, asks before a read that may wake a sleeping HDD (not for SSD or NVMe; the answer
   can be remembered per drive) and lets the user override the device type of a USB bridge. Archives for aarch64,
   mips and mipsel come from `pnpm build-example-plugins`.
-- Reinstalling a plugin without changing its version now loads the new files: the browser no longer keeps the old
-  `index.js`, styles or translations, and Settings asks to reload the page if the plugin was already loaded. The
-  plugin list reports `installedAt` for each installed plugin.
-- `<mndw-line-chart>` and `<mndw-bar-chart>` work on touch screens: a tap or a horizontal drag shows the tooltip,
-  it stays until a tap outside the chart, and a vertical swipe still scrolls the page.
-- `net.ip_changed` events now reach plugins on a router; before, the hook's malformed data was rejected. The
-  payload gains `interface` (the router's interface name, such as `WifiMaster0/WifiStation0`) and `systemName`
-  (such as `apcli0`), and `link` is the link state (`up` or `down`), not an interface name.
+  ([6584d52](https://github.com/Eralde/mndw/commit/6584d52ba3b2804bc3b8723c1b05dfde12236e29))
 
 ## 0.4.1 — 2026-11-23
 

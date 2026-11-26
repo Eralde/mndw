@@ -12,6 +12,7 @@ export const BUILD_VITEST_FILES: readonly string[] = [
   'build/dev/dev.integration.test.ts',
   'build/dev/dev.test.ts',
   'build/example-plugins.test.ts',
+  'build/plugin-backends.test.ts',
   'build/packaging/build-ipk.test.ts',
   'build/packaging/build-daemon-target.test.ts',
   'build/packaging/cleanup-script.test.ts',

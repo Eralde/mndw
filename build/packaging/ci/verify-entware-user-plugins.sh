@@ -107,9 +107,21 @@ make_plugin() {
   return 0
 }
 
+find_mndwd_daemon_pid() {
+  for candidate_pid in $(pidof mndwd 2>/dev/null); do
+    process_mode=$(tr '\000' '\n' < "/proc/$candidate_pid/cmdline" 2>/dev/null | sed -n '2p')
+    if [ "$process_mode" != backend ]; then
+      printf '%s\n' "$candidate_pid"
+      return 0
+    fi
+  done
+
+  return 0
+}
+
 check_daemon_path() {
   expected_path=$1
-  daemon_pid=$(pidof mndwd 2>/dev/null | awk '{print $1}')
+  daemon_pid=$(find_mndwd_daemon_pid)
 
   if [ -z "$daemon_pid" ]; then
     fail 'mndwd is not running'
@@ -224,7 +236,7 @@ mndw_preflight() {
   done
 
   for service in mndwd; do
-    service_pid=$(pidof "$service" 2>/dev/null | awk '{print $1}')
+    service_pid=$(find_mndwd_daemon_pid)
     if [ -n "$service_pid" ]; then
       printf '== %s pid=%s ==\n' "$service" "$service_pid"
       grep -E '^(Name|Uid|Gid):' "/proc/$service_pid/status" 2>/dev/null || true

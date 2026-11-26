@@ -253,6 +253,22 @@ describe('S70mndwd pid file', () => {
     expect(result.stderr).toContain('ignoring stale pid file');
   });
 
+  it('stop ignores a backend process even when its executable is mndwd', async () => {
+    const root = makeRoot();
+    const backend = await spawnSleep();
+
+    writePid(root, backend.pid);
+    writeProcCmdline(root, backend.pid, [path.join(root, 'sbin', 'mndwd'), 'backend', 'mwsd']);
+
+    const result = await runInit(root, 'stop');
+
+    expect(result.timedOut).toBe(false);
+    expect(result.code, result.stderr).toBe(0);
+    expect(isAlive(backend.pid)).toBe(true);
+    expect(fs.existsSync(pidFile(root))).toBe(false);
+    expect(result.stderr).toContain('ignoring stale pid file');
+  });
+
   it('stop ignores a kernel thread', async () => {
     const root = makeRoot();
     const foreign = await spawnSleep();

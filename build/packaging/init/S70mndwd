@@ -81,7 +81,8 @@ daemon_pid() {
   fi
 
   process_name="$(tr '\000' '\n' 2>/dev/null < "$PROC_ROOT/$pid/cmdline" | head -n 1)"
-  if [ "$process_name" != "$DAEMON" ]; then
+  process_mode="$(tr '\000' '\n' 2>/dev/null < "$PROC_ROOT/$pid/cmdline" | sed -n '2p')"
+  if [ "$process_name" != "$DAEMON" ] || [ "$process_mode" = backend ]; then
     return 1
   fi
 

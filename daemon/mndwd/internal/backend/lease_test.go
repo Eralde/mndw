@@ -41,6 +41,15 @@ func TestWriteAndReadServiceLeaseIsAtomicAndPrivate(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(entries) != 1 || entries[0].Name() != filepath.Base(path) {
+		t.Fatalf("lease directory entries = %v, want only %q", entries, filepath.Base(path))
+	}
+
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)

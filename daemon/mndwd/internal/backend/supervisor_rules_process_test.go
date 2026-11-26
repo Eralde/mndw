@@ -26,14 +26,14 @@ func TestRulePlanStart(t *testing.T) {
 			return plan.effects, out
 		}
 	}
-	// supervisor.go:1801-1807 is the branch for Ready or Starting with no process. Ready without a process is I10, which
+	// supervisor.go:1802-1807 is the branch for Ready or Starting with no process. Ready without a process is I10, which
 	// is enforced. Starting without a process is left only by a launch refused after planning (supervisor.go:1929-1932)
-	// or by a keep cleanup (supervisor.go:2048) whose run was superseded by a Stop or Delete; their stop resets the
-	// status (supervisor.go:2586, :2609). Otherwise StopAll or the lifetime canceled the run and planStartLocked has
+	// or by a keep cleanup (supervisor.go:2050-2056) whose run was superseded by a Stop or Delete; their stop resets the
+	// status (supervisor.go:2595-2605, :2640-2649). Otherwise StopAll or the lifetime canceled the run and planStartLocked has
 	// returned already (supervisor.go:1724-1730).
-	const noProcessReady = "Ready without a process is I10 (invariants.go:44); the audit of the writers of status.State is in the report, supervisor.go:1801"
+	const noProcessReady = "Ready without a process is I10 (invariants.go:44); the audit of the writers of status.State is in the report, supervisor.go:1802"
 	const noProcessStarting = "Starting without a process is left only by a launch refused after planning (supervisor.go:1929-1932) or by a keep cleanup " +
-		"(supervisor.go:2048) whose run a Stop or Delete superseded, and their stop resets the status (supervisor.go:2586, :2609); " +
+		"(supervisor.go:2050-2056) whose run a Stop or Delete superseded, and their stop resets the status (supervisor.go:2595-2605, :2640-2649); " +
 		"after StopAll or the lifetime planStartLocked returns before this branch (supervisor.go:1724-1730)"
 	starting := op(OpStarting)
 	fresh := ruleRec{Desired: "base", Intent: "run", Op: OpStarting}
@@ -476,9 +476,9 @@ func TestRuleObserveProcessExit(t *testing.T) {
 		},
 		{
 			name: "guard: exit: a child that exits while the status is stopped records no failure",
-			guard: "a registered child with status Stopped and no stop is never written: every Stopped write either needs no process " +
-				"(supervisor.go:1796, :2488, :2535), needs CapacityBlocked (:1489) or comes with a stop (:2565, :2586, :2609), and a stop " +
-				"clears the process together with the stop (:2716); the exit branch is supervisor.go:2270",
+			guard: "a registered child with status Stopped and no stop is never written: Stopped writes without a process are at " +
+				"supervisor.go:1488-1489, :1794-1797, :2524-2528, and stop-driven writes are at :2601-2605, :2620-2626, :2645-2649; " +
+				"the exit branch refuses a child with a stop at :2272-2278",
 			start: []rulePlugin{plug("beta", recRunning().with(inState(StateStopped)))},
 			drive: crash,
 			want:  ruleWant{plugins: map[string]ruleRec{"beta": recStopped()}, free: freeSlots(1)},
@@ -531,17 +531,18 @@ func TestRuleRetryCallback(t *testing.T) {
 
 		return ""
 	}
-	// retryProcess: a process comes up only inside a run, and a run moves the generation, so the generation check
-	// (supervisor.go:2429) drops the retry before it looks at the process. A retry scheduled inside that same run
-	// comes only from failStart, after which the run launches nothing. The one reachable busy case is an unreaped keep
-	// cleanup (supervisor.go:2048) followed by failStart, which is the keep-and-registered row above.
-	const retryProcess = "a process comes up only inside a run, and a run moves the generation, which supervisor.go:2429 rejects first; the one " +
-		"reachable busy case is an unreaped keep cleanup (supervisor.go:2048) followed by failStart, the keep-and-registered row"
-	const retryStop = "every stop stops the retry timer when it starts (supervisor.go:2562, :2606); a retry scheduled during a stop comes from " +
+	// retryProcess: a process comes up only inside a run, and a run moves the generation; pendingStartEligibleLocked checks that
+	// generation before a retry proceeds (supervisor.go:2342-2345, :2466-2469). A retry scheduled inside that same run comes
+	// only from failStart, after which the run launches nothing. The one reachable busy case is an unreaped keep cleanup
+	// (supervisor.go:2050-2056) followed by failStart, which is the keep-and-registered row above.
+	const retryProcess = "a process comes up only inside a run, and a run moves the generation, which pendingStartEligibleLocked checks " +
+		"(supervisor.go:2342-2345, :2466-2469); the one reachable busy case is an unreaped keep cleanup (supervisor.go:2050-2056) " +
+		"followed by failStart, the keep-and-registered row"
+	const retryStop = "every stop stops the retry timer when it starts (supervisor.go:2599, :2643); a retry scheduled during a stop comes from " +
 		"failStart while the process is still registered, the keep-and-registered row"
-	const retryState = "audit of every writer of status.State (supervisor.go:1489, 1517, 1796, 1821, 1826, 2102, 2256, 2323, 2331, 2488, 2535, 2565, " +
-		"2586, 2609): each does not leave Backoff, stops the retry timer first (:2257, :2562, :2606, :2344) or runs inside a run, and a new run moves " +
-		"the generation (newRunLocked, :800), which supervisor.go:2429 rejects before the state check at :2443"
+	const retryState = "audit of the State writes (supervisor.go:1489, 1517, 1796, 1821, 1826, 2139, 2293, 2360, 2368, 2525, 2572, " +
+		"2602, 2623, 2646): run, exit, failure, and stop transitions own these writes; retry callbacks check generation in " +
+		"pendingStartEligibleLocked (supervisor.go:2342-2345, :2466-2469), while stops clear retry timers at :2599 and :2643"
 	waiting := recBackoff().with(withRetry())
 	spent := recBackoff()
 	changeDesired := func(form string) func(h *ruleHarness) {

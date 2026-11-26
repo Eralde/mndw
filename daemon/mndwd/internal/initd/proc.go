@@ -197,12 +197,18 @@ func optProcessRecords(records []procRecord) []procRecord {
 	filtered := make([]procRecord, 0, len(records))
 
 	for _, record := range records {
-		if processExecutableUnder(record, entwareRoot) {
+		if processExecutableUnder(record, entwareRoot) && !isMndwdBackendProcess(record) {
 			filtered = append(filtered, record)
 		}
 	}
 
 	return filtered
+}
+
+func isMndwdBackendProcess(record procRecord) bool {
+	args := strings.Fields(record.cmdline)
+
+	return len(args) >= 2 && args[0] == filepath.Join(entwareRoot, "sbin", "mndwd") && args[1] == "backend"
 }
 
 func processExecutableUnder(record procRecord, root string) bool {

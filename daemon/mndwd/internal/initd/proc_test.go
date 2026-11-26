@@ -250,6 +250,37 @@ func TestResolvePIDUsesConfiguredMndwdPIDFile(t *testing.T) {
 	}
 }
 
+func TestResolveFromRecordsExcludesBuiltinBackendProcesses(t *testing.T) {
+	tests := []struct {
+		name    string
+		records []procRecord
+		want    int
+	}{
+		{
+			name: "daemon wins when backend has lower pid",
+			records: []procRecord{
+				{pid: 100, cmdline: "/opt/sbin/mndwd backend mwsd", comm: "mwsd", exe: "/opt/sbin/mndwd"},
+				{pid: 200, cmdline: "/opt/sbin/mndwd --user-plugins-dir /opt/lib/mndw/plugins", comm: "mndwd", exe: "/opt/sbin/mndwd"},
+			},
+			want: 200,
+		},
+		{
+			name: "backend alone is not an init.d service",
+			records: []procRecord{
+				{pid: 100, cmdline: "/opt/sbin/mndwd backend mwsd", comm: "mwsd", exe: "/opt/sbin/mndwd"},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := resolveFromRecords(test.records, "S70mndwd", scriptMeta{}, nil, ""); got != test.want {
+				t.Fatalf("resolved pid = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
 func TestResolvePIDUsesConventionalPIDFileRootsAndOrdering(t *testing.T) {
 	for _, rootName := range []string{"tmp", "var-run", "opt-var-run"} {
 		t.Run(rootName, func(t *testing.T) {

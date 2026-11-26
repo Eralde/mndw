@@ -3,10 +3,9 @@ package backend
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
-
-	"mndwd/internal/fsutil"
 )
 
 type ServiceLease struct {
@@ -31,8 +30,45 @@ func WriteServiceLease(path string, lease ServiceLease) error {
 
 	data = append(data, '\n')
 
-	if err := fsutil.WriteFileAtomic(path, data, 0o600); err != nil {
+	if err := writeServiceLeaseAtomic(path, data); err != nil {
 		return fmt.Errorf("persist lease: %w", err)
+	}
+
+	return nil
+}
+
+// writeServiceLeaseAtomic writes a temporary file and renames it into place without syncing the file or directory,
+// unlike fsutil.WriteFileAtomic. A lease is valid only within the boot that wrote it and is read through the page
+// cache, so syncing would add flash writes and time under Supervisor.mu during readiness refresh.
+func writeServiceLeaseAtomic(path string, data []byte) error {
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".service-lease-*")
+	if err != nil {
+		return fmt.Errorf("create temporary file: %w", err)
+	}
+
+	temporaryPath := temporary.Name()
+
+	defer func() {
+		_ = temporary.Close()
+		_ = os.Remove(temporaryPath)
+	}()
+
+	if err := temporary.Chmod(0o600); err != nil {
+		return fmt.Errorf("chmod temporary file: %w", err)
+	}
+
+	if written, err := temporary.Write(data); err != nil {
+		return fmt.Errorf("write temporary file: %w", err)
+	} else if written != len(data) {
+		return fmt.Errorf("write temporary file: %w", io.ErrShortWrite)
+	}
+
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("close temporary file: %w", err)
+	}
+
+	if err := os.Rename(temporaryPath, path); err != nil {
+		return fmt.Errorf("rename temporary file: %w", err)
 	}
 
 	return nil

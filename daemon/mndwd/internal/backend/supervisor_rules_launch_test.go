@@ -113,8 +113,8 @@ func TestRuleAttachStartedProcess(t *testing.T) {
 		{
 			name: "guard: attach: a launch that was already cleared is not closed again",
 			guard: "the writers of the phase are beginServiceLaunch, finishFailedLaunch (this goroutine, and attach is not called " +
-				"after it), attach, registerServiceProcess, observeProcessExit (started after readiness, supervisor.go:1988) and " +
-				"finishStop (a stop is only created with no launch in flight, supervisor.go:2558-2581); none clears a launch " +
+				"after it), attach, registerServiceProcess, observeProcessExit (started after readiness, supervisor.go:1995) and " +
+				"finishStop (stopProcess waits for a launch before creating a stop, supervisor.go:2595-2641); none clears a launch " +
 				"another goroutine still attaches to",
 			start: []rulePlugin{plug("beta", launchIdle.with(proc("launching")))},
 			prep: func(h *ruleHarness) {
@@ -179,7 +179,7 @@ func TestRuleRegisterServiceProcess(t *testing.T) {
 		{
 			name: "guard: register: once shutdown started the child is not registered",
 			guard: "StopAll cancels every current run in the section that sets shuttingDown (supervisor.go:1148-1152) and the " +
-				"lifetime hook cancels the lifetime context every run derives from (supervisor.go:801), so run.ctx.Err() refuses first",
+				"lifetime hook cancels the context every run derives from (supervisor.go:448-450, :799-803), and registration checks run.ctx (supervisor.go:2069-2070)",
 			shutting: true,
 			start:    []rulePlugin{plug("beta", launchStarted)},
 			drive:    register,
@@ -189,7 +189,7 @@ func TestRuleRegisterServiceProcess(t *testing.T) {
 			name: "guard: register: a record whose child is not the started child is left alone",
 			guard: "the phase of a current run's child is written only by that run's goroutine (begin, attach, register) and by " +
 				"finishStop, which needs a stop, and a stop on a started child comes with a canceled run (StopAll, " +
-				"reapUnregisteredProcess after supersession): writers of proc are supervisor.go:2010, :2021, :2038, :2066, :2241, :2716",
+				"reapUnregisteredProcess after supersession): writers of proc are supervisor.go:2017, :2028, :2045, :2073, :2278, :2753",
 			start: []rulePlugin{plug("beta", launchStarted)},
 			prep: func(h *ruleHarness) {
 				h.process["beta"] = newLaunchChild()
@@ -201,6 +201,72 @@ func TestRuleRegisterServiceProcess(t *testing.T) {
 }
 
 // markServiceReady is the end of a start: the status becomes ready if the run is still the plugin's.
+func TestRuleRefreshServiceLease(t *testing.T) {
+	refresh := func(h *ruleHarness) string {
+		h.s.mu.Lock()
+
+		record := h.s.plugins["beta"]
+		process := h.process["beta"]
+
+		h.s.unlock()
+
+		refreshed := h.s.refreshServiceLease(h.run["beta"], record, RuntimePaths{}, process)
+
+		h.s.mu.Lock()
+
+		defer h.s.unlock()
+
+		return fmt.Sprint(refreshed)
+	}
+	canceled := func(h *ruleHarness) { h.run["beta"].cancel() }
+
+	runTable(t, []ruleRow{
+		{
+			name:  "refresh lease: the registered child of the current run is refreshed",
+			start: []rulePlugin{plug("beta", launchRegistered)},
+			drive: refresh,
+			want:  ruleWant{out: "true"},
+		},
+		{
+			name:  "refresh lease: a replaced run cannot refresh its child",
+			start: []rulePlugin{plug("beta", launchRegistered)},
+			prep: func(h *ruleHarness) {
+				h.s.plugins["beta"].transition.run = h.s.newRunLocked("beta", OpStarting, IntentRun)
+			},
+			drive: refresh,
+			want:  ruleWant{out: "false"},
+		},
+		{
+			name:  "refresh lease: a canceled run cannot refresh its child",
+			start: []rulePlugin{plug("beta", launchRegistered)},
+			prep:  canceled,
+			drive: refresh,
+			want:  ruleWant{out: "false"},
+		},
+		{
+			name: "guard: refresh lease: shutdown refuses the write",
+			guard: "StopAll sets shuttingDown and cancels current runs in one critical section (supervisor.go:1141-1152), so " +
+				"there is no production state with shutdown set and a live current run",
+			shutting: true,
+			start:    []rulePlugin{plug("beta", launchRegistered)},
+			drive:    refresh,
+			want:     ruleWant{out: "false"},
+		},
+		{
+			name: "guard: refresh lease: a different child cannot refresh the registered child's lease",
+			guard: "the current run's child is written by its own run through begin, attach, register, or ready-exit cleanup; " +
+				"finishStop requires a stop, and a stop with this active run is ruled out by supervisor.go:2017, :2028, :2045, " +
+				":2073, :2278, :2753",
+			start: []rulePlugin{plug("beta", launchRegistered)},
+			prep: func(h *ruleHarness) {
+				h.process["beta"] = newLaunchChild()
+			},
+			drive: refresh,
+			want:  ruleWant{out: "false"},
+		},
+	})
+}
+
 func TestRuleMarkServiceReady(t *testing.T) {
 	ready := func(h *ruleHarness) string {
 		h.s.mu.Lock()

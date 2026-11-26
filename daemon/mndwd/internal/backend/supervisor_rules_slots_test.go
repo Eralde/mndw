@@ -508,7 +508,7 @@ func TestRuleAdmit(t *testing.T) {
 		{
 			// Mirrors TestAdmitDoesNothingAfterShutdownStarts.
 			name:     "guard: admit: once shutdown started nobody is admitted",
-			guard:    "StopAll and the lifetime hook clear every desired spec in the section that sets shuttingDown, so no waiter is admissible then (supervisor.go:1148, :450)",
+			guard:    "StopAll and the lifetime hook clear every desired spec when they set shuttingDown (supervisor.go:1141-1144, :448-450), so no waiter is admissible then",
 			shutting: true,
 			start:    []rulePlugin{plug("beta", recBlocked())},
 			event:    admit,
@@ -534,7 +534,7 @@ func TestRuleAdmit(t *testing.T) {
 		},
 		{
 			name:  "guard: admit: a waiter with an unsupported protocol is admitted without a slot",
-			guard: "an incompatible spec never stays capacity-blocked: prepareReservationLocked moves a blocked record to stopped (supervisor.go:1488)",
+			guard: "an incompatible spec never stays capacity-blocked: prepareReservationLocked moves a blocked record to stopped (supervisor.go:1488-1489)",
 			start: []rulePlugin{plug("beta", recBlocked().with(desired("proto9"), svcSpec("proto9")))},
 			event: admit,
 			mid:   midFreedSlot,

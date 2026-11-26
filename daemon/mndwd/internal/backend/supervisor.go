@@ -1978,6 +1978,13 @@ func (s *Supervisor) startService(run *operationRun, spec ServiceSpec) error {
 		return err
 	}
 
+	if !s.refreshServiceLease(run, record, paths, process) {
+		// Supersession cancels run.ctx too; let process cleanup finish under the configured stop timeouts.
+		s.cleanupFailedStart(spec.PluginID)
+
+		return errSuperseded
+	}
+
 	if !s.markServiceReady(run, record) {
 		// Supersession cancels run.ctx too; let process cleanup finish under the configured stop timeouts.
 		s.cleanupFailedStart(spec.PluginID)
@@ -2075,6 +2082,36 @@ func (s *Supervisor) registerServiceProcess(
 
 	if err := writeProcessLease(paths.ServiceLease, process.command.Process.Pid); err != nil {
 		s.cfg.Logger.Warn("service lease unavailable", "plugin", pluginID, "error", err)
+	}
+
+	return true
+}
+
+func (s *Supervisor) refreshServiceLease(
+	run *operationRun,
+	record *pluginRecord,
+	paths RuntimePaths,
+	process *registeredProcess,
+) bool {
+	s.mu.Lock()
+
+	registered, isRegistered := record.service.proc.(procRegistered)
+	current := s.isCurrentLocked(run) && run.ctx.Err() == nil && !s.shuttingDown && s.lifetimeCtx.Err() == nil &&
+		s.plugins[run.name] == record && isRegistered && registered.process == process
+
+	if !current {
+		s.unlock()
+
+		return false
+	}
+
+	// Keep the write under s.mu so StopAll cannot remove the lease and then have this write restore it.
+	err := writeProcessLease(paths.ServiceLease, process.command.Process.Pid)
+
+	s.unlock()
+
+	if err != nil {
+		s.cfg.Logger.Warn("service lease unavailable", "plugin", run.name, "error", err)
 	}
 
 	return true

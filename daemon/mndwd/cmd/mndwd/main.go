@@ -50,6 +50,10 @@ const telemetryShutdownTimeout = 30 * time.Second
 var deviceProxyPrefixes = []string{"/rci", "/ci", "/auth"}
 
 func main() {
+	if handled, exitCode := dispatchBackend(os.Args[1:], builtinBackendEntries, os.Stderr, setBackendProcessName); handled {
+		os.Exit(exitCode)
+	}
+
 	cfg, showVersion, err := parseFlags(os.Args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

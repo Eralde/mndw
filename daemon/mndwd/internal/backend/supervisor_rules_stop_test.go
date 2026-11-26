@@ -129,7 +129,7 @@ func TestRuleStopProcess(t *testing.T) {
 		},
 		{
 			name:  "guard: stop: keep on a child that is not registered yet leaves the starting status alone",
-			guard: "a keep stop comes only from cleanupFailedStart, which runs after registration (supervisor.go:1972-1983); a started-only child is stopped only by reapUnregisteredProcess or StopAll, both with release (process.go:155)",
+			guard: "a keep stop comes only from cleanupFailedStart, which runs after registration (supervisor.go:1964-1983); a started-only child is stopped only by reapUnregisteredProcess or StopAll, both with release (process.go:155)",
 			start: []rulePlugin{plug("beta", running.with(proc("started"), inState(StateStarting)))},
 			drive: stopOf(stopKeep, true),
 			want:  ruleWant{plugins: map[string]ruleRec{"beta": running.with(proc(""), inState(StateStarting))}, out: "nil"},
@@ -612,7 +612,7 @@ func TestRuleLifecycle(t *testing.T) {
 // Every allowed pair with a held slot has the production route that reaches it, named by rule and test, or is marked
 // as having no route. The two no-route pairs are a started-only child under a keep or a restart stop: a restart comes
 // only from startReplace, which needs a registered child (supervisor.go:1777-1781); a keep comes only from
-// cleanupFailedStart, which runs after registration (supervisor.go:1972-1983); a started-only child is stopped only
+// cleanupFailedStart, which runs after registration (supervisor.go:1964-1983); a started-only child is stopped only
 // by reapUnregisteredProcess or StopAll, both with release (process.go:155).
 func TestRuleStopProcPairs(t *testing.T) {
 	const noRoute = "no route"
@@ -753,8 +753,8 @@ func TestRuleStopProcPairs(t *testing.T) {
 		},
 		{
 			name: "guard: launch: once shutdown started the launch is refused",
-			guard: "StopAll cancels every current run in the section that sets shuttingDown (supervisor.go:1148-1152) and the lifetime " +
-				"hook cancels the lifetime context every run derives from (supervisor.go:801), so run.ctx.Err() refuses first (supervisor.go:1998)",
+			guard: "StopAll cancels every current run in the section that sets shuttingDown (supervisor.go:1141-1152) and the lifetime " +
+				"hook cancels the lifetime context every run derives from (supervisor.go:799-803), so run.ctx.Err() refuses launch (supervisor.go:2005-2008)",
 			shutting: true,
 			start:    []rulePlugin{plug("beta", idle)},
 			drive:    launch,

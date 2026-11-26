@@ -125,7 +125,7 @@ func TestRuleTrackDesiredStartup(t *testing.T) {
 		}
 	}
 	idleBackoff := recBackoff()
-	const noLaunchIdle = "a launch begins only for a current run (supervisor.go:1998), a current run means the operation is not OpNone, and this rule returns at its operation check first (:1064)"
+	const noLaunchIdle = "a launch begins only for a current run (supervisor.go:2005-2008), a current run means the operation is not OpNone, and this rule returns at its operation check first (:1064)"
 
 	runTable(t, []ruleRow{
 		{

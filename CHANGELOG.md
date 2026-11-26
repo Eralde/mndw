@@ -14,11 +14,16 @@ A part with nothing in it is left out.
 
 ### For users
 
+### For plugin authors
+
+## 0.4.3 — 2026-11-26
+
+### For users
+
 - The package takes half the space: the aarch64 IPK is about 5.2 MB instead of 11.5 MB, and its files on the
   router are about 15 MB smaller before storage compression. The terminal, MWS and DNS lookup backends are now part
-  of the `mndwd` program instead of separate programs.
-
-### For plugin authors
+  of the `mndwd` program instead of separate programs, and `mndwd` itself leaves out HTTP/2, which it does not
+  need on the router.
 
 ## 0.4.2 — 2026-11-25
 

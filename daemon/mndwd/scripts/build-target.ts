@@ -4,6 +4,9 @@ import {dirname, join} from 'node:path';
 
 import {type ProductTarget, goTargetEnvironment} from '@mndw/cli/go-target';
 
+// Keep device images within the internal flash budget; HTTPS clients then use HTTP/1.1.
+export const DEVICE_DAEMON_GO_BUILD_TAG = 'nethttpomithttp2';
+
 export interface BuildDaemonTargetOptions {
   readonly repoRoot: string;
   readonly target: ProductTarget;
@@ -23,6 +26,8 @@ export function buildDaemonTarget(options: BuildDaemonTargetOptions): void {
 
   const result = (options.spawn ?? spawnSync)('go', [
     'build',
+    '-tags',
+    DEVICE_DAEMON_GO_BUILD_TAG,
     '-o',
     options.outputPath,
     '-ldflags',

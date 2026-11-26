@@ -80,6 +80,10 @@ jobs:
       - name: Test Go modules
         run: sh build/go-each-module.sh
 
+      - name: Test mndwd as shipped without HTTP/2
+        run: go test -tags nethttpomithttp2 ./...
+        working-directory: daemon/mndwd
+
   go-race:
     runs-on: ubuntu-latest
     timeout-minutes: 20
